@@ -1,0 +1,147 @@
+# buddle — self-hosted AI serving (vLLM). No external API calls.
+#
+#   docker compose -f docker-compose.gpu.yml up -d
+#
+# Tiering (see AI_INTEGRATION_DESIGN.md):
+#   - GLM-4.6  : persona / translation / synthesis / ethics-2nd  (workhorse)
+#   - GLM-5.1  : optional deep-reasoning tier (uncomment; needs ~8x H200 FP8)
+#   - embeddings: ko-sroberta (768, matches EMBED_DIM) via HF TEI
+#                 upgrade to BAAI/bge-m3 (1024) requires EMBED_DIM=1024 + migration 0016
+#
+# All inference stays inside this private network; the app talks OpenAI-compatible HTTP.
+
+x-gpu: &gpu
+  deploy:
+    resources:
+      reservations:
+        devices:
+          - driver: nvidia
+            count: all
+            capabilities: [gpu]
+
+services:
+  # ── LLM workhorse: GLM-4.6 (MIT) — Korean + social + creative ──────────────
+  vllm-glm:
+    image: vllm/vllm-openai:latest
+    <<: *gpu
+    command: >
+      --model zai-org/GLM-4.6-FP8
+      --served-model-name glm-4.6
+      --tensor-parallel-size ${GLM_TP:-4}
+      --tool-call-parser glm46
+      --reasoning-parser glm45
+      --enable-auto-tool-choice
+      --enable-prefix-caching
+      --gpu-memory-utilization 0.90
+      --max-model-len 32768
+      --port 8000
+    environment:
+      - HUGGING_FACE_HUB_TOKEN=${HF_TOKEN:-}
+    volumes:
+      - hf-cache:/root/.cache/huggingface
+    ports: ["8000:8000"]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; urllib.request.urlopen('http://localhost:8000/health'); "]
+      interval: 30s
+      timeout: 10s
+      retries: 20
+      start_period: 600s
+
+  # ── (OPTIONAL) Deep-reasoning tier: GLM-5.1 (754B). Needs ~8x H200 FP8. ─────
+  # vllm-glm51:
+  #   image: vllm/vllm-openai:latest
+  #   <<: *gpu
+  #   command: >
+  #     --model zai-org/GLM-5.1-FP8
+  #     --served-model-name glm-5.1
+  #     --tensor-parallel-size 8
+  #     --tool-call-parser glm47
+  #     --reasoning-parser glm45
+  #     --enable-prefix-caching
+  #     --speculative-config '{"method":"mtp","num_speculative_tokens":1}'
+  #     --gpu-memory-utilization 0.92
+  #     --max-model-len 65536
+  #     --port 8001
+  #   volumes: [hf-cache:/root/.cache/huggingface]
+  #   ports: ["8001:8001"]
+  #   restart: unless-stopped
+
+  # ── Embeddings: HF Text Embeddings Inference (TEI). 768-dim ko-sroberta. ────
+  #   OpenAI-compatible /v1/embeddings via TEI's OpenAI route.
+  #   Upgrade: model-id=BAAI/bge-m3 (1024) + EMBED_DIM=1024 + migration 0016.
+  tei-embed:
+    image: ghcr.io/huggingface/text-embeddings-inference:1.5
+    <<: *gpu
+    command: ["--model-id", "${EMBED_MODEL:-BAAI/bge-m3}", "--port", "8080"]
+    volumes:
+      - tei-cache:/data
+    ports: ["8080:8080"]
+    restart: unless-stopped
+
+  # ── Postgres 16 + pgvector ─────────────────────────────────────────────────
+  db:
+    image: pgvector/pgvector:pg16
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER:-buddle}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?set in .env}
+      - POSTGRES_DB=${POSTGRES_DB:-buddle}
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+    ports: ["5432:5432"]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-buddle}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # ── Redis ──────────────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
+    ports: ["6379:6379"]
+    restart: unless-stopped
+
+  # ── App: FastAPI (wires providers to the servers above) ────────────────────
+  api:
+    build: .
+    depends_on:
+      db: { condition: service_healthy }
+      vllm-glm: { condition: service_healthy }
+    # On boot: apply migrations, seed/upgrade persona models to GLM-4.6, then serve.
+    command: >
+      sh -c "alembic upgrade head &&
+             python scripts/seed_persona_models.py &&
+             uvicorn buddle.main:app --host 0.0.0.0 --port 8000"
+    environment:
+      # DB / cache
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-buddle}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-buddle}
+      - REDIS_URL=redis://redis:6379/0
+      # Persona models live in the DB `persona_models` table. The boot command
+      # runs scripts/seed_persona_models.py, which reads these to register a
+      # GLM-4.6 vllm_endpoint persona model (idempotent).
+      - PERSONA_ENDPOINT_URL=http://vllm-glm:8000/v1
+      - PERSONA_MODEL=glm-4.6
+      - TRANSLATION_PROVIDER=llm_endpoint
+      - TRANSLATION_ENDPOINT_URL=http://vllm-glm:8000/v1
+      - TRANSLATION_MODEL_ID=glm-4.6
+      - SYNTHESIS_PROVIDER=llm_endpoint
+      - SYNTHESIS_ENDPOINT_URL=http://vllm-glm:8000/v1
+      - SYNTHESIS_MODEL_ID=glm-4.6
+      - ETHICS_PROVIDER=vllm_endpoint
+      - ETHICS_ENDPOINT_URL=http://vllm-glm:8000/v1
+      - ETHICS_MODEL_ID=glm-4.6
+      - EMBEDDING_PROVIDER=vllm_endpoint
+      - EMBEDDING_ENDPOINT_URL=http://tei-embed:8080
+      - EMBEDDING_MODEL_ID=${EMBED_MODEL:-BAAI/bge-m3}
+    ports: ["8088:8000"]
+    restart: unless-stopped
+
+volumes:
+  hf-cache:
+  tei-cache:
+  pg-data:
+  redis-data:

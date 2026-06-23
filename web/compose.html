@@ -1,0 +1,937 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>buddle · 글쓰기</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Spline+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="buddle.css">
+<style>
+  
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{font-family:var(--body);color:var(--ink);background:radial-gradient(900px 600px at 80% -10%, rgba(61,138,107,.06) 0%, transparent 60%),#FBFBFA;:normal;-webkit-font-smoothing:antialiased;}
+  .phone{max-width:460px;margin:0 auto;background:rgba(255,255,255,.9);backdrop-filter:blur(10px);min-height:100vh;display:flex;flex-direction:column;}
+
+  header{display:flex;align-items:center;gap:12px;padding:14px 16px;border-bottom:1px solid var(--line);position:sticky;top:0;background:rgba(255,255,255,.92);backdrop-filter:blur(8px);z-index:20;}
+  .back{width:38px;height:38px;border-radius:14px;border:1px solid var(--line);background:var(--white);display:grid;place-items:center;cursor:pointer;flex:none;}
+  .back svg{width:19px;height:19px;stroke:var(--forest);}
+  header h1{font-family:var(--display);font-weight:600;font-size:19px;letter-spacing:-.01em;flex:1;}
+
+  /* persona picker — chat.html과 동일한 Claude식 모델 선택 드롭다운 */
+  .head-persona{display:flex;align-items:center;gap:8px;flex:1;min-width:0;background:transparent;border:0;cursor:pointer;padding:4px 8px 4px 4px;border-radius:12px;text-align:left;transition:background .15s;}
+  .head-persona:hover{background:var(--paper-sunken);}
+  .head-ava{width:38px;height:38px;border-radius:14px;flex:none;display:grid;place-items:center;font-family:var(--display);font-weight:600;font-size:17px;color:#fff;background:var(--accent-grad);box-shadow:var(--shadow-pop-sm);}
+  .head-text{min-width:0;}
+  .head-text .nm{font-family:var(--display);font-weight:600;font-size:16px;letter-spacing:-.01em;display:flex;align-items:center;gap:5px;color:var(--ink);}
+  .head-text .nm .chev{width:14px;height:14px;stroke:var(--ink-faint);flex:none;}
+  .head-text .sub{font-size:11.5px;color:var(--ink-faint);}
+  .pp-backdrop{position:fixed;inset:0;z-index:30;background:transparent;}
+  .pp-menu{position:absolute;top:60px;left:16px;z-index:31;width:min(320px,calc(100% - 32px));background:var(--paper-raised);border:1px solid var(--line);border-radius:18px;box-shadow:var(--shadow-lg);padding:8px;animation:ppIn .18s var(--ease,ease);}
+  @keyframes ppIn{from{opacity:0;transform:translateY(-6px);}to{opacity:1;transform:none;}}
+  .pp-label{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-faint);padding:8px 10px 6px;}
+  .pp-item{display:flex;align-items:center;gap:11px;width:100%;padding:10px;border:0;background:transparent;border-radius:12px;cursor:pointer;text-align:left;transition:background .14s;}
+  .pp-item:hover{background:var(--paper-sunken);}
+  .pp-item.on{background:var(--willow-wash);}
+  .pp-ava{width:36px;height:36px;border-radius:12px;flex:none;display:grid;place-items:center;font-family:var(--display);font-weight:600;font-size:16px;color:#fff;background:var(--accent-grad);box-shadow:var(--shadow-pop-sm);}
+  .pp-meta{flex:1;min-width:0;}
+  .pp-meta strong{display:block;font-size:14.5px;font-weight:600;color:var(--ink);}
+  .pp-meta small{display:block;font-size:12px;color:var(--ink-faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .pp-check{width:18px;height:18px;flex:none;stroke:var(--willow);opacity:0;}
+  .pp-item.on .pp-check{opacity:1;}
+  .pp-new{display:flex;align-items:center;gap:11px;width:100%;padding:11px 10px;border:0;border-top:1px solid var(--line);margin-top:4px;background:transparent;cursor:pointer;text-align:left;color:var(--willow-press);font-family:var(--body);font-size:14px;font-weight:600;border-radius:0 0 12px 12px;}
+  .pp-new:hover{background:var(--paper-sunken);}
+  .pp-new .pp-plus{width:36px;height:36px;border-radius:12px;flex:none;display:grid;place-items:center;border:1.5px dashed var(--line-strong);}
+  .pp-new .pp-plus svg{width:17px;height:17px;stroke:var(--willow);}
+
+  /* 주장 모드 편 선택 (찬성/중립/반대 — 토론 입장색) */
+  .stance-pick3{display:flex;gap:8px;}
+  .sp3{flex:1;padding:12px;border-radius:var(--r);border:1.5px solid var(--line);background:var(--paper-raised);font-family:var(--body);font-size:14.5px;font-weight:600;color:var(--ink-soft);cursor:pointer;transition:all .2s ease;}
+  .sp3.con.on{border-color:var(--caution);background:#f9ece5;color:#9a5a38;}
+  .sp3.neu.on{border-color:var(--line-strong);background:var(--paper-sunken);color:var(--ink);}
+  .sp3.pro.on{border-color:var(--pos);background:var(--pos-wash);color:#2A6B51;}
+
+  .body{flex:1;overflow-y:auto;padding:18px 16px 24px;}
+
+  /* step labels */
+  .step-label{font-size:11.5px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--forest-300);margin:0 0 9px;display:flex;align-items:center;gap:7px;}
+  .step-label .n{width:19px;height:19px;border-radius:50%;background:var(--grad-rich);color:#fff;display:grid;place-items:center;font-size:11px;font-family:var(--body);box-shadow:0 6px 16px rgba(108,100,225,.28),inset 0 1px 0 rgba(255,255,255,.45);}
+
+  /* persona picker */
+  .persona-row{display:flex;gap:9px;overflow-x:auto;padding-bottom:4px;margin-bottom:22px;scrollbar-width:none;}
+  .persona-row::-webkit-scrollbar{display:none;}
+  .pchip{flex:none;display:flex;align-items:center;gap:8px;padding:8px 14px 8px 8px;border-radius:999px;border:1px solid var(--line);background:var(--white);cursor:pointer;transition:all .15s;}
+  .pchip.on{border-color:var(--forest);background:var(--mint-50);}
+  .pchip .av{width:30px;height:30px;border-radius:12px;display:grid;place-items:center;font-family:var(--display);font-weight:600;font-size:14px;color:#fff;background:var(--grad-rich);box-shadow:0 6px 16px rgba(108,100,225,.28),inset 0 1px 0 rgba(255,255,255,.45);}
+  .pchip .nm{font-size:14px;font-weight:600;color:var(--ink);}
+
+  /* thought input */
+  .thought{width:100%;min-height:120px;border:1px solid var(--line);border-radius:var(--radius);padding:15px;font-family:var(--body);font-size:16px;line-height:1.55;resize:vertical;color:var(--ink);background:var(--cream);}
+  .thought:focus{outline:none;border-color:var(--forest-300);background:var(--white);}
+  .hint{font-size:12.5px;color:var(--ink-faint);margin:8px 2px 22px;line-height:1.4;}
+
+  .transform-btn{width:100%;padding:14px;border:1px solid rgba(255,255,255,.18);border-radius:17px;background:linear-gradient(135deg,#6F8FF5 0%,#A98DEE 55%,#F0AFDA 100%);color:#fff;font-family:var(--body);font-size:15px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;transition:background .15s;box-shadow:0 6px 16px rgba(108,100,225,.28),inset 0 1px 0 rgba(255,255,255,.45);}
+  .transform-btn:disabled{background:var(--ink-faint);cursor:default;}
+  .transform-btn svg{width:18px;height:18px;stroke:#fff;fill:none;}
+
+  /* preview */
+  .preview{margin-top:26px;display:none;}
+  .preview.show{display:block;}
+  .lang-tabs{display:inline-flex;background:var(--cream);border-radius:999px;padding:3px;margin-bottom:12px;}
+  .lang-tabs button{border:0;background:transparent;font-family:var(--body);font-size:13.5px;font-weight:600;color:var(--ink-soft);padding:8px 16px;border-radius:999px;cursor:pointer;}
+  .lang-tabs button.on{background:linear-gradient(135deg,#6F8FF5 0%,#A98DEE 55%,#F0AFDA 100%);color:#fff;box-shadow:0 8px 20px rgba(110,124,240,.22),inset 0 1px 0 rgba(255,255,255,.45);}
+  .pv-card{border:1px solid var(--mint);background:var(--mint-50);border-radius:var(--radius);padding:18px;min-height:120px;}
+  .pv-card .by{display:flex;align-items:center;gap:8px;margin-bottom:11px;}
+  .pv-card .by .av{width:28px;height:28px;border-radius:11px;display:grid;place-items:center;font-family:var(--display);font-weight:600;font-size:13px;color:#fff;background:var(--grad-rich);box-shadow:0 6px 16px rgba(108,100,225,.28),inset 0 1px 0 rgba(255,255,255,.45);}
+  .pv-card .by .meta{font-size:12.5px;color:var(--forest-300);}
+  .pv-card .text{font-size:16px;line-height:1.6;color:#2f4f4f;}
+  .pv-edit{margin-top:10px;font-size:13px;color:var(--forest);font-weight:600;cursor:pointer;background:none;border:0;padding:0;text-decoration:underline;}
+
+  /* visibility */
+  .vis{margin-top:26px;display:none;}
+  .vis.show{display:block;}
+  .vis-opts{display:grid;grid-template-columns:1fr 1fr;gap:11px;}
+  .vis-opt{border:1.5px solid var(--line);border-radius:var(--radius);padding:15px;cursor:pointer;transition:all .15s;}
+  .vis-opt.on{border-color:var(--forest-300);background:var(--mint-50);}
+  .vis-opt.on strong,.vis-opt.on small{color:#2f4f4f;}
+  .vis-opt .ic{width:34px;height:34px;border-radius:13px;background:var(--mint-50);display:grid;place-items:center;margin-bottom:10px;}
+  .vis-opt.on .ic{background:var(--mint);}
+  .vis-opt .ic svg{width:18px;height:18px;stroke:var(--forest);}
+  .vis-opt strong{display:block;font-size:15px;font-weight:600;color:var(--ink);}
+  .vis-opt small{display:block;margin-top:4px;font-size:12px;color:var(--ink-soft);line-height:1.4;}
+
+  /* publish */
+  .publish{margin-top:24px;display:none;}
+  .publish.show{display:block;}
+  .publish-btn{width:100%;padding:15px;border:1px solid rgba(255,255,255,.18);border-radius:17px;background:linear-gradient(135deg,#6F8FF5 0%,#A98DEE 55%,#F0AFDA 100%);color:#fff;font-family:var(--body);font-size:16px;font-weight:600;cursor:pointer;box-shadow:0 6px 16px rgba(108,100,225,.28),inset 0 1px 0 rgba(255,255,255,.45);}
+  .publish-btn:disabled{background:var(--ink-faint);cursor:default;}
+
+  /* done */
+  .done{display:none;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:60px 24px;gap:14px;}
+  .done.show{display:flex;}
+  .done .circle{width:64px;height:64px;border-radius:50%;background:var(--mint-50);display:grid;place-items:center;}
+  .done .circle svg{width:30px;height:30px;stroke:var(--forest);}
+  .done h2{font-family:var(--display);font-weight:600;font-size:22px;color:var(--forest-700);}
+  .done p{font-size:14px;color:var(--ink-soft);line-height:1.5;max-width:30ch;}
+  .done .go{margin-top:8px;padding:13px 28px;border:1px solid rgba(255,255,255,.18);border-radius:16px;background:var(--grad-rich);color:#fff;font-family:var(--body);font-size:14.5px;font-weight:600;cursor:pointer;box-shadow:0 6px 16px rgba(108,100,225,.28),inset 0 1px 0 rgba(255,255,255,.45);}
+
+  .spin{animation:spin 1s linear infinite;}
+  @keyframes spin{to{transform:rotate(360deg);}}
+</style>
+<script>
+/* === security.js (inlined: no external dependency) === */
+/* buddle frontend security utilities.
+ *
+ * Threat model & mitigations (see SECURITY_FRONTEND.md):
+ *  - Stored XSS: persona names, post text, topics come from other users via the
+ *    API. NEVER inject them as HTML. Use esc() for text or el()/text() for DOM.
+ *  - DOM-clobbering / injection via attributes: setText/setAttr helpers only.
+ *  - Open redirect / javascript: URLs: safeUrl() allowlists schemes.
+ *  - Token theft: tokens live in memory only (api.js), never in localStorage,
+ *    never interpolated into HTML or URLs.
+ *  - Clickjacking: pages set frame-ancestors via CSP meta + framebust check.
+ *  - Prototype pollution: freeze, and reject __proto__ keys when parsing.
+ */
+(function (global) {
+  "use strict";
+
+  const NAMED = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;", "`": "&#96;" };
+
+  /** Escape a string for safe insertion into HTML text/attribute context. */
+  function esc(value) {
+    return String(value == null ? "" : value).replace(/[&<>"'`]/g, (c) => NAMED[c]);
+  }
+
+  /** Create an element with safe text + attributes (no HTML parsing). */
+  function el(tag, attrs, textContent) {
+    const node = document.createElement(tag);
+    if (attrs) {
+      for (const k of Object.keys(attrs)) {
+        const v = attrs[k];
+        if (v == null) continue;
+        if (k === "class") node.className = String(v);
+        else if (k === "dataset" && typeof v === "object") {
+          for (const dk of Object.keys(v)) node.dataset[dk] = String(v[dk]);
+        } else if (/^on/i.test(k)) {
+          // never accept event handlers as strings
+          if (typeof v === "function") node.addEventListener(k.slice(2).toLowerCase(), v);
+        } else {
+          node.setAttribute(k, String(v));
+        }
+      }
+    }
+    if (textContent != null) node.textContent = String(textContent);
+    return node;
+  }
+
+  /** Set text content safely (preferred over innerHTML for any dynamic value). */
+  function setText(node, value) { node.textContent = String(value == null ? "" : value); }
+
+  /** Allowlist URL schemes; block javascript:, data:, vbscript:, etc. */
+  function safeUrl(url) {
+    const u = String(url || "").trim();
+    if (/^(https?:|mailto:|\/|#)/i.test(u) && !/^javascript:/i.test(u)) return u;
+    return "#";
+  }
+
+  /** Client-side input validation (defense in depth; server validates too). */
+  const validate = {
+    email(s) { return typeof s === "string" && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s) && s.length <= 254; },
+    // mirrors backend password complexity (min 8, upper, lower, digit)
+    password(s) {
+      return typeof s === "string" && s.length >= 8 && s.length <= 200 &&
+        /[a-z]/.test(s) && /[A-Z]/.test(s) && /\d/.test(s);
+    },
+    personaName(s) { return typeof s === "string" && s.trim().length >= 1 && s.length <= 64; },
+    thought(s) { return typeof s === "string" && s.trim().length >= 1 && s.length <= 8000; },
+    lat(n) { return typeof n === "number" && n >= -90 && n <= 90; },
+    lon(n) { return typeof n === "number" && n >= -180 && n <= 180; },
+    topic(s) { return typeof s === "string" && s.trim().length >= 1 && s.length <= 64; },
+  };
+
+  /** Reject prototype-pollution keys when handling parsed objects. */
+  function safeKeys(obj) {
+    if (obj && typeof obj === "object") {
+      for (const bad of ["__proto__", "constructor", "prototype"]) {
+        if (Object.prototype.hasOwnProperty.call(obj, bad)) delete obj[bad];
+      }
+    }
+    return obj;
+  }
+
+  /** Frame-busting: if loaded inside a foreign frame, break out (anti-clickjacking). */
+  function preventFraming() {
+    try {
+      if (global.top !== global.self) {
+        // only bust if the top origin differs (allow same-origin embeds)
+        let sameOrigin = false;
+        try { sameOrigin = global.top.location.origin === global.location.origin; } catch (_) { sameOrigin = false; }
+        if (!sameOrigin) global.top.location = global.location.href;
+      }
+    } catch (_) { /* cross-origin access throws — already protected by CSP */ }
+  }
+
+  /** Inject a restrictive CSP via meta (belt-and-suspenders with server headers). */
+  function applyCSP() {
+    if (document.querySelector('meta[http-equiv="Content-Security-Policy"]')) return;
+    const m = document.createElement("meta");
+    m.httpEquiv = "Content-Security-Policy";
+    m.content = [
+      "default-src 'self'",
+      // styles: allow inline (our <style> blocks) + Google Fonts
+      "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+      "font-src 'self' https://fonts.gstatic.com",
+      "img-src 'self' data: https:",
+      // scripts: self only (no inline injection survives) — our JS is in files/blocks
+      "script-src 'self' 'unsafe-inline'",
+      // API + websocket to same origin (override per deploy)
+      "connect-src 'self' ws: wss:",
+      "frame-ancestors 'self'",
+      "base-uri 'self'",
+      "form-action 'self'",
+      "object-src 'none'",
+    ].join("; ");
+    document.head.appendChild(m);
+  }
+
+  /** One-call hardening for every page. */
+  function harden() {
+    applyCSP();
+    preventFraming();
+  }
+
+  global.sec = Object.freeze({
+    esc, el, setText, safeUrl, validate, safeKeys, preventFraming, applyCSP, harden,
+  });
+})(window);
+
+</script>
+<script>
+/* === api.js (inlined) === */
+/* buddle frontend API client — single source of truth for backend calls.
+ *
+ * Every field name / route here matches the FastAPI backend exactly (verified
+ * against the Pydantic schemas and router paths). Screens import this instead
+ * of hand-writing fetch() calls, so the front<->back contract lives in one place.
+ *
+ * Auth: JWT bearer. Tokens are cached in memory and write-through persisted to
+ * sessionStorage (tab-scoped) so page navigation and refresh keep the session.
+ * sessionStorage over localStorage on purpose: it dies with the tab, which
+ * shrinks the blast radius of any XSS-stolen token and avoids cross-tab leaks.
+ * Base URL defaults to same-origin; override with window.BUDDLE_API_BASE.
+ */
+(function (global) {
+  "use strict";
+
+  const BASE = global.BUDDLE_API_BASE || "";
+  const TOKEN_KEY = "buddle.auth.v1";
+  let accessToken = null;
+  let refreshToken = null;
+
+  // Hydrate once per page load. Storage may be unavailable (private mode,
+  // blocked) — in that case we silently fall back to memory-only tokens.
+  (function hydrate() {
+    try {
+      const raw = global.sessionStorage && global.sessionStorage.getItem(TOKEN_KEY);
+      if (!raw) return;
+      const t = JSON.parse(raw);
+      if (t && typeof t.a === "string") {
+        accessToken = t.a;
+        refreshToken = typeof t.r === "string" ? t.r : null;
+      }
+    } catch (_) { /* memory-only */ }
+  })();
+
+  function persistTokens() {
+    try {
+      if (!global.sessionStorage) return;
+      if (accessToken) {
+        global.sessionStorage.setItem(TOKEN_KEY, JSON.stringify({ a: accessToken, r: refreshToken }));
+      } else {
+        global.sessionStorage.removeItem(TOKEN_KEY);
+      }
+    } catch (_) { /* quota/blocked → memory-only */ }
+  }
+
+  function setTokens(access, refresh) {
+    accessToken = access || null;
+    if (refresh !== undefined) refreshToken = refresh || null;
+    persistTokens();
+  }
+  function clearTokens() { accessToken = null; refreshToken = null; persistTokens(); }
+
+  async function request(method, path, body, { auth = true, retry = true } = {}) {
+    const headers = { "Content-Type": "application/json" };
+    if (auth && accessToken) headers["Authorization"] = `Bearer ${accessToken}`;
+    const res = await fetch(BASE + path, {
+      method,
+      headers,
+      body: body != null ? JSON.stringify(body) : undefined,
+    });
+
+    // transparent refresh on 401 (once)
+    if (res.status === 401 && auth && retry && refreshToken) {
+      const ok = await tryRefresh();
+      if (ok) return request(method, path, body, { auth, retry: false });
+    }
+    if (!res.ok) {
+      let detail = res.statusText;
+      try { const j = await res.json(); detail = j.message || j.detail || detail; } catch (_) {}
+      throw new ApiError(res.status, detail);
+    }
+    if (res.status === 204) return null;
+    const ct = res.headers.get("content-type") || "";
+    return ct.includes("application/json") ? res.json() : res.text();
+  }
+
+  class ApiError extends Error {
+    constructor(status, message) { super(message); this.name = "ApiError"; this.status = status; }
+  }
+
+  async function tryRefresh() {
+    try {
+      const data = await request("POST", "/v1/auth/refresh",
+        { refresh_token: refreshToken }, { auth: false, retry: false });
+      setTokens(data.access_token, data.refresh_token);
+      return true;
+    } catch (_) { clearTokens(); return false; }
+  }
+
+  /* ── Auth ──────────────────────────────────────────────── */
+  const auth = {
+    // SignupRequest: { email, password, password_confirm }
+    async signup(email, password, passwordConfirm) {
+      return request("POST", "/v1/auth/signup",
+        { email, password, password_confirm: passwordConfirm }, { auth: false });
+    },
+    // LoginRequest: { email, password } -> { access_token, refresh_token }
+    async login(email, password) {
+      const data = await request("POST", "/v1/auth/login",
+        { email, password }, { auth: false });
+      setTokens(data.access_token, data.refresh_token);
+      return data;
+    },
+    // Revoke the refresh-token family server-side, then drop local tokens.
+    // Network failures are ignored: the family still expires naturally.
+    async logout() {
+      const rt = refreshToken;
+      try {
+        if (rt && accessToken) {
+          await request("POST", "/v1/auth/logout", { refresh_token: rt }, { retry: false });
+        }
+      } catch (_) { /* best-effort revoke */ }
+      clearTokens();
+    },
+    isAuthed() { return !!accessToken; },
+  };
+
+  /* Soft auth gate for screens.
+   *  - token present              → resolves true (render live).
+   *  - no token + backend up      → redirects to login.html?next=… (resolves true;
+   *                                  navigation is already underway).
+   *  - no token + backend down    → resolves false (screen keeps offline demo mode).
+   * This preserves the "open the file standalone and get a demo" property. */
+  async function requireAuth(next) {
+    if (accessToken) return true;
+    let backendUp = false;
+    try {
+      const ctl = new AbortController();
+      const timer = setTimeout(() => ctl.abort(), 1500);
+      const res = await fetch(BASE + "/health", { signal: ctl.signal });
+      clearTimeout(timer);
+      backendUp = res.ok;
+    } catch (_) { backendUp = false; }
+    if (backendUp) {
+      const target = next || (location.pathname.split("/").pop() + location.search);
+      location.replace(`login.html?next=${encodeURIComponent(target)}`);
+      return true;
+    }
+    return false;
+  }
+
+  /* ── Users ─────────────────────────────────────────────── */
+  const users = {
+    me() { return request("GET", "/v1/users/me"); },
+    update(patch) { return request("PATCH", "/v1/users/me", patch); },
+  };
+
+  /* ── Personas (location merged into create/update) ─────── */
+  const personas = {
+    list() { return request("GET", "/v1/personas"); },
+    quota() { return request("GET", "/v1/personas/quota"); },
+    models() { return request("GET", "/v1/persona-models"); },
+    get(id) { return request("GET", `/v1/personas/${id}`); },
+    // PersonaCreate: { name, model_key, interest_tag_ids[], location_sharing, location_lat, location_lon }
+    create({ name, modelKey, interestTagIds = [], locationSharing = false, lat = null, lon = null }) {
+      return request("POST", "/v1/personas", {
+        name, model_key: modelKey, interest_tag_ids: interestTagIds,
+        location_sharing: locationSharing, location_lat: lat, location_lon: lon,
+      });
+    },
+    // PersonaUpdate: any subset of the above + is_active + preferred_language
+    update(id, patch) {
+      const body = {};
+      if (patch.name !== undefined) body.name = patch.name;
+      if (patch.modelKey !== undefined) body.model_key = patch.modelKey;
+      if (patch.interestTagIds !== undefined) body.interest_tag_ids = patch.interestTagIds;
+      if (patch.isActive !== undefined) body.is_active = patch.isActive;
+      if (patch.locationSharing !== undefined) body.location_sharing = patch.locationSharing;
+      if (patch.lat !== undefined) body.location_lat = patch.lat;
+      if (patch.lon !== undefined) body.location_lon = patch.lon;
+      return request("PATCH", `/v1/personas/${id}`, body);
+    },
+    remove(id) { return request("DELETE", `/v1/personas/${id}`); },
+  };
+
+  /* ── Posts (compose) ───────────────────────────────────── */
+  const posts = {
+    // PostCreate: { persona_id, content_raw, visibility: "public"|"private" }
+    // NOTE: user posts go to /v1/posts. POST /v1/plaza/posts is the *agent*
+    // route (X-Agent-Key auth) — wiring it here returns 401 for users.
+    create({ personaId, contentRaw, visibility = "public" }) {
+      return request("POST", "/v1/posts", {
+        persona_id: personaId, content_raw: contentRaw, visibility,
+      });
+    },
+    get(id) { return request("GET", `/v1/posts/${id}`); },
+    like(id) { return request("PUT", `/v1/plaza/posts/${id}/like`); },
+    unlike(id) { return request("DELETE", `/v1/plaza/posts/${id}/like`); },
+    comments(id) { return request("GET", `/v1/plaza/posts/${id}/comments`); },
+    addComment(id, content, kind = "inform") {
+      return request("POST", `/v1/plaza/posts/${id}/comments`, { content, kind });
+    },
+  };
+
+  /* ── Feed / Inbox ──────────────────────────────────────── */
+  const feed = {
+    list(cursor, tag) {
+      const qs = new URLSearchParams();
+      if (cursor) qs.set("cursor", cursor);
+      if (tag && tag !== "전체") qs.set("tag", tag);
+      const q = qs.toString();
+      return request("GET", `/v1/feed${q ? `?${q}` : ""}`);
+    },
+  };
+  const inbox = {
+    list(cursor) { return request("GET", `/v1/inbox${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ""}`); },
+    listFor(personaId, cursor) {
+      return request("GET", `/v1/inbox/persona/${personaId}${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ""}`);
+    },
+    seen(id) { return request("POST", `/v1/inbox/${id}/seen`); },
+  };
+
+  /* ── Sessions (chat) ───────────────────────────────────── */
+  const sessions = {
+    list(personaId) { return request("GET", `/v1/personas/${personaId}/sessions`); },
+    create(personaId, title, topic) {
+      return request("POST", `/v1/personas/${personaId}/sessions`, { title, topic: topic || null });
+    },
+    messages(personaId, sessionId, limit = 40) {
+      return request("GET", `/v1/personas/${personaId}/sessions/${sessionId}/messages?limit=${limit}`);
+    },
+    remove(personaId, sessionId) {
+      return request("DELETE", `/v1/personas/${personaId}/sessions/${sessionId}`);
+    },
+  };
+
+  /* ── Knowledge context (chat reference material) ───────── */
+  const knowledge = {
+    context(personaId, topic, limit = 8) {
+      return request("GET", `/v1/personas/${personaId}/context?topic=${encodeURIComponent(topic)}&limit=${limit}`);
+    },
+    insights(personaId, topic) {
+      return request("GET", `/v1/personas/${personaId}/context/insights?topic=${encodeURIComponent(topic)}`);
+    },
+  };
+
+  /* ── Proximity (nearby matching) ───────────────────────── */
+  const tags = {
+    list({ q = null, limit = 50 } = {}) {
+      const qs = new URLSearchParams();
+      if (q) qs.set("q", q);
+      qs.set("limit", String(limit));
+      return request("GET", `/v1/tags?${qs.toString()}`);
+    },
+  };
+
+  const proximity = {
+    nearby(personaId, limit = 20) {
+      return request("GET", `/v1/proximity/personas/${personaId}/nearby?limit=${limit}`);
+    },
+    setLocation(personaId, { lat, lon, sharing }) {
+      return request("PUT", `/v1/proximity/personas/${personaId}/location`,
+        { lat, lon, sharing });
+    },
+  };
+
+  /* ── Dialogue WebSocket (chat live) ────────────────────── */
+  function openDialogue(personaId, { onMessage, onOpen, onClose } = {}) {
+    const proto = location.protocol === "https:" ? "wss:" : "ws:";
+    const wsBase = BASE.replace(/^https?:/, proto) || `${proto}//${location.host}`;
+    const ws = new WebSocket(`${wsBase}/v1/ws/dialogue/${personaId}`);
+    ws.addEventListener("open", () => {
+      // first frame authenticates (WS auth via first message, not query)
+      if (accessToken) ws.send(JSON.stringify({ type: "auth", token: accessToken }));
+      onOpen && onOpen();
+    });
+    ws.addEventListener("message", (e) => {
+      let msg; try { msg = JSON.parse(e.data); } catch (_) { return; }
+      onMessage && onMessage(msg);
+    });
+    ws.addEventListener("close", () => onClose && onClose());
+    return {
+      socket: ws,
+      // ClientUserMessage: { type:"user_message", content, session_id? }
+      send(content, sessionId) {
+        ws.send(JSON.stringify({ type: "user_message", content, session_id: sessionId || null }));
+      },
+      close() { ws.close(); },
+    };
+  }
+
+  const debate = {
+    // 주장/근거를 화제 이름으로 토론에 추가 (대립구조 화면에서 진입한 주장 모드).
+    addStanceByName(topicName, stance, claim, grounds) {
+      return request("POST", "/v1/topics/by-name/stance",
+        { topic_name: topicName, stance, claim, grounds: grounds || [] });
+    },
+  };
+
+  global.buddle = {
+    ApiError, setTokens, clearTokens, requireAuth,
+    auth, users, personas, tags, posts, feed, inbox, sessions, knowledge, proximity, debate,
+    openDialogue,
+  };
+})(window);
+
+
+
+
+
+
+</script>
+</head>
+<body>
+<div class="phone">
+  <header>
+    <button class="back" aria-label="뒤로" onclick="history.length>1?history.back():location.href='feed.html'">
+      <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
+    </button>
+    <button class="head-persona" id="personaPicker" aria-haspopup="menu" aria-expanded="false">
+      <div class="head-ava" id="headAva">초</div>
+      <div class="head-text">
+        <div class="nm" id="headName">초록<svg class="chev" viewBox="0 0 24 24" fill="none" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></div>
+        <div class="sub" id="headSub">이 페르소나로 함께 써요</div>
+      </div>
+    </button>
+  </header>
+
+  <!-- persona picker dropdown (chat.html과 동일) -->
+  <div class="pp-backdrop" id="ppBackdrop" style="display:none"></div>
+  <div class="pp-menu" id="ppMenu" style="display:none" role="menu" aria-label="페르소나 선택"></div>
+
+  <!-- main flow -->
+  <div class="body" id="flow">
+    <!-- [1] thought -->
+    <p class="step-label"><span class="n">1</span>생각을 적어보세요</p>
+    <textarea class="thought" id="thought" placeholder="글을 잘 쓰지 않아도 괜찮아요. 떠오르는 생각을 자유롭게 적으면, 페르소나가 다듬어 다국어로 써줍니다.&#10;&#10;예) 오늘 동네 산책했는데 강가 코스가 좋더라. 같이 할 사람?"></textarea>
+    <p class="hint">거친 메모도, 짧은 한 줄도 괜찮습니다.</p>
+    <button class="transform-btn" id="transformBtn" disabled>
+      <svg viewBox="0 0 24 24" fill="none" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3v4M3 5h4M6 17v4M4 19h4M13 3l2.5 6.5L22 12l-6.5 2.5L13 21l-2.5-6.5L4 12l6.5-2.5z"/></svg>
+      <span id="transformLabel">페르소나가 다듬어 쓰기</span>
+    </button>
+
+    <!-- [2] preview -->
+    <section class="preview" id="preview">
+      <p class="step-label"><span class="n">2</span>이렇게 써졌어요</p>
+      <div class="lang-tabs" id="langTabs">
+        <button class="on" data-lang="ko">한국어</button>
+        <button data-lang="en">English</button>
+      </div>
+      <div class="pv-card">
+        <div class="by"><span class="av" id="pvAva">초</span><span class="meta" id="pvMeta">초록 · 한국어</span></div>
+        <div class="text" id="pvText"></div>
+        <button class="pv-edit" id="pvEdit">직접 다듬기</button>
+      </div>
+    </section>
+
+    <!-- [stance] 편 선택 (주장 모드 전용) -->
+    <section class="vis" id="stanceSec" style="display:none">
+      <p class="step-label"><span class="n">＋</span>어느 편으로 더할까요</p>
+      <div class="stance-pick3">
+        <button class="sp3 con" data-stance="con" type="button">반대</button>
+        <button class="sp3 neu on" data-stance="neutral" type="button">중립</button>
+        <button class="sp3 pro" data-stance="pro" type="button">찬성</button>
+      </div>
+    </section>
+
+    <!-- [3] visibility -->
+    <section class="vis" id="vis">
+      <p class="step-label"><span class="n">3</span>어디에 올릴까요</p>
+      <div class="vis-opts">
+        <div class="vis-opt on" data-vis="public" id="visPublic">
+          <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.7 2.5 15.3 0 18M12 3c-2.5 2.7-2.5 15.3 0 18"/></svg></div>
+          <strong>공개</strong>
+          <small>광장에 올리고, 어울리는 사람들에게 전달돼요.</small>
+        </div>
+        <div class="vis-opt" data-vis="private" id="visPrivate">
+          <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg></div>
+          <strong>비공개</strong>
+          <small>나만 볼 수 있어요. 전달되지 않습니다.</small>
+        </div>
+      </div>
+    </section>
+
+    <!-- [4] publish -->
+    <section class="publish" id="publish">
+      <button class="publish-btn" id="publishBtn">게시하기</button>
+    </section>
+  </div>
+
+  <!-- [done] -->
+  <div class="done" id="done">
+    <div class="circle"><svg viewBox="0 0 24 24" fill="none" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></div>
+    <h2>게시됐어요</h2>
+    <p id="doneMsg">당신의 생각이 두 가지 언어로 전해집니다. 어울리는 사람들에게 닿을 거예요.</p>
+    <button class="go" id="goHome">홈으로</button>
+  </div>
+</div>
+
+<script>
+  sec.harden();
+
+  // ── dual mode: live(인증·백엔드) vs demo(스탠드얼론 미리보기) ──
+  // live: [1] 페르소나 = GET /v1/personas, [3] 다듬기 = POST /v1/posts가
+  //       매개 파이프라인을 태운 content_transformed/is_suppressed를 돌려준다.
+  //       (백엔드에 "미리보기 전용 변환" 엔드포인트는 없다 — 생성이 곧 변환이며,
+  //        게시물 수정 엔드포인트도 없으므로 다듬기 시점에 공개범위가 확정된다.
+  //        그래서 live에서는 [4] 공개범위를 다듬기 '이전'에 노출한다.)
+  // demo: 기존 로컬 시뮬레이션 그대로 — 파일을 단독으로 열어도 동작한다.
+  let LIVE = false;
+
+  const DEMO_PERSONAS = [
+    { id: "p1", name: "초록", ava: "초", model: "기본 대화 모델", tags: ["일상", "산책", "커피"] },
+    { id: "p2", name: "물결", ava: "물", model: "기본 대화 모델", tags: ["음악", "영화"] },
+    { id: "p3", name: "햇살", ava: "햇", model: "기본 대화 모델", tags: ["독서", "글쓰기", "역사"] },
+    { id: "p4", name: "바람", ava: "바", model: "Bilingual model", tags: ["러닝", "등산"] },
+  ];
+  let personas = DEMO_PERSONAS;
+  // ?persona=ID 로 들어오면 그 페르소나 초기 선택 (피드 이어가던 대화/배너에서 전달).
+  let selectedPersona = personas.find(p => p.id === new URLSearchParams(location.search).get("persona")) || personas[0];
+  let visibility = "public";
+  let curLang = "ko";
+  let versions = { ko: "", en: "" };
+  let createdPost = null;   // live: POST /v1/posts 응답(PostRead)
+
+  // ── 주장 모드 (대립구조 화면에서 "주장/근거 추가"로 진입) ──
+  // ?mode=stance&topic=화제명&stance=pro|con|neutral 이면, 만들기 화면(0)과 똑같은
+  // 대화형 작성 UI를 쓰되, 게시 대상이 피드가 아니라 '토론'(by-name stance)이 된다.
+  const _qs = new URLSearchParams(location.search);
+  const STANCE_MODE = _qs.get("mode") === "stance";
+  const STANCE_TOPIC = (_qs.get("topic") || "").trim();
+  let stancePick = _qs.get("stance") || "neutral";  // 화면에서 변경 가능
+
+  // [1] persona picker — chat.html과 동일한 Claude식 드롭다운
+  const ppMenu = document.getElementById("ppMenu");
+  const ppBackdrop = document.getElementById("ppBackdrop");
+  const ppTrigger = document.getElementById("personaPicker");
+  function updateHead() {
+    document.getElementById("headName").firstChild.nodeValue = selectedPersona.name;
+    document.getElementById("headAva").textContent = selectedPersona.ava;
+  }
+  function renderPersonaMenu() {
+    ppMenu.replaceChildren();
+    ppMenu.appendChild(sec.el("div", { class: "pp-label" }, "어떤 나로 쓸까요"));
+    personas.forEach(p => {
+      const item = sec.el("button", {
+        class: "pp-item" + (p.id === selectedPersona.id ? " on" : ""), role: "menuitem",
+      });
+      item.innerHTML = `
+        <div class="pp-ava">${sec.esc(p.ava)}</div>
+        <div class="pp-meta">
+          <strong>${sec.esc(p.name)}</strong>
+          <small>${sec.esc(p.model)} · ${sec.esc(p.tags.join(", "))}</small>
+        </div>
+        <svg class="pp-check" viewBox="0 0 24 24" fill="none" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>`;
+      item.addEventListener("click", () => {
+        selectedPersona = p; updateHead();
+        if (versions.ko || versions.en) renderPreview();  // 이미 다듬었다면 미리보기 작성자도 갱신
+        closePersonaMenu();
+      });
+      ppMenu.appendChild(item);
+    });
+    const nu = sec.el("button", { class: "pp-new" });
+    nu.innerHTML = `<span class="pp-plus"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg></span>새 페르소나 만들기`;
+    nu.addEventListener("click", () => { location.href = "persona-create.html"; });
+    ppMenu.appendChild(nu);
+  }
+  function openPersonaMenu() {
+    renderPersonaMenu();
+    ppBackdrop.style.display = ""; ppMenu.style.display = "";
+    ppTrigger.setAttribute("aria-expanded", "true");
+  }
+  function closePersonaMenu() {
+    ppBackdrop.style.display = "none"; ppMenu.style.display = "none";
+    ppTrigger.setAttribute("aria-expanded", "false");
+  }
+  ppTrigger.addEventListener("click", () => {
+    (ppMenu.style.display === "none" ? openPersonaMenu : closePersonaMenu)();
+  });
+  ppBackdrop.addEventListener("click", closePersonaMenu);
+  document.addEventListener("keydown", e => { if (e.key === "Escape") closePersonaMenu(); });
+
+  // [2] thought → enable transform (+ live에서는 공개범위 먼저 노출)
+  const thought = document.getElementById("thought");
+  const transformBtn = document.getElementById("transformBtn");
+  thought.addEventListener("input", () => {
+    const has = thought.value.trim() !== "";
+    transformBtn.disabled = !has || (LIVE && !!createdPost);
+    if (LIVE && has) vis.classList.add("show");
+  });
+
+  const preview = document.getElementById("preview");
+  const vis = document.getElementById("vis");
+  const publish = document.getElementById("publish");
+  const transformLabel = document.getElementById("transformLabel");
+  const langTabs = document.getElementById("langTabs");
+  const pvEdit = document.getElementById("pvEdit");
+
+  // [3] transform — live: 실제 생성(매개자 변환 결과 수신) / demo: 시뮬레이션
+  transformBtn.addEventListener("click", async () => {
+    const raw = thought.value.trim();
+    if (!raw) return;
+    transformBtn.disabled = true;
+    transformLabel.textContent = LIVE ? "매개자에게 보내는 중…" : "다듬는 중…";
+    transformBtn.querySelector("svg").classList.add("spin");
+
+    if (LIVE) {
+      try {
+        createdPost = await buddle.posts.create({
+          personaId: selectedPersona.id, contentRaw: raw, visibility,
+        });
+        versions.ko = createdPost.content_transformed || "";
+        curLang = "ko";
+        renderPreview();
+        // 게시물 수정 불가(백엔드 계약) → 직접 다듬기 숨김.
+        pvEdit.style.display = "none";
+        // 번역은 수신자 언어 기준 자동 — 탭 대신 안내로 대체.
+        langTabs.innerHTML = "";
+        const note = sec.el("small", { class: "hint" },
+          "수신자의 언어에 맞춰 자동 번역되어 전달됩니다.");
+        langTabs.appendChild(note);
+        preview.classList.add("show");
+        vis.classList.add("show");
+        document.getElementById("visPublic").style.pointerEvents = "none";
+        document.getElementById("visPrivate").style.pointerEvents = "none";
+        // 백혈구 보류(is_suppressed)라도 사용자에게는 정상 게시처럼 보인다.
+        // 백엔드가 이미 피드 노출·배달을 차단하므로(섀도) 추가 조치 불필요.
+        // 재작성을 요구하면 마찰이 생겨 이탈로 이어지므로 의도적으로 침묵한다.
+        publish.classList.add("show");
+        document.getElementById("publishBtn").textContent =
+          visibility === "public" ? "확인 — 광장에 올라갔어요" : "확인 — 비공개로 저장됐어요";
+        transformLabel.textContent = "전해졌어요";
+      } catch (err) {
+        transformLabel.textContent = "페르소나가 다듬어 쓰기";
+        transformBtn.disabled = false;
+        alert("게시에 실패했어요: " + (err && err.message ? err.message : "잠시 후 다시 시도해 주세요."));
+      } finally {
+        transformBtn.querySelector("svg").classList.remove("spin");
+      }
+      return;
+    }
+
+    setTimeout(() => {
+      versions.ko = refineKo(raw, selectedPersona);
+      versions.en = translateEn(versions.ko);
+      curLang = "ko";
+      renderPreview();
+      preview.classList.add("show");
+      if (STANCE_MODE) {
+        document.getElementById("stanceSec").style.display = "block";  // 편 선택은 stance 모드 전용
+      } else {
+        vis.classList.add("show");
+      }
+      publish.classList.add("show");
+      transformBtn.querySelector("svg").classList.remove("spin");
+      transformLabel.textContent = "다시 다듬기";
+      transformBtn.disabled = false;
+      preview.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 900);
+  });
+
+  // demo refine — 데모 모드 전용(라이브에서는 서버 변환 결과를 그대로 보여준다).
+  // 입력을 살려 다듬는다(주장 모드면 주장답게, 아니면 부드러운 공유체로).
+  function refineKo(raw, persona) {
+    const t = raw.trim().replace(/\s+/g, " ");
+    if (STANCE_MODE) {
+      const ended = /[.!?…]$/.test(t) ? t : t + ".";
+      return `${ended} 저는 이렇게 생각합니다. 같은 화제를 보는 분들과 차분히 이야기 나누고 싶어요.`;
+    }
+    const ended = /[.!?…]$/.test(t) ? t : t + ".";
+    return `${ended} 이런 생각이 들었어요. 비슷하게 느끼신 분 있다면 편하게 말 걸어 주세요.`;
+  }
+  function translateEn(ko) {
+    if (STANCE_MODE) {
+      return "Here's my take on this. I'd like to discuss it calmly with others who see the same topic.";
+    }
+    return "This is what came to mind today. If you feel the same way, feel free to reach out.";
+  }
+
+  // preview render + language tabs (demo)
+  const pvAva = document.getElementById("pvAva");
+  const pvMeta = document.getElementById("pvMeta");
+  const pvText = document.getElementById("pvText");
+  function renderPreview() {
+    pvAva.textContent = selectedPersona.ava;
+    pvMeta.textContent = `${selectedPersona.name} · ${curLang === "ko" ? "한국어" : "English"}`;
+    pvText.textContent = versions[curLang];
+  }
+  langTabs.addEventListener("click", e => {
+    const btn = e.target.closest("button"); if (!btn) return;
+    [...e.currentTarget.children].forEach(b => b.classList.toggle("on", b === btn));
+    curLang = btn.dataset.lang;
+    renderPreview();
+  });
+  pvEdit.onclick = () => {
+    const edited = prompt("직접 다듬기", versions[curLang]);
+    if (edited != null) { versions[curLang] = edited; renderPreview(); }
+  };
+
+  // [4] visibility (live에서는 다듬기 전에 확정)
+  document.getElementById("visPublic").onclick = () => setVis("public");
+  document.getElementById("visPrivate").onclick = () => setVis("private");
+  function setVis(v) {
+    visibility = v;
+    document.getElementById("visPublic").classList.toggle("on", v === "public");
+    document.getElementById("visPrivate").classList.toggle("on", v === "private");
+  }
+
+  // 주장 모드: 편 선택 버튼 배선
+  document.querySelectorAll(".sp3").forEach(btn => {
+    btn.addEventListener("click", () => {
+      stancePick = btn.dataset.stance;
+      document.querySelectorAll(".sp3").forEach(b => b.classList.remove("on"));
+      btn.classList.add("on");
+    });
+  });
+
+  // [5] publish / 토론에 추가 — 모드에 따라 분기
+  document.getElementById("publishBtn").addEventListener("click", async () => {
+    if (STANCE_MODE) {
+      // 다듬어진 글(없으면 원문)을 주장으로, 원문 메모를 근거로 토론에 추가.
+      const claim = (versions.ko || versions.en || thought.value).trim();
+      const groundsRaw = thought.value.trim();
+      const grounds = groundsRaw && groundsRaw !== claim ? [groundsRaw] : [];
+      const btn = document.getElementById("publishBtn");
+      btn.disabled = true; btn.textContent = "토론에 추가 중…";
+      const authed = buddle.auth && buddle.auth.isAuthed && buddle.auth.isAuthed();
+      if (authed) {
+        try { await buddle.debate.addStanceByName(STANCE_TOPIC, stancePick, claim, grounds); }
+        catch (_) { btn.disabled = false; btn.textContent = "다시 시도"; return; }
+      } else {
+        await new Promise(r => setTimeout(r, 450));  // 데모: 저장 없이 완료 연출
+      }
+      document.getElementById("flow").style.display = "none";
+      document.getElementById("done").querySelector("h2").textContent = "토론에 더했어요";
+      document.getElementById("doneMsg").textContent =
+        `"${STANCE_TOPIC}" 토론에 당신의 ${stancePick === "pro" ? "찬성" : stancePick === "con" ? "반대" : "중립"} 주장이 더해졌어요.`;
+      document.getElementById("goHome").textContent = "토론 보러 가기";
+      document.getElementById("done").classList.add("show");
+      return;
+    }
+    document.getElementById("flow").style.display = "none";
+    document.getElementById("doneMsg").textContent = visibility === "public"
+      ? "당신의 생각이 다듬어져 광장에 올라갔어요. 어울리는 사람들에게 닿을 거예요."
+      : "비공개로 저장됐어요. 나만 볼 수 있습니다.";
+    document.getElementById("done").classList.add("show");
+  });
+  document.getElementById("goHome").onclick = () => {
+    location.href = STANCE_MODE && STANCE_TOPIC
+      ? `debate-dashboard.html?tag=${encodeURIComponent(STANCE_TOPIC)}`
+      : "feed.html";
+  };
+
+  // 주장 모드 UI: 헤더 자막·라벨·버튼 문구를 토론 맥락으로, 공개범위 숨김.
+  // (편 선택 섹션은 다듬기 완료 후 노출 — 미리보기와 함께 등장.)
+  function applyStanceMode() {
+    if (!STANCE_MODE) return;
+    document.getElementById("headSub").textContent =
+      STANCE_TOPIC ? `"${STANCE_TOPIC}" 토론에 주장 더하기` : "토론에 주장 더하기";
+    document.getElementById("transformLabel").textContent = "페르소나가 다듬어 주장으로";
+    document.getElementById("vis").style.display = "none";
+    document.getElementById("publishBtn").textContent = "토론에 추가";
+    // 초기 편 선택 반영
+    document.querySelectorAll(".sp3").forEach(b => b.classList.toggle("on", b.dataset.stance === stancePick));
+    visibility = "public";
+  }
+
+  // ── boot: 소프트 인증 게이트 → live 데이터 적재 ──
+  (async function boot() {
+    updateHead();                          // 데모 즉시 표시(체감 지연 방지)
+    applyStanceMode();                     // 주장 모드면 UI를 토론 맥락으로
+    const authed = await buddle.requireAuth();
+    if (!authed) return;                   // 백엔드 없음 → 데모 유지
+    if (!buddle.auth.isAuthed()) return;   // 리다이렉트 진행 중
+    try {
+      const list = await buddle.personas.list();
+      const items = Array.isArray(list) ? list : (list && list.items) || [];
+      const actives = items.filter(p => p.is_active !== false);
+      if (actives.length) {
+        personas = actives.map(p => ({
+          id: p.id, name: p.name, ava: (p.name || "·").slice(0, 1),
+          model: p.model_label || "기본 대화 모델", tags: p.interests || [],
+        }));
+        const qp = new URLSearchParams(location.search).get("persona");
+        selectedPersona = personas.find(p => p.id === qp) || personas[0];
+        LIVE = true;
+        updateHead();
+      } else {
+        // 페르소나가 없으면 먼저 만들도록 안내
+        location.replace("persona-create.html?next=compose.html");
+      }
+    } catch (_) { /* API 오류 → 데모 유지 */ }
+  })();
+</script>
+</body>
+</html>

@@ -1,0 +1,834 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>buddle · 페르소나 선택</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Spline+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="buddle.css">
+<style>
+  /* ── Sprout design system ───────────────────────────────────────── */
+  
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: var(--body);
+    color: var(--ink);
+    background:
+      radial-gradient(1200px 700px at 78% -8%, transparent 0%, transparent 55%),
+      radial-gradient(1000px 620px at 10% 12%, transparent 0%, transparent 52%),
+      radial-gradient(900px 600px at 50% 108%, transparent 0%, transparent 55%),
+      radial-gradient(760px 520px at 92% 70%, transparent 0%, transparent 50%),
+      var(--paper);
+    min-height: 100vh;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* ── top bar ─────────────────────────────────────────────────────── */
+  header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 22px clamp(20px, 5vw, 56px);
+    position: sticky; top: 0; z-index: 20;
+    backdrop-filter: blur(10px);
+    background: linear-gradient(to bottom, rgba(247,244,236,.9), rgba(247,244,236,.55));
+    border-bottom: 1px solid var(--line);
+  }
+  .brand { display: flex; align-items: center; gap: 11px; }
+  .brand-mark {
+    width: 34px; height: 34px; border-radius: 11px;
+    background: var(--forest); position: relative; flex: none;
+    box-shadow: var(--shadow);
+  }
+  .brand-mark::before, .brand-mark::after {
+    content: ""; position: absolute; background: var(--mint); border-radius: 50% 50% 50% 0;
+  }
+  .brand-mark::before { width: 11px; height: 11px; left: 7px; top: 9px; transform: rotate(-30deg); }
+  .brand-mark::after  { width: 8px;  height: 8px;  left: 16px; top: 13px; transform: rotate(20deg); opacity:.8; }
+  .brand-name { font-family: var(--display); font-size: 23px; font-weight: 600; letter-spacing: -.02em; color: var(--forest); }
+  .brand-name span { color: var(--forest-300); }
+
+  .top-actions { display: flex; align-items: center; gap: 10px; }
+  .icon-btn {
+    width: 42px; height: 42px; border-radius: 12px; border: 1px solid var(--line);
+    background: var(--white); cursor: pointer; display: grid; place-items: center;
+    transition: transform .15s ease, box-shadow .2s ease, border-color .2s ease;
+  }
+  .icon-btn:hover { transform: translateY(-1px); box-shadow: var(--shadow); border-color: var(--forest-300); }
+  .icon-btn svg { width: 20px; height: 20px; stroke: var(--forest); }
+
+  /* ── page heading ───────────────────────────────────────────────── */
+  main { padding: clamp(28px, 5vw, 60px) clamp(20px, 5vw, 56px) 80px; max-width: 1180px; margin: 0 auto; }
+  .eyebrow {
+    font-size: 12.5px; font-weight: 600; letter-spacing: .16em; text-transform: uppercase;
+    color: var(--forest-300); margin-bottom: 12px;
+  }
+  h1 { font-family: var(--display); font-weight: 500; font-size: clamp(30px, 5vw, 46px); letter-spacing: -.025em; line-height: 1.05; color: var(--forest-700); max-width: 16ch; }
+  .sub { margin-top: 14px; color: var(--ink-soft); font-size: 16px; max-width: 52ch; line-height: 1.5; }
+
+  /* ── persona grid ───────────────────────────────────────────────── */
+  .grid {
+    margin-top: 40px;
+    display: grid; gap: 18px;
+    grid-template-columns: repeat(auto-fill, minmax(252px, 1fr));
+  }
+  .card {
+    background: var(--white); border: 1px solid var(--line); border-radius: var(--radius);
+    padding: 22px; cursor: pointer; position: relative; overflow: hidden;
+    transition: transform .18s ease, box-shadow .22s ease, border-color .2s ease;
+    display: flex; flex-direction: column; gap: 14px; min-height: 184px;
+  }
+  .card::after {
+    content: ""; position: absolute; inset: 0; border-radius: var(--radius);
+    background: linear-gradient(135deg, transparent 60%, var(--mint-50) 100%);
+    opacity: 0; transition: opacity .25s ease; pointer-events: none;
+  }
+  .card:hover { transform: translateY(-3px); box-shadow: var(--shadow-lg); border-color: var(--forest-300); }
+  .card:hover::after { opacity: 1; }
+  .card:focus-visible { outline: 2.5px solid var(--forest); outline-offset: 2px; }
+  .avatar {
+    width: 52px; height: 52px; border-radius: 15px; flex: none;
+    display: grid; place-items: center; font-family: var(--display);
+    font-weight: 600; font-size: 22px; color: var(--white);
+    border:1px solid rgba(255,255,255,.18);box-shadow:0 4px 12px rgba(110,124,240,.20),inset 0 1px 0 rgba(255,255,255,.5);
+  }
+  .card h3 { font-family: var(--display); font-weight: 600; font-size: 19px; letter-spacing: -.01em; }
+  .card .meta { font-size: 13.5px; color: var(--ink-soft); }
+  .card .tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: auto; }
+  .tag {
+    font-size: 11.5px; font-weight: 500; padding: 4px 10px; border-radius: 999px;
+    background: var(--mint-50); color: var(--forest); border: 1px solid var(--mint);
+  }
+  .loc-badge {
+    display: inline-flex; align-items: center; gap: 5px; font-size: 11.5px; font-weight: 500;
+    color: var(--forest-300);
+  }
+  .loc-badge svg { width: 13px; height: 13px; stroke: var(--forest-300); }
+
+  /* new-persona card */
+  .card.new {
+    border-style: dashed; border-color: var(--forest-300); background: transparent;
+    align-items: center; justify-content: center; text-align: center; color: var(--forest);
+  }
+  .card.new .plus { width: 46px; height: 46px; border-radius: 50%; background: var(--mint-50); display: grid; place-items: center; margin-bottom: 4px; }
+  .card.new .plus svg { width: 22px; height: 22px; stroke: var(--forest); }
+  .card.new h3 { color: var(--forest); }
+
+  /* ── settings drawer (top-right) ────────────────────────────────── */
+  .scrim {
+    position: fixed; inset: 0; background: rgba(92,124,240,.10); backdrop-filter: blur(2px);
+    opacity: 0; visibility: hidden; transition: opacity .25s ease, visibility .25s; z-index: 40;
+  }
+  .scrim.open { opacity: 1; visibility: visible; }
+  .drawer {
+    position: fixed; top: 0; right: 0; height: 100vh; width: min(390px, 92vw);
+    background: var(--cream); border-left: 1px solid var(--line);
+    box-shadow: var(--shadow-lg); z-index: 50;
+    transform: translateX(100%); transition: transform .3s cubic-bezier(.4,0,.2,1);
+    display: flex; flex-direction: column;
+  }
+  .drawer.open { transform: translateX(0); }
+  .drawer-head {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 24px 26px; border-bottom: 1px solid var(--line);
+  }
+  .drawer-head h2 { font-family: var(--display); font-weight: 600; font-size: 22px; color: var(--forest-700); }
+  .drawer-body { padding: 12px 26px 26px; overflow-y: auto; }
+  .settings-group + .settings-group { margin-top: 10px; }
+  .group-label {
+    font-size: 11.5px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase;
+    color: var(--forest-300); margin: 22px 0 8px;
+  }
+  .setting-row {
+    display: flex; align-items: flex-start; justify-content: space-between; gap: 16px;
+    padding: 16px; background: var(--white); border: 1px solid var(--line);
+    border-radius: 14px; margin-bottom: 10px;
+  }
+  .setting-text strong { display: block; font-size: 15px; font-weight: 600; color: var(--ink); }
+  .setting-text small { display: block; margin-top: 3px; font-size: 12.5px; color: var(--ink-soft); line-height: 1.45; }
+
+  /* toggle */
+  .toggle { position: relative; flex: none; width: 48px; height: 28px; }
+  .toggle input { position: absolute; opacity: 0; width: 0; height: 0; }
+  .track {
+    position: absolute; inset: 0; border-radius: 999px; background: var(--line);
+    transition: background .22s ease; cursor: pointer;
+  }
+  .track::before {
+    content: ""; position: absolute; top: 3px; left: 3px; width: 22px; height: 22px;
+    border-radius: 50%; background: var(--white); box-shadow: 0 1px 3px rgba(92,124,240,.06);
+    transition: transform .22s cubic-bezier(.4,0,.2,1);
+  }
+  .toggle input:checked + .track { background: var(--forest); }
+  .toggle input:checked + .track::before { transform: translateX(20px); }
+  .toggle input:focus-visible + .track { outline: 2.5px solid var(--forest-300); outline-offset: 2px; }
+
+  .soon { opacity: .55; }
+  .soon-pill {
+    font-size: 10.5px; font-weight: 600; letter-spacing: .04em; padding: 3px 8px; border-radius: 999px;
+    background: var(--line); color: var(--ink-soft); margin-left: 8px; vertical-align: middle;
+  }
+  .drawer-foot { margin-top: auto; padding: 18px 26px; border-top: 1px solid var(--line); font-size: 12px; color: var(--ink-soft); }
+
+  @media (max-width: 520px) {
+    .sub { font-size: 15px; }
+  }
+</style>
+<script>
+/* === security.js (inlined: no external dependency) === */
+/* buddle frontend security utilities.
+ *
+ * Threat model & mitigations (see SECURITY_FRONTEND.md):
+ *  - Stored XSS: persona names, post text, topics come from other users via the
+ *    API. NEVER inject them as HTML. Use esc() for text or el()/text() for DOM.
+ *  - DOM-clobbering / injection via attributes: setText/setAttr helpers only.
+ *  - Open redirect / javascript: URLs: safeUrl() allowlists schemes.
+ *  - Token theft: tokens live in memory only (api.js), never in localStorage,
+ *    never interpolated into HTML or URLs.
+ *  - Clickjacking: pages set frame-ancestors via CSP meta + framebust check.
+ *  - Prototype pollution: freeze, and reject __proto__ keys when parsing.
+ */
+(function (global) {
+  "use strict";
+
+  const NAMED = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;", "`": "&#96;" };
+
+  /** Escape a string for safe insertion into HTML text/attribute context. */
+  function esc(value) {
+    return String(value == null ? "" : value).replace(/[&<>"'`]/g, (c) => NAMED[c]);
+  }
+
+  /** Create an element with safe text + attributes (no HTML parsing). */
+  function el(tag, attrs, textContent) {
+    const node = document.createElement(tag);
+    if (attrs) {
+      for (const k of Object.keys(attrs)) {
+        const v = attrs[k];
+        if (v == null) continue;
+        if (k === "class") node.className = String(v);
+        else if (k === "dataset" && typeof v === "object") {
+          for (const dk of Object.keys(v)) node.dataset[dk] = String(v[dk]);
+        } else if (/^on/i.test(k)) {
+          // never accept event handlers as strings
+          if (typeof v === "function") node.addEventListener(k.slice(2).toLowerCase(), v);
+        } else {
+          node.setAttribute(k, String(v));
+        }
+      }
+    }
+    if (textContent != null) node.textContent = String(textContent);
+    return node;
+  }
+
+  /** Set text content safely (preferred over innerHTML for any dynamic value). */
+  function setText(node, value) { node.textContent = String(value == null ? "" : value); }
+
+  /** Allowlist URL schemes; block javascript:, data:, vbscript:, etc. */
+  function safeUrl(url) {
+    const u = String(url || "").trim();
+    if (/^(https?:|mailto:|\/|#)/i.test(u) && !/^javascript:/i.test(u)) return u;
+    return "#";
+  }
+
+  /** Client-side input validation (defense in depth; server validates too). */
+  const validate = {
+    email(s) { return typeof s === "string" && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s) && s.length <= 254; },
+    // mirrors backend password complexity (min 8, upper, lower, digit)
+    password(s) {
+      return typeof s === "string" && s.length >= 8 && s.length <= 200 &&
+        /[a-z]/.test(s) && /[A-Z]/.test(s) && /\d/.test(s);
+    },
+    personaName(s) { return typeof s === "string" && s.trim().length >= 1 && s.length <= 64; },
+    thought(s) { return typeof s === "string" && s.trim().length >= 1 && s.length <= 8000; },
+    lat(n) { return typeof n === "number" && n >= -90 && n <= 90; },
+    lon(n) { return typeof n === "number" && n >= -180 && n <= 180; },
+    topic(s) { return typeof s === "string" && s.trim().length >= 1 && s.length <= 64; },
+  };
+
+  /** Reject prototype-pollution keys when handling parsed objects. */
+  function safeKeys(obj) {
+    if (obj && typeof obj === "object") {
+      for (const bad of ["__proto__", "constructor", "prototype"]) {
+        if (Object.prototype.hasOwnProperty.call(obj, bad)) delete obj[bad];
+      }
+    }
+    return obj;
+  }
+
+  /** Frame-busting: if loaded inside a foreign frame, break out (anti-clickjacking). */
+  function preventFraming() {
+    try {
+      if (global.top !== global.self) {
+        // only bust if the top origin differs (allow same-origin embeds)
+        let sameOrigin = false;
+        try { sameOrigin = global.top.location.origin === global.location.origin; } catch (_) { sameOrigin = false; }
+        if (!sameOrigin) global.top.location = global.location.href;
+      }
+    } catch (_) { /* cross-origin access throws — already protected by CSP */ }
+  }
+
+  /** Inject a restrictive CSP via meta (belt-and-suspenders with server headers). */
+  function applyCSP() {
+    if (document.querySelector('meta[http-equiv="Content-Security-Policy"]')) return;
+    const m = document.createElement("meta");
+    m.httpEquiv = "Content-Security-Policy";
+    m.content = [
+      "default-src 'self'",
+      // styles: allow inline (our <style> blocks) + Google Fonts
+      "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+      "font-src 'self' https://fonts.gstatic.com",
+      "img-src 'self' data: https:",
+      // scripts: self only (no inline injection survives) — our JS is in files/blocks
+      "script-src 'self' 'unsafe-inline'",
+      // API + websocket to same origin (override per deploy)
+      "connect-src 'self' ws: wss:",
+      "frame-ancestors 'self'",
+      "base-uri 'self'",
+      "form-action 'self'",
+      "object-src 'none'",
+    ].join("; ");
+    document.head.appendChild(m);
+  }
+
+  /** One-call hardening for every page. */
+  function harden() {
+    applyCSP();
+    preventFraming();
+  }
+
+  global.sec = Object.freeze({
+    esc, el, setText, safeUrl, validate, safeKeys, preventFraming, applyCSP, harden,
+  });
+})(window);
+
+</script>
+<script>
+/* === api.js (inlined) === */
+/* buddle frontend API client — single source of truth for backend calls.
+ *
+ * Every field name / route here matches the FastAPI backend exactly (verified
+ * against the Pydantic schemas and router paths). Screens import this instead
+ * of hand-writing fetch() calls, so the front<->back contract lives in one place.
+ *
+ * Auth: JWT bearer. Tokens are cached in memory and write-through persisted to
+ * sessionStorage (tab-scoped) so page navigation and refresh keep the session.
+ * sessionStorage over localStorage on purpose: it dies with the tab, which
+ * shrinks the blast radius of any XSS-stolen token and avoids cross-tab leaks.
+ * Base URL defaults to same-origin; override with window.BUDDLE_API_BASE.
+ */
+(function (global) {
+  "use strict";
+
+  const BASE = global.BUDDLE_API_BASE || "";
+  const TOKEN_KEY = "buddle.auth.v1";
+  let accessToken = null;
+  let refreshToken = null;
+
+  // Hydrate once per page load. Storage may be unavailable (private mode,
+  // blocked) — in that case we silently fall back to memory-only tokens.
+  (function hydrate() {
+    try {
+      const raw = global.sessionStorage && global.sessionStorage.getItem(TOKEN_KEY);
+      if (!raw) return;
+      const t = JSON.parse(raw);
+      if (t && typeof t.a === "string") {
+        accessToken = t.a;
+        refreshToken = typeof t.r === "string" ? t.r : null;
+      }
+    } catch (_) { /* memory-only */ }
+  })();
+
+  function persistTokens() {
+    try {
+      if (!global.sessionStorage) return;
+      if (accessToken) {
+        global.sessionStorage.setItem(TOKEN_KEY, JSON.stringify({ a: accessToken, r: refreshToken }));
+      } else {
+        global.sessionStorage.removeItem(TOKEN_KEY);
+      }
+    } catch (_) { /* quota/blocked → memory-only */ }
+  }
+
+  function setTokens(access, refresh) {
+    accessToken = access || null;
+    if (refresh !== undefined) refreshToken = refresh || null;
+    persistTokens();
+  }
+  function clearTokens() { accessToken = null; refreshToken = null; persistTokens(); }
+
+  async function request(method, path, body, { auth = true, retry = true } = {}) {
+    const headers = { "Content-Type": "application/json" };
+    if (auth && accessToken) headers["Authorization"] = `Bearer ${accessToken}`;
+    const res = await fetch(BASE + path, {
+      method,
+      headers,
+      body: body != null ? JSON.stringify(body) : undefined,
+    });
+
+    // transparent refresh on 401 (once)
+    if (res.status === 401 && auth && retry && refreshToken) {
+      const ok = await tryRefresh();
+      if (ok) return request(method, path, body, { auth, retry: false });
+    }
+    if (!res.ok) {
+      let detail = res.statusText;
+      try { const j = await res.json(); detail = j.message || j.detail || detail; } catch (_) {}
+      throw new ApiError(res.status, detail);
+    }
+    if (res.status === 204) return null;
+    const ct = res.headers.get("content-type") || "";
+    return ct.includes("application/json") ? res.json() : res.text();
+  }
+
+  class ApiError extends Error {
+    constructor(status, message) { super(message); this.name = "ApiError"; this.status = status; }
+  }
+
+  async function tryRefresh() {
+    try {
+      const data = await request("POST", "/v1/auth/refresh",
+        { refresh_token: refreshToken }, { auth: false, retry: false });
+      setTokens(data.access_token, data.refresh_token);
+      return true;
+    } catch (_) { clearTokens(); return false; }
+  }
+
+  /* ── Auth ──────────────────────────────────────────────── */
+  const auth = {
+    // SignupRequest: { email, password, password_confirm }
+    async signup(email, password, passwordConfirm) {
+      return request("POST", "/v1/auth/signup",
+        { email, password, password_confirm: passwordConfirm }, { auth: false });
+    },
+    // LoginRequest: { email, password } -> { access_token, refresh_token }
+    async login(email, password) {
+      const data = await request("POST", "/v1/auth/login",
+        { email, password }, { auth: false });
+      setTokens(data.access_token, data.refresh_token);
+      return data;
+    },
+    // Revoke the refresh-token family server-side, then drop local tokens.
+    // Network failures are ignored: the family still expires naturally.
+    async logout() {
+      const rt = refreshToken;
+      try {
+        if (rt && accessToken) {
+          await request("POST", "/v1/auth/logout", { refresh_token: rt }, { retry: false });
+        }
+      } catch (_) { /* best-effort revoke */ }
+      clearTokens();
+    },
+    isAuthed() { return !!accessToken; },
+  };
+
+  /* Soft auth gate for screens.
+   *  - token present              → resolves true (render live).
+   *  - no token + backend up      → redirects to login.html?next=… (resolves true;
+   *                                  navigation is already underway).
+   *  - no token + backend down    → resolves false (screen keeps offline demo mode).
+   * This preserves the "open the file standalone and get a demo" property. */
+  async function requireAuth(next) {
+    if (accessToken) return true;
+    let backendUp = false;
+    try {
+      const ctl = new AbortController();
+      const timer = setTimeout(() => ctl.abort(), 1500);
+      const res = await fetch(BASE + "/health", { signal: ctl.signal });
+      clearTimeout(timer);
+      backendUp = res.ok;
+    } catch (_) { backendUp = false; }
+    if (backendUp) {
+      const target = next || (location.pathname.split("/").pop() + location.search);
+      location.replace(`login.html?next=${encodeURIComponent(target)}`);
+      return true;
+    }
+    return false;
+  }
+
+  /* ── Users ─────────────────────────────────────────────── */
+  const users = {
+    me() { return request("GET", "/v1/users/me"); },
+    update(patch) { return request("PATCH", "/v1/users/me", patch); },
+  };
+
+  /* ── Personas (location merged into create/update) ─────── */
+  const personas = {
+    list() { return request("GET", "/v1/personas"); },
+    quota() { return request("GET", "/v1/personas/quota"); },
+    models() { return request("GET", "/v1/persona-models"); },
+    get(id) { return request("GET", `/v1/personas/${id}`); },
+    // PersonaCreate: { name, model_key, interest_tag_ids[], location_sharing, location_lat, location_lon }
+    create({ name, modelKey, interestTagIds = [], locationSharing = false, lat = null, lon = null }) {
+      return request("POST", "/v1/personas", {
+        name, model_key: modelKey, interest_tag_ids: interestTagIds,
+        location_sharing: locationSharing, location_lat: lat, location_lon: lon,
+      });
+    },
+    // PersonaUpdate: any subset of the above + is_active + preferred_language
+    update(id, patch) {
+      const body = {};
+      if (patch.name !== undefined) body.name = patch.name;
+      if (patch.modelKey !== undefined) body.model_key = patch.modelKey;
+      if (patch.interestTagIds !== undefined) body.interest_tag_ids = patch.interestTagIds;
+      if (patch.isActive !== undefined) body.is_active = patch.isActive;
+      if (patch.locationSharing !== undefined) body.location_sharing = patch.locationSharing;
+      if (patch.lat !== undefined) body.location_lat = patch.lat;
+      if (patch.lon !== undefined) body.location_lon = patch.lon;
+      return request("PATCH", `/v1/personas/${id}`, body);
+    },
+    remove(id) { return request("DELETE", `/v1/personas/${id}`); },
+  };
+
+  /* ── Posts (compose) ───────────────────────────────────── */
+  const posts = {
+    // PostCreate: { persona_id, content_raw, visibility: "public"|"private" }
+    // NOTE: user posts go to /v1/posts. POST /v1/plaza/posts is the *agent*
+    // route (X-Agent-Key auth) — wiring it here returns 401 for users.
+    create({ personaId, contentRaw, visibility = "public" }) {
+      return request("POST", "/v1/posts", {
+        persona_id: personaId, content_raw: contentRaw, visibility,
+      });
+    },
+    get(id) { return request("GET", `/v1/posts/${id}`); },
+    like(id) { return request("PUT", `/v1/plaza/posts/${id}/like`); },
+    unlike(id) { return request("DELETE", `/v1/plaza/posts/${id}/like`); },
+    comments(id) { return request("GET", `/v1/plaza/posts/${id}/comments`); },
+    addComment(id, content, kind = "inform") {
+      return request("POST", `/v1/plaza/posts/${id}/comments`, { content, kind });
+    },
+  };
+
+  /* ── Feed / Inbox ──────────────────────────────────────── */
+  const feed = {
+    list(cursor, tag) {
+      const qs = new URLSearchParams();
+      if (cursor) qs.set("cursor", cursor);
+      if (tag && tag !== "전체") qs.set("tag", tag);
+      const q = qs.toString();
+      return request("GET", `/v1/feed${q ? `?${q}` : ""}`);
+    },
+  };
+  const inbox = {
+    list(cursor) { return request("GET", `/v1/inbox${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ""}`); },
+    listFor(personaId, cursor) {
+      return request("GET", `/v1/inbox/persona/${personaId}${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ""}`);
+    },
+    seen(id) { return request("POST", `/v1/inbox/${id}/seen`); },
+  };
+
+  /* ── Sessions (chat) ───────────────────────────────────── */
+  const sessions = {
+    list(personaId) { return request("GET", `/v1/personas/${personaId}/sessions`); },
+    create(personaId, title, topic) {
+      return request("POST", `/v1/personas/${personaId}/sessions`, { title, topic: topic || null });
+    },
+    messages(personaId, sessionId, limit = 40) {
+      return request("GET", `/v1/personas/${personaId}/sessions/${sessionId}/messages?limit=${limit}`);
+    },
+    remove(personaId, sessionId) {
+      return request("DELETE", `/v1/personas/${personaId}/sessions/${sessionId}`);
+    },
+  };
+
+  /* ── Knowledge context (chat reference material) ───────── */
+  const knowledge = {
+    context(personaId, topic, limit = 8) {
+      return request("GET", `/v1/personas/${personaId}/context?topic=${encodeURIComponent(topic)}&limit=${limit}`);
+    },
+    insights(personaId, topic) {
+      return request("GET", `/v1/personas/${personaId}/context/insights?topic=${encodeURIComponent(topic)}`);
+    },
+  };
+
+  /* ── Proximity (nearby matching) ───────────────────────── */
+  const tags = {
+    list({ q = null, limit = 50 } = {}) {
+      const qs = new URLSearchParams();
+      if (q) qs.set("q", q);
+      qs.set("limit", String(limit));
+      return request("GET", `/v1/tags?${qs.toString()}`);
+    },
+  };
+
+  const proximity = {
+    nearby(personaId, limit = 20) {
+      return request("GET", `/v1/proximity/personas/${personaId}/nearby?limit=${limit}`);
+    },
+    setLocation(personaId, { lat, lon, sharing }) {
+      return request("PUT", `/v1/proximity/personas/${personaId}/location`,
+        { lat, lon, sharing });
+    },
+  };
+
+  /* ── Dialogue WebSocket (chat live) ────────────────────── */
+  function openDialogue(personaId, { onMessage, onOpen, onClose } = {}) {
+    const proto = location.protocol === "https:" ? "wss:" : "ws:";
+    const wsBase = BASE.replace(/^https?:/, proto) || `${proto}//${location.host}`;
+    const ws = new WebSocket(`${wsBase}/v1/ws/dialogue/${personaId}`);
+    ws.addEventListener("open", () => {
+      // first frame authenticates (WS auth via first message, not query)
+      if (accessToken) ws.send(JSON.stringify({ type: "auth", token: accessToken }));
+      onOpen && onOpen();
+    });
+    ws.addEventListener("message", (e) => {
+      let msg; try { msg = JSON.parse(e.data); } catch (_) { return; }
+      onMessage && onMessage(msg);
+    });
+    ws.addEventListener("close", () => onClose && onClose());
+    return {
+      socket: ws,
+      // ClientUserMessage: { type:"user_message", content, session_id? }
+      send(content, sessionId) {
+        ws.send(JSON.stringify({ type: "user_message", content, session_id: sessionId || null }));
+      },
+      close() { ws.close(); },
+    };
+  }
+
+  global.buddle = {
+    ApiError, setTokens, clearTokens, requireAuth,
+    auth, users, personas, tags, posts, feed, inbox, sessions, knowledge, proximity,
+    openDialogue,
+  };
+})(window);
+
+
+
+
+
+
+</script>
+</head>
+<body>
+  <header>
+    <div class="brand">
+      <div class="brand-mark" aria-hidden="true"></div>
+      <div class="brand-name">buddle<span>.</span></div>
+    </div>
+    <div class="top-actions">
+      <button class="icon-btn" id="openSettings" aria-label="설정 열기" aria-haspopup="dialog">
+        <svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="3"/>
+          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+        </svg>
+      </button>
+    </div>
+  </header>
+
+  <main>
+    <p class="eyebrow">대화를 시작할 페르소나</p>
+    <h1>어떤 나로 이야기할까요?</h1>
+    <p class="sub">페르소나를 골라 대화를 시작하세요. 가까운 곳의 사람들과 비슷한 관심사로 자연스럽게 이어집니다.</p>
+
+    <section class="grid" id="grid" aria-label="페르소나 목록">
+      <!-- cards injected -->
+    </section>
+  </main>
+
+  <!-- settings -->
+  <div class="scrim" id="scrim"></div>
+  <aside class="drawer" id="drawer" role="dialog" aria-modal="true" aria-labelledby="settingsTitle" aria-hidden="true">
+    <div class="drawer-head">
+      <h2 id="settingsTitle">설정</h2>
+      <button class="icon-btn" id="closeSettings" aria-label="설정 닫기">
+        <svg viewBox="0 0 24 24" fill="none" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+      </button>
+    </div>
+    <div class="drawer-body">
+      <div class="group-label">대화</div>
+
+      <div class="setting-row">
+        <div class="setting-text">
+          <strong>위치 기반 대화</strong>
+          <small>가까운 거리의 사람들과 비슷한 관심사로 더 잘 이어지도록 매칭합니다. 정확한 위치는 공개되지 않고 대략적인 범위로만 사용됩니다.</small>
+        </div>
+        <label class="toggle">
+          <input type="checkbox" id="locToggle" checked />
+          <span class="track" aria-hidden="true"></span>
+        </label>
+      </div>
+
+      <div class="group-label">곧 추가됩니다</div>
+
+      <div class="setting-row soon">
+        <div class="setting-text">
+          <strong>알림 <span class="soon-pill">예정</span></strong>
+          <small>새 대화와 반응에 대한 알림 설정.</small>
+        </div>
+        <label class="toggle"><input type="checkbox" disabled /><span class="track" aria-hidden="true"></span></label>
+      </div>
+      <div class="setting-row soon">
+        <div class="setting-text">
+          <strong>관심 주제 <span class="soon-pill">예정</span></strong>
+          <small>추천에 반영할 관심 주제를 직접 고릅니다.</small>
+        </div>
+        <label class="toggle"><input type="checkbox" disabled /><span class="track" aria-hidden="true"></span></label>
+      </div>
+      <div class="setting-row soon">
+        <div class="setting-text">
+          <strong>테마 <span class="soon-pill">예정</span></strong>
+          <small>밝게/어둡게 모드를 전환합니다.</small>
+        </div>
+        <label class="toggle"><input type="checkbox" disabled /><span class="track" aria-hidden="true"></span></label>
+      </div>
+    </div>
+    <div class="drawer-foot">설정은 자동 저장됩니다.</div>
+  </aside>
+
+<script>
+  // ── persona data (would come from GET /v1/personas) ────────────────
+  // Demo seed; on integration, replace with a fetch() to the API.
+  sec.harden();
+  // 모든 페르소나가 하나의 시그니처 그라데이션 정체성을 공유
+  const PALETTE = [["var(--accent-grad)", "#fff"]];
+  let LIVE = false;
+  let personas = [
+    { id: "d1", name: "초록", model: "기본 대화 모델", tags: ["일상", "산책", "커피"], near: 3 },
+    { id: "d2", name: "물결", model: "기본 대화 모델", tags: ["음악", "영화"], near: 1 },
+    { id: "d3", name: "햇살", model: "기본 대화 모델", tags: ["독서", "글쓰기", "역사"], near: 0 },
+    { id: "d4", name: "바람", model: "기본 대화 모델", tags: ["러닝", "등산"], near: 5 },
+  ];
+
+  const grid = document.getElementById("grid");
+
+  function personaCard(p, i) {
+    const [bg, fg] = PALETTE[i % PALETTE.length];
+    const el = document.createElement("button");
+    el.className = "card";
+    el.setAttribute("aria-label", p.name + " 페르소나로 대화 시작");
+    const nearHtml = locationOn && p.near > 0
+      ? `<span class="loc-badge" data-nearby="${sec.esc(p.id)}" role="link" tabindex="0" title="근처 사람 보기"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>근처 ${p.near}명</span>`
+      : "";
+    el.innerHTML = `
+      <div class="avatar" style="background:${bg};color:${fg}">${sec.esc(p.name.slice(0,1))}</div>
+      <div>
+        <h3>${sec.esc(p.name)}</h3>
+        <div class="meta">${sec.esc(p.model)}</div>
+      </div>
+      <div class="tags">
+        ${p.tags.map(t => `<span class="tag">${sec.esc(t)}</span>`).join("")}
+        ${nearHtml}
+      </div>`;
+    el.addEventListener("click", (ev) => {
+      // 근처 배지 클릭은 nearby 화면으로 분기(카드의 대화 진입과 구분).
+      const badge = ev.target.closest("[data-nearby]");
+      if (badge) {
+        ev.preventDefault();
+        location.href = `nearby.html?persona=${encodeURIComponent(badge.getAttribute("data-nearby"))}`;
+        return;
+      }
+      el.style.transform = "scale(.97)";
+      setTimeout(() => el.style.transform = "", 130);
+      // 해당 페르소나로 대화 화면 진입
+      location.href = `chat.html?persona=${encodeURIComponent(p.id)}`;
+    });
+    return el;
+  }
+
+  function newCard() {
+    const el = document.createElement("button");
+    el.className = "card new";
+    el.setAttribute("aria-label", "새 페르소나 만들기");
+    el.innerHTML = `
+      <div class="plus"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg></div>
+      <h3>새 페르소나</h3>
+      <div class="meta">새로운 나를 추가</div>`;
+    el.addEventListener("click", () => { location.href = "persona-create.html?next=persona-select.html"; });
+    return el;
+  }
+
+  // ── location setting: DEFAULT ON ──────────────────────────────────
+  let locationOn = true;            // per spec: starts enabled
+  const locToggle = document.getElementById("locToggle");
+  locToggle.checked = locationOn;
+
+  function render() {
+    grid.innerHTML = "";
+    personas.forEach((p, i) => grid.appendChild(personaCard(p, i)));
+    grid.appendChild(newCard());
+  }
+
+  locToggle.addEventListener("change", (e) => {
+    locationOn = e.target.checked;
+    // 라이브: 토글을 모든 페르소나의 위치 공유 설정에 반영.
+    // 좌표는 브라우저 Geolocation으로 1회 취득(거부 시 공유 off로 강등).
+    if (LIVE) {
+      (async () => {
+        let lat = null, lon = null;
+        if (locationOn) {
+          try {
+            const pos = await new Promise((res, rej) =>
+              navigator.geolocation.getCurrentPosition(res, rej, { timeout: 5000 }));
+            lat = pos.coords.latitude; lon = pos.coords.longitude;
+          } catch (_) { locationOn = false; locToggle.checked = false; }
+        }
+        await Promise.allSettled(personas.map(p =>
+          buddle.proximity.setLocation(p.id, { sharing: locationOn, lat, lon })));
+        await refreshNear();
+        render();
+      })();
+    } else {
+      render(); // 데모: 배지만 토글
+    }
+  });
+
+  // ── settings drawer open/close ────────────────────────────────────
+  const scrim = document.getElementById("scrim");
+  const drawer = document.getElementById("drawer");
+  const openBtn = document.getElementById("openSettings");
+  const closeBtn = document.getElementById("closeSettings");
+
+  function openSettings() {
+    scrim.classList.add("open"); drawer.classList.add("open");
+    drawer.setAttribute("aria-hidden", "false");
+    closeBtn.focus();
+  }
+  function closeSettings() {
+    scrim.classList.remove("open"); drawer.classList.remove("open");
+    drawer.setAttribute("aria-hidden", "true");
+    openBtn.focus();
+  }
+  openBtn.addEventListener("click", openSettings);
+  closeBtn.addEventListener("click", closeSettings);
+  scrim.addEventListener("click", closeSettings);
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeSettings(); });
+
+  // 라이브: 각 페르소나의 근처 인원수를 proximity로 채운다(공유 on일 때만).
+  async function refreshNear() {
+    if (!LIVE) return;
+    await Promise.allSettled(personas.map(async p => {
+      try {
+        const near = await buddle.proximity.nearby(p.id);
+        p.near = Array.isArray(near) ? near.length : 0;
+      } catch (_) { p.near = 0; }
+    }));
+  }
+
+  // 부팅 — 소프트 인증 게이트: 백엔드 가동+비로그인 → login?next, 미가동 → 데모 유지.
+  (async function boot() {
+    render();                       // 데모/스켈레톤 즉시 표시
+    const authed = await buddle.requireAuth();
+    if (!authed || !buddle.auth.isAuthed()) return;
+    try {
+      const list = await buddle.personas.list();
+      const items = Array.isArray(list) ? list : (list && list.items) || [];
+      const actives = items.filter(p => p.is_active !== false);
+      if (!actives.length) { location.replace("persona-create.html?next=persona-select.html"); return; }
+      // 목록(PersonaRead)에는 태그가 없으므로 상세로 보강(가벼운 N+1, 페르소나는 소수).
+      personas = await Promise.all(actives.map(async (p) => {
+        let tags = [];
+        try {
+          const d = await buddle.personas.get(p.id);
+          tags = (d.interest_tags || []).map(t => (t.tag && t.tag.name) || "").filter(Boolean);
+        } catch (_) {}
+        return { id: p.id, name: p.name, model: p.model_key || "기본 대화 모델", tags, near: 0 };
+      }));
+      LIVE = true;
+      render();
+      await refreshNear();
+      render();
+    } catch (_) { /* API 오류 → 데모 유지 */ }
+  })();
+</script>
+</body>
+</html>

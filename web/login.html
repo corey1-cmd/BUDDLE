@@ -1,0 +1,283 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>버들 — 곁에 두고, 천천히</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Spline+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="buddle.css">
+<script>
+/* === security.js (inlined: no external dependency) === */
+(function (global) {
+  "use strict";
+  const NAMED = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;", "`": "&#96;" };
+  function esc(value) { return String(value == null ? "" : value).replace(/[&<>"'`]/g, (c) => NAMED[c]); }
+  function el(tag, attrs, textContent) {
+    const node = document.createElement(tag);
+    if (attrs) for (const k of Object.keys(attrs)) {
+      const v = attrs[k]; if (v == null) continue;
+      if (k === "class") node.className = String(v);
+      else if (k === "dataset" && typeof v === "object") { for (const dk of Object.keys(v)) node.dataset[dk] = String(v[dk]); }
+      else if (/^on/i.test(k)) { if (typeof v === "function") node.addEventListener(k.slice(2).toLowerCase(), v); }
+      else node.setAttribute(k, String(v));
+    }
+    if (textContent != null) node.textContent = String(textContent);
+    return node;
+  }
+  function setText(node, value) { node.textContent = String(value == null ? "" : value); }
+  function safeUrl(url) { const u = String(url || "").trim(); if (/^(https?:|mailto:|\/|#)/i.test(u) && !/^javascript:/i.test(u)) return u; return "#"; }
+  const validate = {
+    email(s) { return typeof s === "string" && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s) && s.length <= 254; },
+    password(s) { return typeof s === "string" && s.length >= 8 && s.length <= 200 && /[a-z]/.test(s) && /[A-Z]/.test(s) && /\d/.test(s); },
+    personaName(s) { return typeof s === "string" && s.trim().length >= 1 && s.length <= 64; },
+    thought(s) { return typeof s === "string" && s.trim().length >= 1 && s.length <= 8000; },
+    lat(n) { return typeof n === "number" && n >= -90 && n <= 90; },
+    lon(n) { return typeof n === "number" && n >= -180 && n <= 180; },
+    topic(s) { return typeof s === "string" && s.trim().length >= 1 && s.length <= 64; },
+  };
+  function safeKeys(obj) { if (obj && typeof obj === "object") for (const bad of ["__proto__", "constructor", "prototype"]) if (Object.prototype.hasOwnProperty.call(obj, bad)) delete obj[bad]; return obj; }
+  function preventFraming() {
+    try { if (global.top !== global.self) { let same = false; try { same = global.top.location.origin === global.location.origin; } catch (_) { same = false; } if (!same) global.top.location = global.location.href; } } catch (_) {}
+  }
+  function applyCSP() {
+    if (document.querySelector('meta[http-equiv="Content-Security-Policy"]')) return;
+    const m = document.createElement("meta");
+    m.httpEquiv = "Content-Security-Policy";
+    m.content = ["default-src 'self'","style-src 'self' 'unsafe-inline' https://fonts.googleapis.com","font-src 'self' https://fonts.gstatic.com","img-src 'self' data: https:","script-src 'self' 'unsafe-inline'","connect-src 'self' ws: wss:","frame-ancestors 'self'","base-uri 'self'","form-action 'self'","object-src 'none'"].join("; ");
+    document.head.appendChild(m);
+  }
+  function harden() { applyCSP(); preventFraming(); }
+  global.sec = Object.freeze({ esc, el, setText, safeUrl, validate, safeKeys, preventFraming, applyCSP, harden });
+})(window);
+</script>
+<script>
+/* === api.js (inlined) === */
+(function (global) {
+  "use strict";
+  const BASE = global.BUDDLE_API_BASE || "";
+  const TOKEN_KEY = "buddle.auth.v1";
+  let accessToken = null, refreshToken = null;
+  (function hydrate() {
+    try {
+      const raw = global.sessionStorage && global.sessionStorage.getItem(TOKEN_KEY);
+      if (!raw) return;
+      const t = JSON.parse(raw);
+      if (t && typeof t.a === "string") { accessToken = t.a; refreshToken = typeof t.r === "string" ? t.r : null; }
+    } catch (e) { /* memory-only */ }
+  })();
+  function persistTokens() {
+    try {
+      if (!global.sessionStorage) return;
+      if (accessToken) global.sessionStorage.setItem(TOKEN_KEY, JSON.stringify({ a: accessToken, r: refreshToken }));
+      else global.sessionStorage.removeItem(TOKEN_KEY);
+    } catch (e) { /* memory-only */ }
+  }
+  function setTokens(a, r) { accessToken = a || null; if (r !== undefined) refreshToken = r || null; persistTokens(); }
+  function clearTokens() { accessToken = null; refreshToken = null; persistTokens(); }
+  class ApiError extends Error { constructor(status, message) { super(message); this.name = "ApiError"; this.status = status; } }
+  async function request(method, path, body, opts) {
+    opts = opts || {}; const auth = opts.auth !== false; const retry = opts.retry !== false;
+    const headers = { "Content-Type": "application/json" };
+    if (auth && accessToken) headers["Authorization"] = "Bearer " + accessToken;
+    const res = await fetch(BASE + path, { method, headers, body: body != null ? JSON.stringify(body) : undefined });
+    if (res.status === 401 && auth && retry && refreshToken) { const ok = await tryRefresh(); if (ok) return request(method, path, body, { auth, retry: false }); }
+    if (!res.ok) { let d = res.statusText; try { const j = await res.json(); d = j.message || j.detail || d; } catch (e) {} throw new ApiError(res.status, d); }
+    if (res.status === 204) return null;
+    const ct = res.headers.get("content-type") || "";
+    return ct.includes("application/json") ? res.json() : res.text();
+  }
+  async function tryRefresh() { try { const d = await request("POST", "/v1/auth/refresh", { refresh_token: refreshToken }, { auth: false, retry: false }); setTokens(d.access_token, d.refresh_token); return true; } catch (e) { clearTokens(); return false; } }
+  const auth = {
+    async signup(email, password, pc) { return request("POST", "/v1/auth/signup", { email, password, password_confirm: pc }, { auth: false }); },
+    async login(email, password) { const d = await request("POST", "/v1/auth/login", { email, password }, { auth: false }); setTokens(d.access_token, d.refresh_token); return d; },
+    logout() { clearTokens(); }, isAuthed() { return !!accessToken; },
+  };
+  global.buddle = { ApiError, setTokens, clearTokens, auth };
+})(window);
+</script>
+<style>
+  /* login: the 0.05s first impression. White ground, gradient wordmark,
+     one continuous page — no boxed-off hero panel creating a seam. */
+  body{background:var(--paper);}
+  .bd-phone{display:flex;flex-direction:column;justify-content:center;padding:0;min-height:100dvh;}
+
+  .brandhead{text-align:center;padding:var(--s7) var(--s5) var(--s5);}
+  .wordmark{font-family:var(--display);font-weight:700;font-size:46px;letter-spacing:-.01em;
+    background:linear-gradient(90deg,#6685F2 0%,#A98DEE 100%);-webkit-background-clip:text;background-clip:text;color:transparent;
+    margin-bottom:var(--s3);}
+  .tagline{font-size:var(--t-body);color:var(--ink-soft);}
+
+  /* a single proof line — quiet trust, not a wall of logos */
+  .proof{display:flex;align-items:center;justify-content:center;gap:var(--s2);padding:var(--s5) var(--s4) calc(var(--s5) + env(safe-area-inset-bottom));font-size:var(--t-xs);color:var(--ink-faint);flex-wrap:wrap;}
+  .proof .pill{display:flex;align-items:center;gap:5px;color:var(--willow);font-weight:600;}
+  .proof .pill svg{width:14px;height:14px;stroke:currentColor;flex:none;}
+
+  /* form sheet — its own elevated card */
+  .sheet{margin:0 var(--s4);background:var(--paper-raised);border:1px solid var(--line);
+    border-radius:var(--r-lg);box-shadow:var(--shadow-lg);padding:var(--s5);position:relative;z-index:2;}
+
+  .tabs{display:flex;gap:4px;background:var(--paper-sunken);border-radius:var(--r-pill);padding:4px;margin-bottom:var(--s5);}
+  .tabs button{flex:1;border:0;background:transparent;font-family:var(--body);font-size:var(--t-sm);font-weight:600;color:var(--ink-soft);padding:9px 0;border-radius:var(--r-pill);cursor:pointer;transition:background var(--dur) var(--ease),color var(--dur) var(--ease);}
+  .tabs button.on{background:var(--accent-grad);color:#fff;box-shadow:var(--shadow-pop-sm);}
+
+  .field{margin-bottom:var(--s4);}
+  .field label{display:block;font-size:var(--t-sm);font-weight:600;color:var(--ink);margin-bottom:var(--s2);}
+  .field .wrap{position:relative;}
+  .field.invalid .bd-input{border-color:#C0563B;box-shadow:0 0 0 4px rgba(192,86,59,.12);}
+  .eye{position:absolute;right:10px;top:50%;transform:translateY(-50%);background:none;border:0;cursor:pointer;padding:6px;color:var(--ink-faint);}
+  .eye svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:1.7;}
+
+  .strength{display:none;margin-top:var(--s2);}
+  .strength.show{display:block;}
+  .strength .bd-meter{height:6px;}
+  .strength small{display:block;font-size:var(--t-xs);color:var(--ink-faint);margin-top:5px;}
+
+  .form-err{font-size:var(--t-sm);color:#C0563B;margin-bottom:var(--s3);min-height:0;opacity:0;transition:opacity var(--dur) var(--ease);}
+  .form-err.show{opacity:1;}
+  .hint{font-size:var(--t-xs);color:var(--ink-faint);margin-top:var(--s4);text-align:center;line-height:1.55;}
+  .hint b{color:var(--willow);}
+</style>
+</head>
+<body>
+<div class="bd-phone">
+
+  <div class="brandhead">
+    <div class="wordmark">buddle</div>
+    <p class="tagline">생각을 적으면, 언어를 넘어 닿습니다.</p>
+  </div>
+
+  <main class="sheet bd-reveal">
+    <div class="tabs" role="tablist">
+      <button id="tabLogin" class="on" role="tab" aria-selected="true">로그인</button>
+      <button id="tabSignup" role="tab" aria-selected="false">회원가입</button>
+    </div>
+
+    <div class="field" id="fEmail">
+      <label for="email">이메일</label>
+      <div class="wrap"><input id="email" class="bd-input" type="email" inputmode="email" autocomplete="email" placeholder="you@example.com" /></div>
+    </div>
+
+    <div class="field" id="fPassword">
+      <label for="password">비밀번호</label>
+      <div class="wrap">
+        <input id="password" class="bd-input" type="password" autocomplete="current-password" placeholder="비밀번호" style="padding-right:44px" />
+        <button class="eye" id="eyeBtn" type="button" aria-label="비밀번호 표시"><svg id="eyeIcon" viewBox="0 0 24 24"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg></button>
+      </div>
+      <div class="strength" id="strength">
+        <div class="bd-meter"><i id="strengthBar" style="width:8%"></i></div>
+        <small id="strengthText">비밀번호 강도</small>
+      </div>
+    </div>
+
+    <div class="field" id="fConfirm" style="display:none">
+      <label for="confirm">비밀번호 확인</label>
+      <div class="wrap"><input id="confirm" class="bd-input" type="password" autocomplete="new-password" placeholder="비밀번호 다시 입력" /></div>
+    </div>
+
+    <div class="form-err" id="formErr"></div>
+    <button id="submit" class="bd-btn bd-btn--primary bd-btn--block">로그인</button>
+    <p class="hint" id="modeHint">계정이 없다면 <b>회원가입</b> 탭을 선택하세요.</p>
+  </main>
+
+  <div class="proof">
+    <span class="pill"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l6.5 2.5v5c0 4.5-2.8 7.8-6.5 9.5-3.7-1.7-6.5-5-6.5-9.5v-5L12 3z"/></svg>AI가 매개하는 다국어 소셜 공간</span>
+    <span>· 안전한 연결</span>
+  </div>
+
+</div>
+
+<script src="buddle.ux.js"></script>
+<script>
+  sec.harden();
+
+  let mode = "login";
+  const $ = (id) => document.getElementById(id);
+  const email = $("email"), password = $("password"), confirm = $("confirm");
+  const fEmail = $("fEmail"), fPassword = $("fPassword"), fConfirm = $("fConfirm");
+  const submit = $("submit"), formErr = $("formErr"), modeHint = $("modeHint");
+  const strength = $("strength"), strengthBar = $("strengthBar"), strengthText = $("strengthText");
+
+  function setMode(m) {
+    mode = m; const signup = m === "signup";
+    $("tabLogin").classList.toggle("on", !signup);
+    $("tabSignup").classList.toggle("on", signup);
+    $("tabLogin").setAttribute("aria-selected", String(!signup));
+    $("tabSignup").setAttribute("aria-selected", String(signup));
+    fConfirm.style.display = signup ? "block" : "none";
+    strength.classList.toggle("show", signup);
+    password.autocomplete = signup ? "new-password" : "current-password";
+    submit.textContent = signup ? "회원가입" : "로그인";
+    modeHint.innerHTML = signup
+      ? "비밀번호는 8자 이상, 영문 대·소문자와 숫자를 포함하세요."
+      : '계정이 없다면 <b>회원가입</b> 탭을 선택하세요.';
+    clearErrors(); validateForm();
+  }
+  $("tabLogin").onclick = () => setMode("login");
+  $("tabSignup").onclick = () => setMode("signup");
+
+  $("eyeBtn").onclick = () => {
+    const showing = password.type === "text";
+    password.type = showing ? "password" : "text";
+    if (mode === "signup") confirm.type = password.type;
+    $("eyeIcon").style.opacity = showing ? "1" : ".6";
+  };
+
+  function clearErrors() { [fEmail, fPassword, fConfirm].forEach(f => f.classList.remove("invalid")); formErr.classList.remove("show"); formErr.textContent = ""; }
+  function validateForm() {
+    const okEmail = sec.validate.email(email.value.trim());
+    const okPw = mode === "signup" ? sec.validate.password(password.value) : password.value.length > 0;
+    const okConfirm = mode === "login" || password.value === confirm.value;
+    submit.disabled = !(okEmail && okPw && okConfirm);
+  }
+  email.addEventListener("input", validateForm);
+  password.addEventListener("input", () => { updateStrength(); validateForm(); });
+  confirm.addEventListener("input", validateForm);
+
+  function updateStrength() {
+    if (mode !== "signup") return;
+    const v = password.value; let score = 0;
+    if (v.length >= 8) score++;
+    if (/[a-z]/.test(v) && /[A-Z]/.test(v)) score++;
+    if (/\d/.test(v)) score++;
+    if (/[^A-Za-z0-9]/.test(v) || v.length >= 14) score++;
+    const pct = [10, 40, 70, 100][Math.max(0, score - 1)] || 8;
+    const colors = ["#C7A87C", "#9DBE8E", "#5FA37E", "#5C7CF0"];
+    const labels = ["약함", "보통", "양호", "강함"];
+    strengthBar.style.width = pct + "%";
+    strengthBar.style.background = colors[Math.max(0, score - 1)] || colors[0];
+    strengthText.textContent = v ? "강도: " + (labels[Math.max(0, score - 1)] || "약함") : "비밀번호 강도";
+  }
+
+  submit.addEventListener("click", async () => {
+    clearErrors();
+    const e = email.value.trim();
+    if (!sec.validate.email(e)) { fEmail.classList.add("invalid"); return; }
+    if (mode === "signup" && !sec.validate.password(password.value)) { fPassword.classList.add("invalid"); return; }
+    if (mode === "signup" && password.value !== confirm.value) { fConfirm.classList.add("invalid"); return; }
+    submit.disabled = true; submit.textContent = mode === "signup" ? "가입 중…" : "로그인 중…";
+    try {
+      if (mode === "signup") { await buddle.auth.signup(e, password.value, confirm.value); await buddle.auth.login(e, password.value); }
+      else { await buddle.auth.login(e, password.value); }
+      location.href = nextTarget();
+    } catch (err) {
+      const msg = (err && err.status === 401) ? "이메일 또는 비밀번호가 올바르지 않습니다."
+        : (err && err.status === 409) ? "이미 가입된 이메일입니다." : "잠시 후 다시 시도해 주세요.";
+      formErr.textContent = msg; formErr.classList.add("show");
+      submit.disabled = false; submit.textContent = mode === "signup" ? "회원가입" : "로그인";
+    }
+  });
+  [email, password, confirm].forEach(inp => inp.addEventListener("keydown", e => { if (e.key === "Enter" && !submit.disabled) submit.click(); }));
+
+  // ?next= 안전 복귀: 같은 폴더의 *.html(+쿼리)만 허용 — 오픈 리다이렉트 차단.
+  function nextTarget() {
+    const next = new URLSearchParams(location.search).get("next") || "";
+    return /^[a-z0-9-]+\.html(\?[\w=&%.~-]*)?$/i.test(next) ? next : "home-dashboard.html";
+  }
+  // 이미 세션이 있으면(다른 탭 페이지에서 진입 등) 로그인 화면을 건너뛴다.
+  if (buddle.auth.isAuthed()) { location.replace(nextTarget()); }
+
+  setMode("login");
+</script>
+</body></html>

@@ -1,0 +1,1177 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>buddle · 피드</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Spline+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
+<script>
+/* === security.js (inlined: no external dependency) === */
+/* buddle frontend security utilities.
+ *
+ * Threat model & mitigations (see SECURITY_FRONTEND.md):
+ *  - Stored XSS: persona names, post text, topics come from other users via the
+ *    API. NEVER inject them as HTML. Use esc() for text or el()/text() for DOM.
+ *  - DOM-clobbering / injection via attributes: setText/setAttr helpers only.
+ *  - Open redirect / javascript: URLs: safeUrl() allowlists schemes.
+ *  - Token theft: tokens live in memory only (api.js), never in localStorage,
+ *    never interpolated into HTML or URLs.
+ *  - Clickjacking: pages set frame-ancestors via CSP meta + framebust check.
+ *  - Prototype pollution: freeze, and reject __proto__ keys when parsing.
+ */
+(function (global) {
+  "use strict";
+
+  const NAMED = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;", "`": "&#96;" };
+
+  /** Escape a string for safe insertion into HTML text/attribute context. */
+  function esc(value) {
+    return String(value == null ? "" : value).replace(/[&<>"'`]/g, (c) => NAMED[c]);
+  }
+
+  /** Create an element with safe text + attributes (no HTML parsing). */
+  function el(tag, attrs, textContent) {
+    const node = document.createElement(tag);
+    if (attrs) {
+      for (const k of Object.keys(attrs)) {
+        const v = attrs[k];
+        if (v == null) continue;
+        if (k === "class") node.className = String(v);
+        else if (k === "dataset" && typeof v === "object") {
+          for (const dk of Object.keys(v)) node.dataset[dk] = String(v[dk]);
+        } else if (/^on/i.test(k)) {
+          // never accept event handlers as strings
+          if (typeof v === "function") node.addEventListener(k.slice(2).toLowerCase(), v);
+        } else {
+          node.setAttribute(k, String(v));
+        }
+      }
+    }
+    if (textContent != null) node.textContent = String(textContent);
+    return node;
+  }
+
+  /** Set text content safely (preferred over innerHTML for any dynamic value). */
+  function setText(node, value) { node.textContent = String(value == null ? "" : value); }
+
+  /** Allowlist URL schemes; block javascript:, data:, vbscript:, etc. */
+  function safeUrl(url) {
+    const u = String(url || "").trim();
+    if (/^(https?:|mailto:|\/|#)/i.test(u) && !/^javascript:/i.test(u)) return u;
+    return "#";
+  }
+
+  /** Client-side input validation (defense in depth; server validates too). */
+  const validate = {
+    email(s) { return typeof s === "string" && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s) && s.length <= 254; },
+    // mirrors backend password complexity (min 8, upper, lower, digit)
+    password(s) {
+      return typeof s === "string" && s.length >= 8 && s.length <= 200 &&
+        /[a-z]/.test(s) && /[A-Z]/.test(s) && /\d/.test(s);
+    },
+    personaName(s) { return typeof s === "string" && s.trim().length >= 1 && s.length <= 64; },
+    thought(s) { return typeof s === "string" && s.trim().length >= 1 && s.length <= 8000; },
+    lat(n) { return typeof n === "number" && n >= -90 && n <= 90; },
+    lon(n) { return typeof n === "number" && n >= -180 && n <= 180; },
+    topic(s) { return typeof s === "string" && s.trim().length >= 1 && s.length <= 64; },
+  };
+
+  /** Reject prototype-pollution keys when handling parsed objects. */
+  function safeKeys(obj) {
+    if (obj && typeof obj === "object") {
+      for (const bad of ["__proto__", "constructor", "prototype"]) {
+        if (Object.prototype.hasOwnProperty.call(obj, bad)) delete obj[bad];
+      }
+    }
+    return obj;
+  }
+
+  /** Frame-busting: if loaded inside a foreign frame, break out (anti-clickjacking). */
+  function preventFraming() {
+    try {
+      if (global.top !== global.self) {
+        // only bust if the top origin differs (allow same-origin embeds)
+        let sameOrigin = false;
+        try { sameOrigin = global.top.location.origin === global.location.origin; } catch (_) { sameOrigin = false; }
+        if (!sameOrigin) global.top.location = global.location.href;
+      }
+    } catch (_) { /* cross-origin access throws — already protected by CSP */ }
+  }
+
+  /** Inject a restrictive CSP via meta (belt-and-suspenders with server headers). */
+  function applyCSP() {
+    if (document.querySelector('meta[http-equiv="Content-Security-Policy"]')) return;
+    const m = document.createElement("meta");
+    m.httpEquiv = "Content-Security-Policy";
+    m.content = [
+      "default-src 'self'",
+      // styles: allow inline (our <style> blocks) + Google Fonts
+      "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+      "font-src 'self' https://fonts.gstatic.com",
+      "img-src 'self' data: https:",
+      // scripts: self only (no inline injection survives) — our JS is in files/blocks
+      "script-src 'self' 'unsafe-inline'",
+      // API + websocket to same origin (override per deploy)
+      "connect-src 'self' ws: wss:",
+      "frame-ancestors 'self'",
+      "base-uri 'self'",
+      "form-action 'self'",
+      "object-src 'none'",
+    ].join("; ");
+    document.head.appendChild(m);
+  }
+
+  /** One-call hardening for every page. */
+  function harden() {
+    applyCSP();
+    preventFraming();
+  }
+
+  global.sec = Object.freeze({
+    esc, el, setText, safeUrl, validate, safeKeys, preventFraming, applyCSP, harden,
+  });
+})(window);
+
+</script>
+<script>
+/* === api.js (inlined) === */
+/* buddle frontend API client — single source of truth for backend calls.
+ *
+ * Every field name / route here matches the FastAPI backend exactly (verified
+ * against the Pydantic schemas and router paths). Screens import this instead
+ * of hand-writing fetch() calls, so the front<->back contract lives in one place.
+ *
+ * Auth: JWT bearer. Tokens are cached in memory and write-through persisted to
+ * sessionStorage (tab-scoped) so page navigation and refresh keep the session.
+ * sessionStorage over localStorage on purpose: it dies with the tab, which
+ * shrinks the blast radius of any XSS-stolen token and avoids cross-tab leaks.
+ * Base URL defaults to same-origin; override with window.BUDDLE_API_BASE.
+ */
+(function (global) {
+  "use strict";
+
+  const BASE = global.BUDDLE_API_BASE || "";
+  const TOKEN_KEY = "buddle.auth.v1";
+  let accessToken = null;
+  let refreshToken = null;
+
+  // Hydrate once per page load. Storage may be unavailable (private mode,
+  // blocked) — in that case we silently fall back to memory-only tokens.
+  (function hydrate() {
+    try {
+      const raw = global.sessionStorage && global.sessionStorage.getItem(TOKEN_KEY);
+      if (!raw) return;
+      const t = JSON.parse(raw);
+      if (t && typeof t.a === "string") {
+        accessToken = t.a;
+        refreshToken = typeof t.r === "string" ? t.r : null;
+      }
+    } catch (_) { /* memory-only */ }
+  })();
+
+  function persistTokens() {
+    try {
+      if (!global.sessionStorage) return;
+      if (accessToken) {
+        global.sessionStorage.setItem(TOKEN_KEY, JSON.stringify({ a: accessToken, r: refreshToken }));
+      } else {
+        global.sessionStorage.removeItem(TOKEN_KEY);
+      }
+    } catch (_) { /* quota/blocked → memory-only */ }
+  }
+
+  function setTokens(access, refresh) {
+    accessToken = access || null;
+    if (refresh !== undefined) refreshToken = refresh || null;
+    persistTokens();
+  }
+  function clearTokens() { accessToken = null; refreshToken = null; persistTokens(); }
+
+  async function request(method, path, body, { auth = true, retry = true } = {}) {
+    const headers = { "Content-Type": "application/json" };
+    if (auth && accessToken) headers["Authorization"] = `Bearer ${accessToken}`;
+    const res = await fetch(BASE + path, {
+      method,
+      headers,
+      body: body != null ? JSON.stringify(body) : undefined,
+    });
+
+    // transparent refresh on 401 (once)
+    if (res.status === 401 && auth && retry && refreshToken) {
+      const ok = await tryRefresh();
+      if (ok) return request(method, path, body, { auth, retry: false });
+    }
+    if (!res.ok) {
+      let detail = res.statusText;
+      try { const j = await res.json(); detail = j.message || j.detail || detail; } catch (_) {}
+      throw new ApiError(res.status, detail);
+    }
+    if (res.status === 204) return null;
+    const ct = res.headers.get("content-type") || "";
+    return ct.includes("application/json") ? res.json() : res.text();
+  }
+
+  class ApiError extends Error {
+    constructor(status, message) { super(message); this.name = "ApiError"; this.status = status; }
+  }
+
+  async function tryRefresh() {
+    try {
+      const data = await request("POST", "/v1/auth/refresh",
+        { refresh_token: refreshToken }, { auth: false, retry: false });
+      setTokens(data.access_token, data.refresh_token);
+      return true;
+    } catch (_) { clearTokens(); return false; }
+  }
+
+  /* ── Auth ──────────────────────────────────────────────── */
+  const auth = {
+    // SignupRequest: { email, password, password_confirm }
+    async signup(email, password, passwordConfirm) {
+      return request("POST", "/v1/auth/signup",
+        { email, password, password_confirm: passwordConfirm }, { auth: false });
+    },
+    // LoginRequest: { email, password } -> { access_token, refresh_token }
+    async login(email, password) {
+      const data = await request("POST", "/v1/auth/login",
+        { email, password }, { auth: false });
+      setTokens(data.access_token, data.refresh_token);
+      return data;
+    },
+    // Revoke the refresh-token family server-side, then drop local tokens.
+    // Network failures are ignored: the family still expires naturally.
+    async logout() {
+      const rt = refreshToken;
+      try {
+        if (rt && accessToken) {
+          await request("POST", "/v1/auth/logout", { refresh_token: rt }, { retry: false });
+        }
+      } catch (_) { /* best-effort revoke */ }
+      clearTokens();
+    },
+    isAuthed() { return !!accessToken; },
+  };
+
+  /* Soft auth gate for screens.
+   *  - token present              → resolves true (render live).
+   *  - no token + backend up      → redirects to login.html?next=… (resolves true;
+   *                                  navigation is already underway).
+   *  - no token + backend down    → resolves false (screen keeps offline demo mode).
+   * This preserves the "open the file standalone and get a demo" property. */
+  async function requireAuth(next) {
+    if (accessToken) return true;
+    let backendUp = false;
+    try {
+      const ctl = new AbortController();
+      const timer = setTimeout(() => ctl.abort(), 1500);
+      const res = await fetch(BASE + "/health", { signal: ctl.signal });
+      clearTimeout(timer);
+      backendUp = res.ok;
+    } catch (_) { backendUp = false; }
+    if (backendUp) {
+      const target = next || (location.pathname.split("/").pop() + location.search);
+      location.replace(`login.html?next=${encodeURIComponent(target)}`);
+      return true;
+    }
+    return false;
+  }
+
+  /* ── Users ─────────────────────────────────────────────── */
+  const users = {
+    me() { return request("GET", "/v1/users/me"); },
+    update(patch) { return request("PATCH", "/v1/users/me", patch); },
+  };
+
+  /* ── Personas (location merged into create/update) ─────── */
+  const personas = {
+    list() { return request("GET", "/v1/personas"); },
+    quota() { return request("GET", "/v1/personas/quota"); },
+    models() { return request("GET", "/v1/persona-models"); },
+    get(id) { return request("GET", `/v1/personas/${id}`); },
+    // PersonaCreate: { name, model_key, interest_tag_ids[], location_sharing, location_lat, location_lon }
+    create({ name, modelKey, interestTagIds = [], locationSharing = false, lat = null, lon = null }) {
+      return request("POST", "/v1/personas", {
+        name, model_key: modelKey, interest_tag_ids: interestTagIds,
+        location_sharing: locationSharing, location_lat: lat, location_lon: lon,
+      });
+    },
+    // PersonaUpdate: any subset of the above + is_active + preferred_language
+    update(id, patch) {
+      const body = {};
+      if (patch.name !== undefined) body.name = patch.name;
+      if (patch.modelKey !== undefined) body.model_key = patch.modelKey;
+      if (patch.interestTagIds !== undefined) body.interest_tag_ids = patch.interestTagIds;
+      if (patch.isActive !== undefined) body.is_active = patch.isActive;
+      if (patch.locationSharing !== undefined) body.location_sharing = patch.locationSharing;
+      if (patch.lat !== undefined) body.location_lat = patch.lat;
+      if (patch.lon !== undefined) body.location_lon = patch.lon;
+      return request("PATCH", `/v1/personas/${id}`, body);
+    },
+    remove(id) { return request("DELETE", `/v1/personas/${id}`); },
+  };
+
+  /* ── Posts (compose) ───────────────────────────────────── */
+  const posts = {
+    // PostCreate: { persona_id, content_raw, visibility: "public"|"private" }
+    // NOTE: user posts go to /v1/posts. POST /v1/plaza/posts is the *agent*
+    // route (X-Agent-Key auth) — wiring it here returns 401 for users.
+    create({ personaId, contentRaw, visibility = "public" }) {
+      return request("POST", "/v1/posts", {
+        persona_id: personaId, content_raw: contentRaw, visibility,
+      });
+    },
+    get(id) { return request("GET", `/v1/posts/${id}`); },
+    like(id) { return request("PUT", `/v1/plaza/posts/${id}/like`); },
+    unlike(id) { return request("DELETE", `/v1/plaza/posts/${id}/like`); },
+    comments(id) { return request("GET", `/v1/plaza/posts/${id}/comments`); },
+    addComment(id, content, kind = "inform") {
+      return request("POST", `/v1/plaza/posts/${id}/comments`, { content, kind });
+    },
+  };
+
+  /* ── Feed / Inbox ──────────────────────────────────────── */
+  const feed = {
+    list(cursor, tag) {
+      const qs = new URLSearchParams();
+      if (cursor) qs.set("cursor", cursor);
+      if (tag && tag !== "전체") qs.set("tag", tag);
+      const q = qs.toString();
+      return request("GET", `/v1/feed${q ? `?${q}` : ""}`);
+    },
+  };
+  const inbox = {
+    list(cursor) { return request("GET", `/v1/inbox${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ""}`); },
+    listFor(personaId, cursor) {
+      return request("GET", `/v1/inbox/persona/${personaId}${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ""}`);
+    },
+    seen(id) { return request("POST", `/v1/inbox/${id}/seen`); },
+  };
+
+  /* ── Sessions (chat) ───────────────────────────────────── */
+  const sessions = {
+    list(personaId) { return request("GET", `/v1/personas/${personaId}/sessions`); },
+    create(personaId, title, topic) {
+      return request("POST", `/v1/personas/${personaId}/sessions`, { title, topic: topic || null });
+    },
+    messages(personaId, sessionId, limit = 40) {
+      return request("GET", `/v1/personas/${personaId}/sessions/${sessionId}/messages?limit=${limit}`);
+    },
+    remove(personaId, sessionId) {
+      return request("DELETE", `/v1/personas/${personaId}/sessions/${sessionId}`);
+    },
+  };
+
+  /* ── Knowledge context (chat reference material) ───────── */
+  const knowledge = {
+    context(personaId, topic, limit = 8) {
+      return request("GET", `/v1/personas/${personaId}/context?topic=${encodeURIComponent(topic)}&limit=${limit}`);
+    },
+    insights(personaId, topic) {
+      return request("GET", `/v1/personas/${personaId}/context/insights?topic=${encodeURIComponent(topic)}`);
+    },
+  };
+
+  /* ── Proximity (nearby matching) ───────────────────────── */
+  const tags = {
+    list({ q = null, limit = 50 } = {}) {
+      const qs = new URLSearchParams();
+      if (q) qs.set("q", q);
+      qs.set("limit", String(limit));
+      return request("GET", `/v1/tags?${qs.toString()}`);
+    },
+  };
+
+  const debate = {
+    // Topic debate dashboard (conversation axes, stance, trend).
+    dashboard(tagId) {
+      return request("GET", `/v1/topics/${tagId}/debate`);
+    },
+    // Promote a post into a debate topic seed (글을 토론 씨앗으로).
+    start(postId, topicName) {
+      return request("POST", `/v1/posts/${postId}/debate-topic`,
+        { topic_name: topicName || null });
+    },
+  };
+
+  const contextNotes = {
+    list(postId) {
+      return request("GET", `/v1/posts/${postId}/context-notes`);
+    },
+  };
+
+  const proximity = {
+    nearby(personaId, limit = 20) {
+      return request("GET", `/v1/proximity/personas/${personaId}/nearby?limit=${limit}`);
+    },
+    setLocation(personaId, { lat, lon, sharing }) {
+      return request("PUT", `/v1/proximity/personas/${personaId}/location`,
+        { lat, lon, sharing });
+    },
+  };
+
+  /* ── Dialogue WebSocket (chat live) ────────────────────── */
+  function openDialogue(personaId, { onMessage, onOpen, onClose } = {}) {
+    const proto = location.protocol === "https:" ? "wss:" : "ws:";
+    const wsBase = BASE.replace(/^https?:/, proto) || `${proto}//${location.host}`;
+    const ws = new WebSocket(`${wsBase}/v1/ws/dialogue/${personaId}`);
+    ws.addEventListener("open", () => {
+      // first frame authenticates (WS auth via first message, not query)
+      if (accessToken) ws.send(JSON.stringify({ type: "auth", token: accessToken }));
+      onOpen && onOpen();
+    });
+    ws.addEventListener("message", (e) => {
+      let msg; try { msg = JSON.parse(e.data); } catch (_) { return; }
+      onMessage && onMessage(msg);
+    });
+    ws.addEventListener("close", () => onClose && onClose());
+    return {
+      socket: ws,
+      // ClientUserMessage: { type:"user_message", content, session_id? }
+      send(content, sessionId) {
+        ws.send(JSON.stringify({ type: "user_message", content, session_id: sessionId || null }));
+      },
+      close() { ws.close(); },
+    };
+  }
+
+  global.buddle = {
+    ApiError, setTokens, clearTokens, requireAuth,
+    auth, users, personas, tags, posts, feed, inbox, sessions, knowledge, proximity, debate, contextNotes,
+    openDialogue,
+  };
+})(window);
+
+
+
+
+
+
+</script>
+<link rel="stylesheet" href="buddle.css">
+<style>
+  
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{
+    font-family:var(--body);color:var(--ink);min-height:100vh;
+    background:radial-gradient(900px 600px at 80% -10%, rgba(61,138,107,.06) 0%, transparent 60%),#FBFBFA;-webkit-font-smoothing:antialiased;
+  }
+  .phone{max-width:460px;margin:0 auto;min-height:100vh;background:rgba(255,255,255,.8);backdrop-filter:blur(8px);display:flex;flex-direction:column;}
+  header{display:flex;align-items:center;gap:12px;padding:14px 16px;border-bottom:1px solid var(--line);position:sticky;top:0;background:rgba(255,255,255,.85);backdrop-filter:blur(10px);z-index:20;}
+  .back{width:38px;height:38px;border-radius:14px;border:1px solid var(--line);background:var(--surface);display:grid;place-items:center;cursor:pointer;flex:none;}
+  .back svg{width:19px;height:19px;stroke:var(--gold);}
+  header h1{font-family:var(--display);font-weight:600;font-size:19px;flex:1;color:var(--ink);}
+  .debate-btn{display:flex;align-items:center;gap:6px;flex:none;font-family:var(--body);font-size:13px;font-weight:600;color:var(--willow-press);background:var(--willow-wash);border:1px solid transparent;border-radius:var(--r-pill);padding:7px 13px;cursor:pointer;transition:background var(--dur,.2s) var(--ease,ease);}
+  .debate-btn:hover{background:#E4E9FE;}
+  .debate-btn svg{width:16px;height:16px;}
+
+  .body{flex:1;overflow-y:auto;padding:14px 16px 28px;}
+
+  /* topic chips */
+  .topics{display:flex;gap:8px;overflow-x:auto;padding-bottom:12px;scrollbar-width:none;}
+  .topics::-webkit-scrollbar{display:none;}
+  .tchip{flex:none;padding:8px 14px;border-radius:999px;background:var(--paper-sunken);border:1px solid var(--line);font-size:13.5px;font-weight:500;color:var(--ink-soft);cursor:pointer;white-space:nowrap;transition:all .15s;}
+  .tchip.on{background:linear-gradient(135deg,#6F8FF5 0%,#A98DEE 55%,#F0AFDA 100%);color:#fff;border:1px solid rgba(255,255,255,.18);box-shadow:0 6px 16px rgba(108,100,225,.28),inset 0 1px 0 rgba(255,255,255,.45);}
+
+  /* post cards */
+  .card{background:var(--surface);border:1px solid var(--line);border-radius:19px;padding:16px;margin-bottom:12px;cursor:pointer;transition:transform .12s,border-color .15s;}
+  .card:active{transform:scale(.99);}
+  .card .by{display:flex;align-items:center;gap:9px;margin-bottom:10px;}
+  .by .av{width:34px;height:34px;border-radius:13px;flex:none;display:grid;place-items:center;font-family:var(--display);font-weight:600;font-size:15px;color:#fff;border:1px solid rgba(255,255,255,.18);box-shadow:0 4px 12px rgba(110,124,240,.20),inset 0 1px 0 rgba(255,255,255,.5);}
+  .by .who{flex:1;min-width:0;}
+  .by .who strong{display:block;font-size:14px;font-weight:600;color:var(--ink);}
+  .by .who small{font-size:11.5px;color:var(--ink-faint);}
+  .lang-badge{font-size:10px;font-weight:600;padding:3px 8px;border-radius:999px;background:rgba(92,124,240,.12);color:var(--gold);flex:none;}
+  .card .excerpt{font-size:14.5px;line-height:1.55;color:var(--ink);display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;}
+  .card .foot{display:flex;align-items:center;gap:16px;margin-top:12px;font-size:12.5px;color:var(--ink-soft);}
+  .card .foot .it{display:flex;align-items:center;gap:5px;}
+  .card .foot svg{width:14px;height:14px;stroke:var(--ink-soft);fill:none;}
+  /* 토론 진입 — 카드 오른쪽 하단, X/Reddit식 액션 버튼 */
+  .card .discuss{margin-left:auto;display:flex;align-items:center;gap:5px;padding:6px 13px;border-radius:999px;
+    border:0;background:var(--accent-grad);color:#fff;font-family:var(--body);font-size:12px;font-weight:600;
+    cursor:pointer;box-shadow:var(--shadow-pop-sm);transition:transform .12s;}
+  .card .discuss:active{transform:scale(.95);}
+  .card .discuss svg{width:13px;height:13px;stroke:#fff;fill:none;stroke-width:2;}
+  .card .tags{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;}
+  .card .tags .t{font-size:11px;color:var(--gold);background:rgba(92,124,240,.08);padding:3px 9px;border-radius:999px;}
+
+  .loading,.empty{text-align:center;padding:40px 20px;color:var(--ink-soft);font-size:14px;}
+  .more{width:100%;padding:13px;border:1px solid var(--line);border-radius:16px;background:var(--surface);color:var(--gold);font-family:var(--body);font-size:14px;font-weight:600;cursor:pointer;margin-top:4px;}
+
+  /* ===== DETAIL ===== */
+  .detail .by{display:flex;align-items:center;gap:11px;margin-bottom:16px;}
+  .detail .by .av{width:46px;height:46px;border-radius:16px;font-size:19px;}
+  .lang-tabs{display:inline-flex;background:var(--paper-sunken);border-radius:999px;padding:3px;margin-bottom:14px;}
+  .lang-tabs button{border:0;background:transparent;font-family:var(--body);font-size:13.5px;font-weight:600;color:var(--ink-soft);padding:8px 16px;border-radius:999px;cursor:pointer;}
+  .lang-tabs button.on{background:linear-gradient(135deg,#6F8FF5 0%,#A98DEE 55%,#F0AFDA 100%);color:#fff;box-shadow:0 6px 16px rgba(108,100,225,.28),inset 0 1px 0 rgba(255,255,255,.45);}
+  .post-text{font-size:16px;line-height:1.7;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:19px;padding:18px;}
+  .actions{display:flex;gap:10px;margin:16px 0;}
+  .act{flex:1;display:flex;align-items:center;justify-content:center;gap:7px;padding:12px;border:1px solid var(--line);border-radius:16px;background:var(--surface);color:var(--ink-soft);font-family:var(--body);font-size:14px;font-weight:600;cursor:pointer;transition:all .15s;}
+  .act svg{width:17px;height:17px;stroke:currentColor;fill:none;}
+  .act.liked{color:var(--coral);border-color:var(--coral);background:rgba(110,124,240,.22);}
+  .act.liked svg{fill:var(--coral);}
+
+  /* comments */
+  .c-title{font-family:var(--display);font-size:17px;font-weight:600;color:var(--ink);margin:22px 0 12px;}
+  .comment{display:flex;gap:9px;padding:12px 0;border-top:1px solid var(--line);}
+  .comment .av{width:30px;height:30px;border-radius:12px;flex:none;display:grid;place-items:center;font-family:var(--display);font-weight:600;font-size:13px;color:#fff;align-self:flex-start;border:1px solid rgba(255,255,255,.18);box-shadow:0 4px 12px rgba(110,124,240,.20),inset 0 1px 0 rgba(255,255,255,.5);}
+  .comment .c-body{flex:1;min-width:0;}
+  .comment .c-body .c-head{display:flex;align-items:center;gap:7px;margin-bottom:3px;}
+  .comment .c-body strong{font-size:13px;font-weight:600;color:var(--ink);}
+  .comment .c-kind{font-size:9.5px;font-weight:600;padding:2px 7px;border-radius:999px;background:rgba(92,124,240,.10);color:var(--gold);}
+  .comment .c-text{font-size:13.5px;line-height:1.5;color:var(--ink-soft);}
+  /* argument-AI entry buttons */
+  .ai-row{display:flex;gap:8px;margin:14px 0;flex-wrap:wrap;}
+  .ai-act{flex:1;min-width:140px;display:flex;align-items:center;justify-content:center;gap:7px;padding:11px 12px;border-radius:13px;border:1px solid var(--willow);background:var(--willow-wash);color:var(--willow-press);font-family:var(--body);font-size:13px;font-weight:600;cursor:pointer;transition:background var(--dur,.2s) var(--ease,ease);}
+  .ai-act:hover{background:#E4E9FE;}
+  .ai-act svg{width:16px;height:16px;}
+  /* "이 화제를 토론으로 발전시키기" — debate entry from a post */
+  .debate-entry{margin:14px 0;padding:13px 14px;background:var(--paper-sunken);border:1px solid var(--line);border-radius:14px;}
+  .de-head{display:flex;align-items:center;gap:7px;font-size:13px;font-weight:600;color:var(--ink-soft);margin-bottom:10px;}
+  .de-head svg{width:16px;height:16px;stroke:var(--willow);}
+  .de-chips{display:flex;gap:8px;flex-wrap:wrap;}
+  .de-chip{display:inline-flex;align-items:center;gap:4px;padding:8px 12px;border-radius:999px;border:1px solid var(--willow);background:var(--paper-raised);color:var(--willow-press);font-family:var(--body);font-size:13px;font-weight:600;cursor:pointer;transition:background var(--dur,.2s) var(--ease,ease);}
+  .de-chip:hover{background:var(--willow-wash);}
+  .de-chip svg{width:13px;height:13px;stroke:currentColor;}
+  .de-chip.de-seed{border-style:dashed;background:transparent;}
+  .de-chip.de-seed:hover{background:var(--willow-wash);}
+  /* context notes */
+  #ctxNotes{margin:6px 0 14px;}
+  .ctx-title{font-size:13px;font-weight:600;color:var(--ink-faint);margin-bottom:8px;}
+  .ctx-note{display:flex;gap:9px;align-items:flex-start;padding:10px 12px;background:var(--paper-sunken);border:1px solid var(--line);border-radius:11px;margin-bottom:7px;}
+  .ctx-kind{flex:none;font-size:10.5px;font-weight:700;color:var(--willow-press);background:var(--willow-wash);border-radius:999px;padding:2px 8px;margin-top:1px;}
+  .ctx-body{font-size:13px;line-height:1.5;color:var(--ink-soft);}
+
+  .composer{position:sticky;bottom:0;background:rgba(255,255,255,.9);backdrop-filter:blur(10px);border-top:1px solid var(--line);padding:12px 16px calc(12px + env(safe-area-inset-bottom));margin:0 -16px -28px;}
+  .kind-row{display:flex;gap:7px;margin-bottom:9px;}
+  .kind{padding:6px 12px;border-radius:999px;border:1px solid var(--line);background:rgba(255,255,255,.88);font-size:12px;font-weight:600;color:var(--ink-soft);cursor:pointer;}
+  .kind.on{border-color:var(--coral);background:rgba(110,124,240,.22);color:var(--gold);}
+  .c-input-row{display:flex;align-items:flex-end;gap:9px;}
+  .c-input-row textarea{flex:1;border:1px solid var(--line);border-radius:16px;padding:11px 14px;font-family:var(--body);font-size:14.5px;resize:none;max-height:100px;line-height:1.4;color:var(--ink);background:var(--paper-sunken);}
+  .c-input-row textarea:focus{outline:none;border-color:var(--coral);}
+  .c-send{width:42px;height:42px;border-radius:15px;border:1px solid rgba(255,255,255,.18);background:linear-gradient(135deg,#6F8FF5 0%,#A98DEE 55%,#F0AFDA 100%);display:grid;place-items:center;cursor:pointer;flex:none;box-shadow:0 6px 16px rgba(108,100,225,.28),inset 0 1px 0 rgba(255,255,255,.45);}
+  .c-send svg{width:19px;height:19px;stroke:#fff;fill:none;}
+  .c-send:disabled{opacity:.5;}
+
+  /* 인스타식 글쓰기 배너 — 피드 하단 sticky, (+)로 만들기 화면 진입 */
+  .compose-banner{position:sticky;bottom:0;z-index:15;display:flex;align-items:center;gap:11px;
+    margin:0 -16px -28px;padding:12px 16px calc(12px + env(safe-area-inset-bottom));
+    background:rgba(255,255,255,.92);backdrop-filter:saturate(180%) blur(12px);border-top:1px solid var(--line);}
+  .cb-ava{width:38px;height:38px;border-radius:13px;flex:none;display:grid;place-items:center;
+    font-family:var(--display);font-weight:600;font-size:16px;color:#fff;background:var(--accent-grad);box-shadow:var(--shadow-pop-sm);}
+  .cb-prompt{flex:1;height:42px;border-radius:21px;border:1px solid var(--line-strong);background:var(--paper-sunken);
+    display:flex;align-items:center;padding:0 16px;color:var(--ink-faint);font-size:14px;cursor:pointer;transition:background .15s;}
+  .cb-prompt:hover{background:var(--paper-raised);}
+  .cb-plus{width:46px;height:46px;border-radius:16px;flex:none;border:0;background:var(--accent-grad);
+    display:grid;place-items:center;cursor:pointer;box-shadow:var(--shadow-pop-sm);transition:transform .12s;}
+  .cb-plus:active{transform:scale(.94);}
+  .cb-plus svg{width:22px;height:22px;stroke:#fff;fill:none;stroke-width:2.4;}
+  /* "이어가던 대화" 빠른 진입 줄 — 배너 위 작은 칩들 */
+  .cb-resume{position:sticky;bottom:67px;z-index:15;display:flex;gap:8px;overflow-x:auto;margin:0 -16px;
+    padding:10px 16px;scrollbar-width:none;background:linear-gradient(180deg,transparent,rgba(255,255,255,.9) 40%);}
+  .cb-resume::-webkit-scrollbar{display:none;}
+  .cb-rchip{flex:none;display:flex;align-items:center;gap:7px;padding:7px 13px 7px 7px;border-radius:999px;
+    background:var(--paper-raised);border:1px solid var(--line);cursor:pointer;transition:border-color .15s;white-space:nowrap;}
+  .cb-rchip:hover{border-color:var(--line-strong);}
+  .cb-rchip .ra{width:26px;height:26px;border-radius:9px;flex:none;display:grid;place-items:center;
+    font-family:var(--display);font-weight:600;font-size:12px;color:#fff;background:var(--accent-grad);}
+  .cb-rchip .rt{display:flex;flex-direction:column;line-height:1.15;}
+  .cb-rchip .rt b{font-size:12.5px;font-weight:600;color:var(--ink);}
+  .cb-rchip .rt small{font-size:10.5px;color:var(--ink-faint);}
+
+  .hidden{display:none;}
+</style>
+</head>
+<body>
+<div class="phone">
+  <header>
+    <button class="back" aria-label="뒤로" onclick="onBack()">
+      <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
+    </button>
+    <h1 id="title">피드</h1>
+    <button class="debate-btn" id="debateBtn" style="display:none" aria-label="토론 대시보드 보기">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg>
+      <span>토론</span>
+    </button>
+  </header>
+
+  <div class="body">
+    <!-- ===== LIST VIEW ===== -->
+    <div id="listView">
+      <div class="topics" id="topics"></div>
+      <div id="feedList"><div class="loading">불러오는 중…</div></div>
+    </div>
+
+    <!-- ===== DETAIL VIEW ===== -->
+    <div id="detailView" class="detail hidden"></div>
+  </div>
+
+  <!-- 이어가던 대화 (배너 위 빠른 진입) -->
+  <div class="cb-resume" id="resumeRow"></div>
+  <!-- 인스타식 글쓰기 배너 -->
+  <div class="compose-banner" id="composeBanner">
+    <div class="cb-ava" id="cbAva">초</div>
+    <div class="cb-prompt" id="cbPrompt" role="button" tabindex="0">생각을 적어볼까요…</div>
+    <button class="cb-plus" id="cbPlus" aria-label="새 글 만들기">
+      <svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
+    </button>
+  </div>
+</div>
+
+<script>
+  sec.harden();
+
+  const $ = (id) => document.getElementById(id);
+  // 모든 페르소나가 하나의 시그니처 그라데이션 정체성을 공유 (이니셜만 다름)
+  const palOf = (_s) => ["var(--accent-grad)", "#fff"];
+  function hash(s){let h=0;for(let i=0;i<s.length;i++){h=(h<<5)-h+s.charCodeAt(i)|0;}return h;}
+
+  const params = new URLSearchParams(location.search);
+  let postId = params.get("post");
+
+  // demo fallback feed (offline preview)
+  const DEMO_TOPICS = ["전체","일상","산책","음악","독서","글쓰기"];
+  const DEMO_FEED = [
+    { id:"d1", source_persona:{name:"초록"}, content_transformed:"오늘 동네를 천천히 걸었습니다. 강가를 따라 이어지는 산책 코스가 특히 마음에 들었어요. 한적한 길을 함께 걸으며 이야기 나눌 분이 있다면 좋겠습니다.", source_language:"ko", tags:["산책","일상"], like_count:12, comment_count:3 },
+    { id:"d2", source_persona:{name:"물결"}, content_transformed:"요즘 듣는 앨범이 하나 있는데, 비 오는 날 창가에서 들으면 마음이 차분해져요. 잔잔한 피아노와 약간의 재즈가 섞인 곡들이에요.", source_language:"ko", tags:["음악"], like_count:8, comment_count:1 },
+    { id:"d3", source_persona:{name:"햇살"}, content_transformed:"A short story I've been writing finally found its ending today. Sometimes the quiet mornings give you the words you've been searching for.", source_language:"en", tags:["글쓰기","독서"], like_count:21, comment_count:5 },
+  ];
+  const DEMO_POST = {
+    id:"d1", source_persona:{name:"초록"}, source_language:"ko",
+    content_transformed:"오늘 동네를 천천히 걸었습니다. 강가를 따라 이어지는 산책 코스가 특히 마음에 들었어요. 한적한 길을 함께 걸으며 이야기 나눌 분이 있다면 좋겠습니다. 관심 있으신 분, 편하게 말 걸어 주세요.",
+    translations:{ en:"I took a slow walk around my neighborhood today. The riverside trail was especially lovely. I'd love to find someone to walk these quiet paths and chat along the way. Feel free to reach out." },
+    tags:["산책","일상"], like_count:12,
+  };
+  const DEMO_COMMENTS = [
+    { author:"물결", kind:"empathize", content:"강가 산책 정말 좋죠. 저도 아침에 자주 걸어요." },
+    { author:"햇살", kind:"question", content:"어느 구간을 주로 걸으세요? 추천 부탁드려요." },
+  ];
+
+  const KIND_LABEL = { inform:"정보", empathize:"공감", question:"질문" };
+  const langName = (l) => (l === "en" ? "English" : "한국어");
+  // 백엔드 정합: FeedPage.items[].tags = [{id,name}] / created_at = ISO 문자열.
+  function tagName(t) { return (t && typeof t === "object") ? (t.name || "") : String(t || ""); }
+  function relTime(iso) {
+    if (!iso) return "방금";
+    const sec = (Date.now() - new Date(iso).getTime()) / 1000;
+    if (sec < 60) return "방금";
+    if (sec < 3600) return `${Math.floor(sec / 60)}분 전`;
+    if (sec < 86400) return `${Math.floor(sec / 3600)}시간 전`;
+    return `${Math.floor(sec / 86400)}일 전`;
+  }
+
+  /* ── LIST ── */
+  let currentTopic = "전체";
+
+  // Show the "토론" button only when a specific topic is active, and make it
+  // open that topic's debate dashboard (resolving the tag name → id).
+  function updateDebateButton() {
+    const btn = $("debateBtn");
+    if (!btn) return;
+    btn.style.display = (currentTopic && currentTopic !== "전체") ? "" : "none";
+  }
+
+  // Open a topic's debate dashboard from a post detail. If we already have the
+  // tag id (post.tags = [{id, name}]) use it; otherwise resolve name → id via
+  // the tags API. Falls back to a name-only (demo) dashboard.
+  // Seed a debate FROM a post: name the topic, promote the post (server links
+  // the tag + extracts this post's arguments as the first axis), then open the
+  // dashboard. For a post that already has tags, a default name is suggested.
+  async function startDebateFromPost(post) {
+    const suggested = (Array.isArray(post.tags) && post.tags.length)
+      ? "" : suggestTopicName(post);
+    const name = (window.prompt("토론 화제 이름을 정해주세요", suggested) || "").trim();
+    if (!name) return;
+    const authed = buddle.auth && buddle.auth.isAuthed && buddle.auth.isAuthed();
+    if (!authed || String(post.id).startsWith("d")) {
+      // demo / offline: go straight to a name-only dashboard.
+      location.href = "debate-dashboard.html?name=" + encodeURIComponent(name);
+      return;
+    }
+    try {
+      const res = await buddle.debate.start(post.id, name);
+      const qs = new URLSearchParams();
+      if (res && res.tag_id) qs.set("tag", res.tag_id);
+      qs.set("name", (res && res.topic_name) || name);
+      location.href = "debate-dashboard.html?" + qs.toString();
+    } catch (_) {
+      location.href = "debate-dashboard.html?name=" + encodeURIComponent(name);
+    }
+  }
+
+  // Suggest a topic name from the post's first sentence (trimmed).
+  function suggestTopicName(post) {
+    const txt = (textFor(post, curLang) || "").trim();
+    if (!txt) return "";
+    const firstSentence = txt.split(/[.!?\n]/)[0].trim();
+    return firstSentence.length > 20 ? firstSentence.slice(0, 20) : firstSentence;
+  }
+
+  async function openDebateForTag(name, tagId) {
+    if (!name) return;
+    let id = tagId;
+    if (!id) {
+      try {
+        const authed = buddle.auth && buddle.auth.isAuthed && buddle.auth.isAuthed();
+        if (authed) {
+          const res = await buddle.tags.list({ q: name, limit: 10 });
+          const arr = Array.isArray(res) ? res : (res && res.items) || [];
+          const match = arr.find(t => (t.name || "") === name) || arr[0];
+          if (match && match.id) id = match.id;
+        }
+      } catch (_) { /* fall through to name-only dashboard */ }
+    }
+    const qs = new URLSearchParams();
+    if (id) qs.set("tag", id);
+    qs.set("name", name);
+    location.href = "debate-dashboard.html?" + qs.toString();
+  }
+
+  async function openDebate() {
+    if (!currentTopic || currentTopic === "전체") return;
+    const name = currentTopic;
+    let tagId = null;
+    try {
+      const authed = buddle.auth && buddle.auth.isAuthed && buddle.auth.isAuthed();
+      if (authed) {
+        const res = await buddle.tags.list({ q: name, limit: 10 });
+        const arr = Array.isArray(res) ? res : (res && res.items) || [];
+        const match = arr.find(t => (t.name || "") === name) || arr[0];
+        if (match && match.id) tagId = match.id;
+      }
+    } catch (_) { /* fall through to demo dashboard */ }
+    const qs = new URLSearchParams();
+    if (tagId) qs.set("tag", tagId);
+    qs.set("name", name);
+    location.href = "debate-dashboard.html?" + qs.toString();
+  }
+
+  function renderTopics(topics) {
+    const box = $("topics"); box.innerHTML = "";
+    topics.forEach((t, i) => {
+      const chip = sec.el("div", { class: "tchip" + (t === currentTopic ? " on" : "") }, t);
+      chip.addEventListener("click", () => {
+        currentTopic = t;
+        [...box.children].forEach(c => c.classList.remove("on"));
+        chip.classList.add("on");
+        updateDebateButton();
+        nextCursor = null;
+        loadFeed();
+      });
+      box.appendChild(chip);
+    });
+  }
+
+  function postCard(item) {
+    const persona = (item.source_persona && item.source_persona.name) || "익명";
+    const [bg, fg] = palOf(persona);
+    const card = sec.el("div", { class: "card" });
+
+    const by = sec.el("div", { class: "by" });
+    const av = sec.el("div", { class: "av" }, persona.slice(0, 1));
+    av.style.background = bg; av.style.color = fg;
+    const who = sec.el("div", { class: "who" });
+    who.appendChild(sec.el("strong", null, persona));
+    who.appendChild(sec.el("small", null, item._when || relTime(item.created_at)));
+    by.appendChild(av); by.appendChild(who);
+    if (item.source_language) {
+      by.appendChild(sec.el("span", { class: "lang-badge" }, item.source_language === "en" ? "EN" : "KO"));
+    }
+
+    const ex = sec.el("div", { class: "excerpt" }, item.content_transformed || "");
+
+    const foot = sec.el("div", { class: "foot" });
+    if (item.like_count != null) foot.appendChild(metaItem("heart", item.like_count));
+    if (item.comment_count != null) foot.appendChild(metaItem("chat", item.comment_count));
+
+    // 토론 진입 버튼 — 이 글(첫 주장=화제)의 논증 그래프 대시보드로.
+    // X/Reddit처럼 카드에서 바로 토론으로 들어간다.
+    const discuss = sec.el("button", { class: "discuss", type: "button" });
+    discuss.innerHTML = `<svg viewBox="0 0 24 24"><path d="M21 11.5a8.4 8.4 0 0 1-8.5 8.5 8.6 8.6 0 0 1-3.8-.9L3 21l1.9-5.7a8.4 8.4 0 0 1-.9-3.8A8.4 8.4 0 0 1 12.5 3 8.4 8.4 0 0 1 21 11.5z"/></svg>토론`;
+    discuss.addEventListener("click", (e) => {
+      e.stopPropagation();  // 카드 클릭(상세 이동)과 분리
+      goDiscuss(item);
+    });
+    foot.appendChild(discuss);
+
+    card.appendChild(by); card.appendChild(ex);
+    card.appendChild(foot);
+
+    if (Array.isArray(item.tags) && item.tags.length) {
+      const tg = sec.el("div", { class: "tags" });
+      item.tags.slice(0, 4).forEach(t => tg.appendChild(sec.el("span", { class: "t" }, "#" + tagName(t))));
+      card.appendChild(tg);
+    }
+    card.addEventListener("click", () => {
+      // 상세는 소유자 전용 GET /v1/posts/{id}에 기대지 않도록, 본 아이템을 스태시해 넘긴다.
+      try { sessionStorage.setItem("buddle.feed.item." + item.id, JSON.stringify(item)); } catch (_) {}
+      location.href = `feed.html?post=${encodeURIComponent(item.id)}`;
+    });
+    return card;
+  }
+  // 글(첫 주장=화제)을 토론으로 — 논증 그래프 대시보드로 이동.
+  // 화제명: 첫 태그가 있으면 그것, 없으면 글 내용 앞부분을 화제로 삼는다.
+  function goDiscuss(item) {
+    const firstTag = Array.isArray(item.tags) && item.tags.length ? tagName(item.tags[0]) : "";
+    const fromText = (item.content_transformed || "").trim().slice(0, 40);
+    const topic = firstTag || fromText || "이 글의 토론";
+    const qs = new URLSearchParams({ name: topic });
+    // 백엔드 연결 시 글이 이미 토픽으로 승격됐다면 tag id를 함께 넘길 수 있다.
+    if (item.topic_tag_id) qs.set("tag", item.topic_tag_id);
+    location.href = "debate-dashboard.html?" + qs.toString();
+  }
+
+  function metaItem(icon, val) {
+    const it = sec.el("span", { class: "it" });
+    const svgNS = "http://www.w3.org/2000/svg";
+    const svg = document.createElementNS(svgNS, "svg");
+    svg.setAttribute("viewBox", "0 0 24 24");
+    const path = document.createElementNS(svgNS, "path");
+    path.setAttribute("stroke-width", "1.8");
+    path.setAttribute("stroke-linecap", "round");
+    path.setAttribute("stroke-linejoin", "round");
+    path.setAttribute("d", icon === "heart"
+      ? "M19 14c1.5-1.5 3-3.3 3-5.5A4.5 4.5 0 0 0 12 5 4.5 4.5 0 0 0 2 8.5C2 10.7 3.5 12.5 5 14l7 7z"
+      : "M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z");
+    svg.appendChild(path);
+    it.appendChild(svg);
+    it.appendChild(sec.el("span", null, String(val)));
+    return it;
+  }
+
+  let nextCursor = null;
+  let topicsRendered = false;
+  async function loadFeed(cursor) {
+    const box = $("feedList");
+    if (!cursor) box.innerHTML = '<div class="loading">불러오는 중…</div>';
+    const tagParam = currentTopic === "전체" ? null : currentTopic;
+    let items = DEMO_FEED, fromApi = false;
+    try {
+      // 서버사이드 태그 필터: 필터를 쿼리에 위임한다. 클라이언트에서 커서
+      // 페이지를 거르면 뒷페이지의 매칭이 조용히 누락돼 페이지네이션과
+      // "더 보기"가 깨지기 때문(백엔드 get_feed 주석과 동일한 이유).
+      const page = await buddle.feed.list(cursor, tagParam);
+      if (page && Array.isArray(page.items)) {
+        items = page.items; fromApi = true;
+        nextCursor = page.next_cursor || null;        // FeedPage.next_cursor
+      }
+    } catch (_) { nextCursor = null; /* offline → demo */ }
+
+    // 토픽 칩은 '전체' 첫 페이지에서 1회만 구성한다(필터된 페이지로 만들면
+    // 칩 목록이 그 태그만 남는 문제가 생긴다). 데모면 데모 태그로.
+    if (!topicsRendered && currentTopic === "전체" && !cursor) {
+      const names = [];
+      items.forEach(it => (it.tags || []).forEach(t => {
+        const n = tagName(t); if (n && !names.includes(n)) names.push(n);
+      }));
+      renderTopics(["전체", ...(names.length ? names.slice(0, 8) : DEMO_TOPICS.slice(1))]);
+      topicsRendered = true;
+    }
+
+    // 데모(offline) 폴백일 때만 클라이언트에서 거른다(서버 필터를 못 쓰므로).
+    const list = (!fromApi && tagParam)
+      ? items.filter(it => Array.isArray(it.tags) && it.tags.map(tagName).includes(tagParam))
+      : items;
+    if (!cursor) box.innerHTML = "";
+    const oldMore = $("feedMore"); if (oldMore) oldMore.remove();
+    if (!cursor && !list.length) { box.appendChild(sec.el("div", { class: "empty" }, "아직 글이 없어요.")); return; }
+    list.forEach(it => box.appendChild(postCard(it)));
+    if (fromApi && nextCursor) {
+      const more = sec.el("button", { class: "act", id: "feedMore" }, "더 보기");
+      more.style.margin = "12px auto"; more.style.display = "block";
+      more.addEventListener("click", () => loadFeed(nextCursor));
+      box.appendChild(more);
+    }
+  }
+
+  /* ── DETAIL ── */
+  let liked = false, curLang = "ko", postData = null;
+
+  async function loadDetail(id) {
+    $("title").textContent = "글";
+    $("listView").classList.add("hidden");
+    $("composeBanner").classList.add("hidden");
+    $("resumeRow").classList.add("hidden");
+    const view = $("detailView"); view.classList.remove("hidden");
+    view.innerHTML = '<div class="loading">불러오는 중…</div>';
+
+    // GET /v1/posts/{id}는 소유자 전용 — 타인의 공개 글은 404가 정상이다.
+    // 그래서 목록 클릭 시 스태시한 아이템을 1순위로 쓰고, 내가 쓴 글이면
+    // 소유자 조회로 보강, 그마저 없으면 피드 1페이지에서 찾는다.
+    let post = null, comments = [];
+    try {
+      const raw = sessionStorage.getItem("buddle.feed.item." + id);
+      if (raw) post = JSON.parse(raw);
+    } catch (_) {}
+    if (!post) {
+      try { post = await buddle.posts.get(id); }
+      catch (_) {
+        try {
+          const page = await buddle.feed.list();
+          post = ((page && page.items) || []).find(it => it.id === id) || null;
+        } catch (_) {}
+      }
+    }
+    if (!post) { post = DEMO_POST; comments = DEMO_COMMENTS; }
+    try {
+      const c = await buddle.posts.comments(id);
+      if (Array.isArray(c)) comments = c;
+    } catch (_) { /* offline → 기존 comments 유지 */ }
+    postData = post;
+    curLang = post.source_language || "ko";
+    renderDetail(post, Array.isArray(comments) ? comments : []);
+  }
+
+  // "이 글의 부가 맥락" — notes saved from argument-AI conversations.
+  async function loadContextNotes(postId, wrap) {
+    const authed = buddle.auth && buddle.auth.isAuthed && buddle.auth.isAuthed();
+    if (!authed || !postId || String(postId).startsWith("d")) return;  // skip demo ids
+    let notes = [];
+    try { notes = await buddle.contextNotes.list(postId); } catch (_) { return; }
+    if (!Array.isArray(notes) || notes.length === 0) return;
+    wrap.appendChild(sec.el("div", { class: "ctx-title" }, "이 글의 부가 맥락"));
+    const KIND = { context: "맥락", evidence: "근거", clarification: "정정" };
+    notes.forEach(n => {
+      const item = sec.el("div", { class: "ctx-note" });
+      item.appendChild(sec.el("span", { class: "ctx-kind" }, KIND[n.kind] || "맥락"));
+      item.appendChild(sec.el("span", { class: "ctx-body" }, n.content));
+      wrap.appendChild(item);
+    });
+  }
+
+  function renderDetail(post, comments) {
+    const view = $("detailView");
+    view.innerHTML = "";
+    const persona = (post.source_persona && post.source_persona.name) || "익명";
+    const [bg, fg] = palOf(persona);
+
+    // author
+    const by = sec.el("div", { class: "by" });
+    const av = sec.el("div", { class: "av" }, persona.slice(0, 1));
+    av.style.background = bg; av.style.color = fg;
+    const who = sec.el("div", { class: "who" });
+    who.appendChild(sec.el("strong", null, persona));
+    who.appendChild(sec.el("small", null, "원문 " + langName(post.source_language || "ko")));
+    by.appendChild(av); by.appendChild(who);
+    view.appendChild(by);
+
+    // language tabs (only if a translation exists)
+    const hasEn = (post.translations && post.translations.en) || post.source_language === "en";
+    const hasKo = post.source_language === "ko" || (post.translations && post.translations.ko);
+    if (hasEn && hasKo) {
+      const tabs = sec.el("div", { class: "lang-tabs" });
+      ["ko", "en"].forEach(l => {
+        const b = sec.el("button", { class: l === curLang ? "on" : "" }, langName(l));
+        b.addEventListener("click", () => {
+          curLang = l;
+          [...tabs.children].forEach(c => c.classList.remove("on"));
+          b.classList.add("on");
+          $("postText").textContent = textFor(post, l);
+        });
+        tabs.appendChild(b);
+      });
+      view.appendChild(tabs);
+    }
+
+    // body
+    const text = sec.el("div", { class: "post-text", id: "postText" }, textFor(post, curLang));
+    view.appendChild(text);
+
+    // actions
+    const actions = sec.el("div", { class: "actions" });
+    const likeBtn = sec.el("button", { class: "act" });
+    likeBtn.innerHTML = '<svg viewBox="0 0 24 24"><path stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M19 14c1.5-1.5 3-3.3 3-5.5A4.5 4.5 0 0 0 12 5 4.5 4.5 0 0 0 2 8.5C2 10.7 3.5 12.5 5 14l7 7z"/></svg>';
+    likeBtn.appendChild(sec.el("span", null, "좋아요" + (post.like_count != null ? ` ${post.like_count}` : "")));
+    likeBtn.addEventListener("click", () => toggleLike(post, likeBtn));
+    const reportBtn = sec.el("button", { class: "act" });
+    reportBtn.innerHTML = '<svg viewBox="0 0 24 24"><path stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><path stroke-width="1.8" stroke-linecap="round" d="M4 22v-7"/></svg>';
+    reportBtn.appendChild(sec.el("span", null, "신고"));
+    reportBtn.addEventListener("click", () => alert("신고가 접수되었습니다. 검토 후 조치됩니다."));
+    actions.appendChild(likeBtn); actions.appendChild(reportBtn);
+    view.appendChild(actions);
+
+    // argument-AI entry points: talk to this post's claim, or its author's AI.
+    const aiRow = sec.el("div", { class: "ai-row" });
+    const claimBtn = sec.el("button", { class: "ai-act" });
+    claimBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>';
+    claimBtn.appendChild(sec.el("span", null, "이 글의 주장과 대화"));
+    claimBtn.addEventListener("click", () => {
+      location.href = "argument-chat.html?post=" + encodeURIComponent(post.id) + "&mode=claim";
+    });
+    const authorBtn = sec.el("button", { class: "ai-act" });
+    authorBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 4-6 8-6s8 2 8 6"/></svg>';
+    authorBtn.appendChild(sec.el("span", null, "이 사람의 생각과 대화"));
+    authorBtn.addEventListener("click", () => {
+      location.href = "argument-chat.html?post=" + encodeURIComponent(post.id) + "&mode=author";
+    });
+    aiRow.appendChild(claimBtn); aiRow.appendChild(authorBtn);
+    view.appendChild(aiRow);
+
+    // "토론으로 발전" — develop a topic from the post into the debate space.
+    // Light participation (like/comment) stays above; this turns a post's topic
+    // into structured public discourse (공론장). Two cases:
+    //   - post has tags → chips to those topics + "새 화제로 시작"
+    //   - post has no tags → "이 글로 토론 시작하기" (name the topic, then seed)
+    const postTags = Array.isArray(post.tags) ? post.tags : [];
+    const debateWrap = sec.el("div", { class: "debate-entry" });
+    const head = sec.el("div", { class: "de-head" });
+    head.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg>';
+    head.appendChild(sec.el("span", null, postTags.length ? "이 화제를 토론으로 발전시키기" : "이 글로 토론 시작하기"));
+    debateWrap.appendChild(head);
+
+    const chips = sec.el("div", { class: "de-chips" });
+    postTags.slice(0, 4).forEach(t => {
+      const name = tagName(t);
+      const tid = (t && typeof t === "object") ? t.id : null;
+      const chip = sec.el("button", { class: "de-chip", type: "button" });
+      chip.appendChild(sec.el("span", null, "#" + name));
+      chip.innerHTML += '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>';
+      chip.addEventListener("click", () => openDebateForTag(name, tid));
+      chips.appendChild(chip);
+    });
+    // "+ 새 화제로 시작" (always) / for an untagged post this is the only path.
+    const seedChip = sec.el("button", { class: "de-chip de-seed", type: "button" });
+    seedChip.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>';
+    seedChip.appendChild(sec.el("span", null, postTags.length ? "새 화제로 시작" : "화제를 정해 시작"));
+    seedChip.addEventListener("click", () => startDebateFromPost(post));
+    chips.appendChild(seedChip);
+    debateWrap.appendChild(chips);
+    view.appendChild(debateWrap);
+
+    // "이 글의 부가 맥락" — context notes saved from argument-AI chats.
+    const notesWrap = sec.el("div", { id: "ctxNotes" });
+    view.appendChild(notesWrap);
+    loadContextNotes(post.id, notesWrap);
+
+    // comments
+    view.appendChild(sec.el("div", { class: "c-title" }, `댓글 ${comments.length}`));
+    const clist = sec.el("div", { id: "commentList" });
+    comments.forEach(c => clist.appendChild(commentEl(c)));
+    view.appendChild(clist);
+
+    // composer
+    view.appendChild(buildComposer(post));
+  }
+
+  function textFor(post, lang) {
+    if (lang === (post.source_language || "ko")) return post.content_transformed || "";
+    if (post.translations && post.translations[lang]) return post.translations[lang];
+    return post.content_transformed || "";
+  }
+
+  function commentEl(c) {
+    const author = c.author_label || c.author || (c.source_persona && c.source_persona.name) || "익명";
+    const [bg, fg] = palOf(author);
+    const el = sec.el("div", { class: "comment" });
+    const av = sec.el("div", { class: "av" }, author.slice(0, 1));
+    av.style.background = bg; av.style.color = fg;
+    const body = sec.el("div", { class: "c-body" });
+    const head = sec.el("div", { class: "c-head" });
+    head.appendChild(sec.el("strong", null, author));
+    if (c.kind && KIND_LABEL[c.kind]) head.appendChild(sec.el("span", { class: "c-kind" }, KIND_LABEL[c.kind]));
+    body.appendChild(head);
+    body.appendChild(sec.el("div", { class: "c-text" }, c.content || ""));
+    el.appendChild(av); el.appendChild(body);
+    return el;
+  }
+
+  let commentKind = "inform";
+  function buildComposer(post) {
+    const comp = sec.el("div", { class: "composer" });
+    const kindRow = sec.el("div", { class: "kind-row" });
+    ["inform", "empathize", "question"].forEach((k, i) => {
+      const chip = sec.el("div", { class: "kind" + (i === 0 ? " on" : "") }, KIND_LABEL[k]);
+      chip.addEventListener("click", () => {
+        commentKind = k;
+        [...kindRow.children].forEach(c => c.classList.remove("on"));
+        chip.classList.add("on");
+      });
+      kindRow.appendChild(chip);
+    });
+    const row = sec.el("div", { class: "c-input-row" });
+    const ta = sec.el("textarea", { rows: "1", placeholder: "댓글을 남겨보세요…" });
+    ta.addEventListener("input", () => {
+      ta.style.height = "auto"; ta.style.height = Math.min(ta.scrollHeight, 100) + "px";
+      sendBtn.disabled = ta.value.trim() === "";
+    });
+    const sendBtn = sec.el("button", { class: "c-send" });
+    sendBtn.disabled = true;
+    sendBtn.innerHTML = '<svg viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg>';
+    sendBtn.addEventListener("click", async () => {
+      const content = ta.value.trim();
+      if (!content) return;
+      sendBtn.disabled = true;
+      try {
+        const saved = await buddle.posts.addComment(post.id, content, commentKind);
+        $("commentList").appendChild(commentEl(saved || { author_label: "나", kind: commentKind, content }));
+      } catch (_) { // offline → still append locally for demo
+        $("commentList").appendChild(commentEl({ author_label: "나", kind: commentKind, content }));
+      }
+      ta.value = ""; ta.style.height = "auto";
+    });
+    row.appendChild(ta); row.appendChild(sendBtn);
+    comp.appendChild(kindRow); comp.appendChild(row);
+    return comp;
+  }
+
+  async function toggleLike(post, btn) {
+    liked = !liked;
+    btn.classList.toggle("liked", liked);
+    try {
+      const res = liked ? await buddle.posts.like(post.id) : await buddle.posts.unlike(post.id);
+      if (res && res.like_count != null) {
+        const span = btn.querySelector("span");
+        if (span) span.textContent = "좋아요 " + res.like_count;
+      }
+    } catch (_) { /* offline preview no-op */ }
+  }
+
+  function onBack() {
+    if (postId) { location.href = "feed.html"; }
+    else if (history.length > 1) history.back();
+    else location.href = "home-dashboard.html";
+  }
+
+  /* ── 인스타식 글쓰기 배너 + 이어가던 대화 ──────────────────── */
+  // 만들기 화면(0) = compose.html. (+)/프롬프트 모두 거기서 페르소나 고르고 대화형 작성.
+  function goCompose() { location.href = "compose.html"; }
+  $("cbPlus").addEventListener("click", goCompose);
+  $("cbPrompt").addEventListener("click", goCompose);
+  $("cbPrompt").addEventListener("keydown", e => {
+    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); goCompose(); }
+  });
+
+  // 이어가던 대화: 최근 대화 스레드로 바로 진입 (chat.html?persona=…).
+  // 데모 시드; 통합 시 GET /v1/personas + 최근 세션으로 대체.
+  const RESUME = [
+    { persona: "p1", ava: "초", name: "초록", last: "강가 코스 얘기 중" },
+    { persona: "p4", ava: "바", name: "바람", last: "주말 러닝 모임" },
+    { persona: "p2", ava: "물", name: "물결", last: "잔잔한 곡 추천" },
+  ];
+  function renderResume() {
+    const row = $("resumeRow");
+    row.replaceChildren();
+    RESUME.forEach(r => {
+      const chip = sec.el("button", { class: "cb-rchip" });
+      chip.innerHTML = `<span class="ra">${sec.esc(r.ava)}</span>
+        <span class="rt"><b>${sec.esc(r.name)}</b><small>${sec.esc(r.last)}</small></span>`;
+      chip.addEventListener("click", () => {
+        location.href = `chat.html?persona=${encodeURIComponent(r.persona)}`;
+      });
+      row.appendChild(chip);
+    });
+  }
+
+  // init — 소프트 인증 게이트: 백엔드 가동+비로그인 → login?next, 미가동 → 데모 유지.
+  (async function boot() {
+    const db = $("debateBtn");
+    if (db) db.addEventListener("click", openDebate);
+    renderResume();
+    await buddle.requireAuth();
+    if (postId) loadDetail(postId);
+    else loadFeed();
+  })();
+</script>
+</body>
+</html>

@@ -1,0 +1,92 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: buddle-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-buddle}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change_me}
+      POSTGRES_DB: ${POSTGRES_DB:-buddle_dev}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-buddle}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: buddle-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: buddle-api
+    env_file:
+      - .env
+    environment:
+      # compose 기동 = 살아있는 광장: 인앱 스케줄러를 켠다(테스트/스크립트 기본값은 off).
+      SCHEDULER_ENABLED: ${SCHEDULER_ENABLED:-true}
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./src:/app/src
+      - ./migrations:/app/migrations
+      - ./alembic.ini:/app/alembic.ini
+      - ./web:/app/web
+    command: >
+      sh -c "
+        alembic upgrade head &&
+        uvicorn buddle.main:app --host 0.0.0.0 --port 8000 --reload
+      "
+
+  # ── Observability (opt-in): docker compose --profile observability up ──
+  prometheus:
+    image: prom/prometheus:v2.53.0
+    container_name: buddle-prometheus
+    profiles: ["observability"]
+    volumes:
+      - ./ops/observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "9090:9090"
+    depends_on:
+      - api
+
+  grafana:
+    image: grafana/grafana:11.1.0
+    container_name: buddle-grafana
+    profiles: ["observability"]
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GF_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GF_ADMIN_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - ./ops/observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./ops/observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafanadata:/var/lib/grafana
+    ports:
+      - "3001:3000"
+    depends_on:
+      - prometheus
+
+volumes:
+  pgdata:
+  redisdata:
+  grafanadata:

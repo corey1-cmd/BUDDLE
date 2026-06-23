@@ -1,0 +1,54 @@
+# Pre-commit hooks — run BEFORE a commit lands, so problems are caught locally
+# before CI. Mirrors the CI gates (ruff, format, mypy) plus secret scanning, so
+# a bad commit is stopped at the earliest point.
+#
+# Setup (once per clone):
+#   pip install pre-commit        # or: uv tool install pre-commit
+#   pre-commit install            # installs the git hook
+# Run manually on everything:
+#   pre-commit run --all-files
+#
+# First run builds isolated envs per hook (~30-60s); subsequent runs are cached.
+
+default_language_version:
+  python: python3.12
+
+repos:
+  # Generic hygiene — cheap, catch common mistakes.
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-toml
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: ["--maxkb=1024"]
+      - id: detect-private-key  # blocks committed private keys (cheap first pass)
+
+  # Ruff: lint (with --fix) + format. Same tool/config as CI.
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.7.4
+    hooks:
+      - id: ruff
+        args: ["--fix"]
+      - id: ruff-format
+
+  # mypy strict — type contract. Mirrors CI's `mypy src`.
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.13.0
+    hooks:
+      - id: mypy
+        # Limit to our package; tests/migrations are excluded in pyproject too.
+        files: ^src/buddle/
+        additional_dependencies:
+          - pydantic>=2.9.0
+
+  # Secret scanning — gitleaks is the industry standard. Blocks commits that
+  # contain API keys, tokens, passwords, etc. Allowlist lives in .gitleaks.toml
+  # (centralized + auditable), NOT in scattered inline comments.
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.21.2
+    hooks:
+      - id: gitleaks

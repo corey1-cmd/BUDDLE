@@ -1,0 +1,122 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+  # Time-based trigger: code can be untouched while a NEW CVE is published
+  # against an existing dependency. A daily run catches that even with no push.
+  # 02:30 UTC daily (cron is min hour day month weekday; GitHub min granularity
+  # is ~5 min, but daily is the right cadence for a dependency audit).
+  schedule:
+    - cron: "30 2 * * *"
+
+jobs:
+  lint-and-type:
+    # On the daily schedule we only need the security audit, not lint/test.
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Install dependencies
+        run: uv sync --all-extras --dev
+
+      - name: Ruff lint
+        run: uv run ruff check src
+
+      - name: Ruff format check
+        run: uv run ruff format --check src
+
+      - name: mypy
+        run: uv run mypy src
+
+  test:
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: buddle_test
+          POSTGRES_PASSWORD: buddle_test
+          POSTGRES_DB: buddle_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U buddle_test"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql+asyncpg://buddle_test:buddle_test@localhost:5432/buddle_test
+      REDIS_URL: redis://localhost:6379/0
+      JWT_SECRET_KEY: ci_secret_key_at_least_32_bytes_long_xx
+      APP_ENV: development
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Install dependencies
+        run: uv sync --all-extras --dev
+
+      - name: Run migrations
+        run: uv run alembic upgrade head
+
+      - name: Run tests
+        run: uv run pytest -v --cov=src/buddle --cov-report=term-missing
+
+  security:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Install dependencies
+        run: uv sync --all-extras --dev
+
+      # Bandit security rules via ruff's flake8-bandit ("S"). The
+      # per-file-ignores in pyproject.toml suppress the confirmed false
+      # positives here, so a non-empty result means a NEW, real finding.
+      - name: Security lint (bandit / ruff S)
+        run: uv run ruff check src --select S
+
+      # Dependency vulnerability gate. --strict fails the build on any known
+      # advisory in the project's resolved dependencies (caught pyjwt before).
+      - name: Dependency audit (pip-audit)
+        run: uv run pip-audit --strict --progress-spinner off
+
+      # Secret scanning — server-side backstop in case a commit skipped the
+      # local pre-commit hook. Uses .gitleaks.toml (default rules + allowlist).
+      - name: Secret scan (gitleaks)
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITLEAKS_CONFIG: .gitleaks.toml

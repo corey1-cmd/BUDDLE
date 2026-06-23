@@ -1,0 +1,36 @@
+# Gitleaks configuration for buddle.
+#
+# Uses the built-in default ruleset (covers API keys, tokens, private keys,
+# cloud credentials, etc.) and adds a CENTRALIZED allowlist for the project's
+# known false positives — test fixtures and dev sentinels. Per the security
+# guidance we follow elsewhere, allowlisting lives here (auditable, one place),
+# never as scattered inline `gitleaks:allow` comments.
+
+title = "buddle gitleaks config"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Known non-secret test fixtures and dev sentinels"
+
+# Paths whose 'secrets' are deliberately fake (test data / local env template).
+paths = [
+  '''tests/.*''',
+  '''\.env\.example$''',
+]
+
+# Specific non-secret literals that may otherwise trip generic rules:
+#  - seed/demo account passwords documented for local dev (not real creds)
+#  - the dev JWT/integrity sentinels (rejected in production by config)
+#  - the agent API-key PREFIX (a label, not a key)
+regexes = [
+  '''Admin123!Admin''',
+  '''Alice123!Alice''',
+  '''Bob12345!Bob''',
+  '''TestPass123!''',
+  '''buddle_test''',
+  '''_DEV_JWT_SECRET''',
+  '''_DEV_INTEGRITY_KEY''',
+  '''bdl_agent_''',
+]

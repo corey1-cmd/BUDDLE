@@ -1,0 +1,11 @@
+# buddle 관측 스택 — Prometheus 스크레이프 설정.
+# compose 네트워크 기준: api 서비스의 /metrics(메인 앱이 노출)를 15초 간격 수집.
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: buddle-api
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["api:8000"]

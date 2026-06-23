@@ -1,0 +1,144 @@
+[project]
+name = "buddle"
+version = "0.1.0"
+description = "AI-mediated human-to-human social ecosystem"
+readme = "README.md"
+requires-python = ">=3.12"
+authors = [{ name = "buddle team" }]
+license = { text = "Proprietary" }
+
+dependencies = [
+    "numpy>=1.26",
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.32.0",
+    "pydantic>=2.9.0",
+    "pydantic-settings>=2.6.0",
+    "sqlalchemy[asyncio]>=2.0.36",
+    "asyncpg>=0.30.0",
+    "alembic>=1.13.0",
+    "pgvector>=0.3.6",
+    "redis>=5.2.0",
+    "argon2-cffi>=23.1.0",
+    "pyjwt>=2.10.0",
+    "python-multipart>=0.0.12",
+    "structlog>=24.4.0",
+    "httpx>=0.27.0",
+    "email-validator>=2.2.0",
+    "prometheus-client>=0.21.0",
+]
+
+[project.optional-dependencies]
+# Sentry는 선택 의존성: DSN을 설정한 배포에서만 `pip install -e ".[observability]"`.
+# (참고: 아래 [dependency-groups]는 PEP 735라 `pip install -e ".[dev]"`로는 안 깔린다 —
+#  RUN_TESTS_SUPABASE.md의 해당 문구는 본 그룹이 아닌 수동 설치 절차를 따를 것.)
+observability = [
+    "sentry-sdk[fastapi]>=2.0.0",
+]
+# 한국어 형태소 분석(kiwipiepy): LTM 추출·토큰화 정확도 업그레이드. 미설치 시
+# ai/lang/morph.py 가 조사 분리 규칙 폴백으로 동작한다(설치 = 정확도만 상승).
+korean = [
+    "kiwipiepy>=0.18",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3.0",
+    "pytest-asyncio>=0.24.0",
+    "pytest-cov>=6.0.0",
+    "ruff>=0.7.0",
+    "mypy>=1.13.0",
+    "testcontainers[postgres]>=4.8.0",
+    "pip-audit>=2.7.0",
+    "fakeredis>=2.26.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/buddle"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "N", "SIM", "RUF"]
+ignore = [
+    "E501",    # line length handled by formatter
+    "N811",    # ENUM as PGEnum etc. — intentional import aliases
+    "N818",    # HTTP-semantic exception names (Unauthorized, NotFound) without Error suffix
+    "RUF002",  # ambiguous unicode in Korean docstrings — expected
+    "RUF003",  # ambiguous unicode in Korean comments — expected
+    "B008",    # FastAPI Depends()/Query() in defaults — framework idiom
+]
+
+# Security-scanner (flake8-bandit "S") suppressions, centralized here so NO
+# suppression markers leak into source files (avoids signposting "exceptions"
+# to anyone reading the code). Each entry is a confirmed false positive, scoped
+# narrowly to one file + one rule so a genuine future violation elsewhere is
+# still caught. "S" is not in the default `select` above (so normal `ruff
+# check` ignores it); these take effect only when a security gate runs
+# `ruff check --select S` or bandit in CI.
+[tool.ruff.lint.per-file-ignores]
+# S105: "_DEV_JWT_SECRET" is a dev-only sentinel constant; config's
+#       production validator rejects it at startup (tested). Not a real secret.
+# S104: uvicorn binds 0.0.0.0 inside the container — standard for containerized
+#       deployment, not an accidental exposure.
+"src/buddle/config.py" = ["S105", "S104"]
+# S105: literal "access"/"refresh" assigned to token_type fields — a token
+#       KIND string, not a password.
+"src/buddle/schemas/auth.py" = ["S105"]
+# S106: token_type="access"/"refresh" passed as a function argument — same
+#       token-kind string, not a hardcoded credential.
+"src/buddle/security/jwt.py" = ["S106"]
+
+[tool.ruff.format]
+quote-style = "double"
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+plugins = ["pydantic.mypy"]
+exclude = ["migrations/", "tests/"]
+
+# Sentry is an optional extra (".[observability]"); imported lazily behind a DSN check.
+[[tool.mypy.overrides]]
+module = ["sentry_sdk", "sentry_sdk.*"]
+ignore_missing_imports = true
+
+# kiwipiepy is the optional [korean] extra; imported lazily with a fallback.
+[[tool.mypy.overrides]]
+module = ["kiwipiepy", "kiwipiepy.*"]
+ignore_missing_imports = true
+
+# Optional heavy ML deps are imported lazily and only present in some envs.
+[[tool.mypy.overrides]]
+module = ["torch.*", "transformers.*", "peft.*", "sentence_transformers.*", "pgvector.*"]
+ignore_missing_imports = true
+
+# SQLAlchemy 2.0 Core expression language (select().join().where(), func.*,
+# session.get()) is highly dynamic; mypy stubs produce false positives on
+# valid chained expressions. We relax those specific codes in the data-access
+# layer while keeping strict typing everywhere else.
+[[tool.mypy.overrides]]
+module = [
+    "buddle.services.*",
+    "buddle.ai.personas.factory",
+    "buddle.ai.stubs.mediator_stub",
+    "buddle.ai.ethics.local_hf",
+    "buddle.api.v1.dialogue",
+    "buddle.api.deps",
+]
+disable_error_code = ["arg-type", "attr-defined", "call-arg", "func-returns-value", "no-any-return"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+pythonpath = ["src"]
+
+[tool.coverage.run]
+source = ["src/buddle"]
+omit = ["src/buddle/ai/stubs/*"]

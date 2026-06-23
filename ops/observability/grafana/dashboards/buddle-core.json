@@ -1,0 +1,64 @@
+{
+  "title": "buddle — API & Scheduler",
+  "uid": "buddle-core",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": { "from": "now-1h", "to": "now" },
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "HTTP 요청률 (req/s, 경로별)",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "targets": [
+        {
+          "expr": "sum by (path) (rate(buddle_http_requests_total[5m]))",
+          "legendFormat": "{{path}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "HTTP p95 지연 (s, 경로별)",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (le, path) (rate(buddle_http_request_duration_seconds_bucket[5m])))",
+          "legendFormat": "{{path}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "5xx 오류율 (%)",
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 8 },
+      "targets": [
+        {
+          "expr": "100 * sum(rate(buddle_http_requests_total{status=~\"5..\"}[5m])) / sum(rate(buddle_http_requests_total[5m]))",
+          "legendFormat": "5xx %"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "도메인 이벤트 (게시·배달·추론)",
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 8 },
+      "targets": [
+        { "expr": "sum by (visibility) (rate(buddle_post_created_total[15m]))", "legendFormat": "post {{visibility}}" },
+        { "expr": "rate(buddle_distribution_created_total[15m])", "legendFormat": "distribution" },
+        { "expr": "sum by (outcome) (rate(buddle_persona_inference_total[15m]))", "legendFormat": "infer {{outcome}}" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "스케줄러 실행 (job·outcome)",
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 8 },
+      "targets": [
+        {
+          "expr": "sum by (job, outcome) (increase(buddle_scheduler_runs_total[15m]))",
+          "legendFormat": "{{job}} {{outcome}}"
+        }
+      ]
+    }
+  ]
+}
