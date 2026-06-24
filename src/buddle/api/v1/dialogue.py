@@ -60,6 +60,7 @@ from buddle.schemas.dialogue import (
     ServerTyping,
 )
 from buddle.security.jwt import decode_token
+from buddle.ai.cognition.user_context import UserContextFact, extract_facts, merge_facts
 from buddle.services import (
     conversation_service,
     dialogue_service,
@@ -389,6 +390,10 @@ async def dialogue_ws(
 
     redis_client = getattr(websocket.app.state, "redis", None)
     turn_timestamps: deque[float] = deque()
+    # Per-connection user context: facts the user explicitly states accumulate
+    # here across turns. Keyed by session_id so multi-session connections stay
+    # isolated. EKB Search reads this as "prior knowledge about this user".
+    session_user_contexts: dict[str, UserContextFact] = {}
 
     log.info(
         "ws.dialogue.connected",
@@ -464,6 +469,18 @@ async def dialogue_ws(
                     except Exception as e:
                         log.warning("conversation.guidance_failed", error=str(e))
 
+                # EKB Search — user-disclosed facts (internal knowledge source).
+                # Extract facts from the current message and merge into the
+                # session's accumulated context. Opinions are never captured here;
+                # extract_facts() returns only explicitly self-disclosed data.
+                session_key = str(client_msg.session_id) if client_msg.session_id else "_nosession"
+                new_facts = extract_facts(client_msg.content)
+                accumulated_ctx = merge_facts(
+                    session_user_contexts.get(session_key, UserContextFact()),
+                    new_facts,
+                )
+                session_user_contexts[session_key] = accumulated_ctx
+
                 with contextlib.suppress(Exception):
                     await _send_json(websocket, ServerTyping(state="start"))
 
@@ -475,6 +492,7 @@ async def dialogue_ws(
                     user_message=client_msg.content,
                     recalled_memories=recalled or None,
                     conversation_guidance=convo_guidance,
+                    user_context=accumulated_ctx,
                 )
 
                 # Output-side ethics gate: screen the persona's OWN reply before

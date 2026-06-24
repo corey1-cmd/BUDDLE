@@ -213,7 +213,7 @@ async def consider_post(
 
         unit = KnowledgeUnit(
             source_post_id=post_id,
-            persona_id=post.persona_id,
+            persona_id=post.source_persona_id,
             gist=u.gist,
             language=post.source_language,
             topic_tags="",

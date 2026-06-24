@@ -1,0 +1,815 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>buddle 관리자 — 중앙관리자 AI 리포트</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700&family=Spline+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="buddle.css">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+body { background: var(--paper-sunken); }
+
+.admin-shell { max-width: 900px; margin: 0 auto; padding: var(--s5) var(--s4) var(--s8); }
+
+/* ── topbar ── */
+.topbar { display:flex; align-items:center; justify-content:space-between; margin-bottom:var(--s5); }
+.topbar-brand { display:flex; align-items:center; gap:var(--s3); }
+.topbar-wordmark { font-family:var(--display); font-weight:700; font-size:22px;
+  background:var(--accent-grad); -webkit-background-clip:text; background-clip:text; color:transparent; }
+.topbar-badge { font-size:var(--t-xs); font-weight:700; color:var(--willow);
+  background:var(--willow-wash); padding:3px 10px; border-radius:var(--r-pill); }
+.topbar-right { display:flex; align-items:center; gap:var(--s3); }
+.topbar-email { font-size:var(--t-sm); color:var(--ink-soft); }
+
+/* ── verdict banner ── */
+.verdict { display:flex; align-items:center; gap:var(--s3); padding:var(--s4) var(--s5);
+  border-radius:var(--r-lg); margin-bottom:var(--s5);
+  background:var(--paper-raised); border:1.5px solid var(--line); box-shadow:var(--shadow-sm); }
+.verdict-dot { width:16px; height:16px; border-radius:50%; flex:none; }
+.verdict-dot.ok     { background:#3D8A6B; box-shadow:0 0 0 4px #EAF3EF; }
+.verdict-dot.warn   { background:#B4734A; box-shadow:0 0 0 4px #F6EDE6; }
+.verdict-dot.critical { background:#C0563B; box-shadow:0 0 0 4px rgba(192,86,59,.15); }
+.verdict-label { font-family:var(--display); font-size:var(--t-h2); font-weight:700; color:var(--ink); }
+.verdict-sub { font-size:var(--t-sm); color:var(--ink-soft); margin-left:auto; }
+.verdict-time { font-size:var(--t-xs); color:var(--ink-faint); }
+
+/* ── section grid ── */
+.grid2 { display:grid; grid-template-columns:1fr 1fr; gap:var(--s4); margin-bottom:var(--s4); }
+@media (max-width:600px) { .grid2 { grid-template-columns:1fr; } }
+
+/* ── card ── */
+.card { background:var(--paper-raised); border:1px solid var(--line); border-radius:var(--r-lg);
+  padding:var(--s4) var(--s5); box-shadow:var(--shadow-sm); }
+.card-title { font-size:var(--t-xs); font-weight:700; color:var(--ink-faint);
+  text-transform:uppercase; letter-spacing:.08em; margin-bottom:var(--s3); }
+
+/* ── metric row ── */
+.metric-row { display:flex; justify-content:space-between; align-items:baseline;
+  padding:6px 0; border-bottom:1px solid var(--line); }
+.metric-row:last-child { border-bottom:none; }
+.metric-label { font-size:var(--t-sm); color:var(--ink-soft); }
+.metric-value { font-size:var(--t-sm); font-weight:700; color:var(--ink); font-variant-numeric:tabular-nums; }
+
+/* ── component pills ── */
+.comp-list { display:flex; flex-direction:column; gap:var(--s2); }
+.comp-row { display:flex; align-items:center; gap:var(--s3); padding:var(--s2) 0; }
+.comp-dot { width:8px; height:8px; border-radius:50%; flex:none; }
+.comp-dot.ok       { background:#3D8A6B; }
+.comp-dot.warn     { background:#B4734A; }
+.comp-dot.elevated { background:#C0563B; }
+.comp-dot.degraded { background:#908DA0; }
+.comp-name { font-size:var(--t-sm); font-weight:600; color:var(--ink); min-width:72px; }
+.comp-detail { font-size:var(--t-xs); color:var(--ink-soft); }
+
+/* ── topic chips ── */
+.topic-list { display:flex; flex-wrap:wrap; gap:var(--s2); margin-top:var(--s2); }
+.topic-chip { font-size:var(--t-xs); font-weight:600; color:var(--willow);
+  background:var(--willow-wash); padding:4px 12px; border-radius:var(--r-pill); }
+
+/* ── notes ── */
+.notes-list { list-style:none; padding:0; margin:0; }
+.notes-list li { font-size:var(--t-sm); color:var(--ink-soft); padding:5px 0;
+  padding-left:var(--s3); border-left:2px solid var(--line-strong);
+  margin-bottom:var(--s2); }
+.notes-list li.critical { border-color:#C0563B; color:#C0563B; }
+.notes-list li.warn     { border-color:#B4734A; color:#B4734A; }
+
+/* ── ethics table ── */
+.alert-table { width:100%; border-collapse:collapse; }
+.alert-table th { font-size:var(--t-xs); font-weight:700; color:var(--ink-faint);
+  text-align:left; padding:6px 8px; border-bottom:1.5px solid var(--line-strong); }
+.alert-table td { font-size:var(--t-sm); color:var(--ink-soft);
+  padding:8px 8px; border-bottom:1px solid var(--line); vertical-align:top; }
+.alert-table tr:last-child td { border-bottom:none; }
+.badge-open     { background:#F6EDE6; color:#B4734A; font-size:var(--t-xs); font-weight:700;
+  padding:2px 8px; border-radius:var(--r-pill); }
+.badge-resolved { background:#EAF3EF; color:#3D8A6B; font-size:var(--t-xs); font-weight:700;
+  padding:2px 8px; border-radius:var(--r-pill); }
+
+/* ── buttons ── */
+.btn-row { display:flex; gap:var(--s3); margin-bottom:var(--s5); flex-wrap:wrap; }
+.btn-sm { font-family:var(--body); font-size:var(--t-sm); font-weight:600; cursor:pointer;
+  border-radius:var(--r-pill); padding:8px 18px; border:1.5px solid var(--line);
+  background:var(--paper-raised); color:var(--ink-soft); transition:all var(--dur) var(--ease); }
+.btn-sm:hover { border-color:var(--willow); color:var(--willow); }
+.btn-sm.primary { background:var(--accent-grad); color:#fff; border-color:transparent;
+  box-shadow:var(--shadow-pop-sm); }
+.btn-sm.primary:hover { opacity:.9; }
+.btn-sm:disabled { opacity:.45; cursor:not-allowed; }
+
+/* ── loading / empty ── */
+.loading { text-align:center; padding:var(--s7); color:var(--ink-faint); font-size:var(--t-sm); }
+.empty-row { text-align:center; color:var(--ink-faint); font-size:var(--t-sm); padding:var(--s5); }
+
+/* ── chart canvas ── */
+.chart-wrap { position:relative; height:240px; }
+.chart-wrap.tall { height:300px; }
+.analytics-divider { font-family:var(--display); font-size:var(--t-h3); font-weight:700;
+  color:var(--ink); margin:var(--s6) 0 var(--s4); padding-top:var(--s4);
+  border-top:2px solid var(--line); }
+.kf-stats { display:flex; gap:var(--s5); margin-bottom:var(--s3); }
+.kf-stat-val { font-size:22px; font-weight:700; }
+.kf-stat-lbl { font-size:var(--t-xs); color:var(--ink-faint); margin-left:4px; }
+.word-pills { display:flex; flex-wrap:wrap; gap:var(--s2); margin-top:var(--s3); }
+.word-pill { font-size:var(--t-xs); font-weight:600; padding:3px 10px;
+  border-radius:var(--r-pill); border:1px solid var(--line); background:var(--paper-sunken);
+  color:var(--ink-soft); }
+
+/* ── autotune card ── */
+.autotune-weights { display:flex; gap:var(--s4); margin-top:var(--s3); flex-wrap:wrap; }
+.weight-item { text-align:center; }
+.weight-val { font-size:22px; font-weight:700; color:var(--willow); }
+.weight-lbl { font-size:var(--t-xs); color:var(--ink-faint); }
+.autotune-rationale { font-size:var(--t-sm); color:var(--ink-soft); margin-top:var(--s3);
+  padding:var(--s3); background:var(--paper-sunken); border-radius:var(--r); }
+</style>
+</head>
+<body>
+<div class="admin-shell">
+
+  <!-- Topbar -->
+  <div class="topbar">
+    <div class="topbar-brand">
+      <span class="topbar-wordmark">buddle</span>
+      <span class="topbar-badge">관리자</span>
+    </div>
+    <div class="topbar-right">
+      <span class="topbar-email" id="adminEmail">—</span>
+      <button class="btn-sm" id="logoutBtn">로그아웃</button>
+    </div>
+  </div>
+
+  <!-- Actions -->
+  <div class="btn-row">
+    <button class="btn-sm primary" id="refreshBtn">새로고침</button>
+    <button class="btn-sm" id="snapshotBtn">스냅샷 저장</button>
+    <button class="btn-sm" id="autotuneBtn">정책 자동조정 (미적용)</button>
+    <button class="btn-sm" id="autotuneApplyBtn">정책 자동조정 (적용)</button>
+  </div>
+
+  <!-- Verdict banner -->
+  <div class="verdict bd-reveal" id="verdictBanner" style="display:none">
+    <div class="verdict-dot" id="verdictDot"></div>
+    <div>
+      <div class="verdict-label" id="verdictLabel">—</div>
+      <div class="verdict-time" id="verdictTime"></div>
+    </div>
+    <div class="verdict-sub" id="verdictSub"></div>
+  </div>
+
+  <!-- Loading -->
+  <div class="loading" id="loadingMsg">리포트 불러오는 중…</div>
+
+  <!-- Main content -->
+  <div id="mainContent" style="display:none">
+
+    <!-- Row 1: 트래픽 + 사용자 참여 -->
+    <div class="grid2">
+      <div class="card bd-reveal">
+        <div class="card-title">트래픽 / 성능 (Golden Signals)</div>
+        <div class="metric-row"><span class="metric-label">요청 수 (윈도우)</span><span class="metric-value" id="mTraffic">—</span></div>
+        <div class="metric-row"><span class="metric-label">요청/분</span><span class="metric-value" id="mRpm">—</span></div>
+        <div class="metric-row"><span class="metric-label">에러율</span><span class="metric-value" id="mErrRate">—</span></div>
+        <div class="metric-row"><span class="metric-label">지연 p50</span><span class="metric-value" id="mP50">—</span></div>
+        <div class="metric-row"><span class="metric-label">지연 p95</span><span class="metric-value" id="mP95">—</span></div>
+        <div class="metric-row"><span class="metric-label">포화도</span><span class="metric-value" id="mSat">—</span></div>
+      </div>
+      <div class="card bd-reveal">
+        <div class="card-title">사용자 참여</div>
+        <div class="metric-row"><span class="metric-label">DAU</span><span class="metric-value" id="mDau">—</span></div>
+        <div class="metric-row"><span class="metric-label">WAU</span><span class="metric-value" id="mWau">—</span></div>
+        <div class="metric-row"><span class="metric-label">MAU</span><span class="metric-value" id="mMau">—</span></div>
+        <div class="metric-row"><span class="metric-label">점착도 (DAU/MAU)</span><span class="metric-value" id="mStick">—</span></div>
+        <div class="metric-row"><span class="metric-label">신규 사용자</span><span class="metric-value" id="mNew">—</span></div>
+        <div class="metric-row"><span class="metric-label">성장률</span><span class="metric-value" id="mGrowth">—</span></div>
+        <div class="metric-row"><span class="metric-label">평균 세션</span><span class="metric-value" id="mSession">—</span></div>
+      </div>
+    </div>
+
+    <!-- Row 2: 5-AI 생태계 + 보안 -->
+    <div class="grid2">
+      <div class="card bd-reveal">
+        <div class="card-title">5-AI 생태계 상태</div>
+        <div class="comp-list" id="compList"></div>
+      </div>
+      <div class="card bd-reveal">
+        <div class="card-title">보안</div>
+        <div class="metric-row"><span class="metric-label">무결성 체인</span><span class="metric-value" id="mIntegrity">—</span></div>
+        <div class="metric-row"><span class="metric-label">권한 상태</span><span class="metric-value" id="mAuthority">—</span></div>
+        <div class="metric-row"><span class="metric-label">미처리 윤리 알림</span><span class="metric-value" id="mAlerts">—</span></div>
+        <div style="margin-top:var(--s4)">
+          <div class="card-title">주요 대화 주제</div>
+          <div class="topic-list" id="topicList"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Row 3: 비고 -->
+    <div class="card bd-reveal" style="margin-bottom:var(--s4)">
+      <div class="card-title">비고 / 상태 원인</div>
+      <ul class="notes-list" id="notesList"></ul>
+    </div>
+
+    <!-- Row 4: 정책 자동조정 결과 -->
+    <div class="card bd-reveal" id="autotuneCard" style="margin-bottom:var(--s4); display:none">
+      <div class="card-title">정책 자동조정 제안 — 매개자 가중치</div>
+      <div class="autotune-weights">
+        <div class="weight-item"><div class="weight-val" id="atAlpha">—</div><div class="weight-lbl">α (관련성)</div></div>
+        <div class="weight-item"><div class="weight-val" id="atBeta">—</div><div class="weight-lbl">β (재신선도)</div></div>
+        <div class="weight-item"><div class="weight-val" id="atGamma">—</div><div class="weight-lbl">γ (중요도)</div></div>
+      </div>
+      <div class="autotune-rationale" id="atRationale"></div>
+    </div>
+
+    <!-- Row 5: 윤리 알림 큐 -->
+    <div class="card bd-reveal" style="margin-bottom:0">
+      <div class="card-title">백혈구 AI 윤리 알림 큐 (최근 20건)</div>
+      <div id="ethicsContent">
+        <table class="alert-table">
+          <thead><tr><th>상태</th><th>내용</th><th>심각도</th><th>생성 시각</th></tr></thead>
+          <tbody id="ethicsBody"><tr><td colspan="4" class="empty-row">불러오는 중…</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ══ 분석 그래프 구역 ══ -->
+    <div class="analytics-divider">분석 그래프</div>
+
+    <!-- G1. 화제 카테고리(태그) 유행 추이 -->
+    <div class="card bd-reveal" style="margin-bottom:var(--s4)">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:var(--s3)">
+        <div class="card-title" style="margin:0">화제 카테고리 유행 추이 — 일별 상위 태그 빈도</div>
+        <select id="tagDaysSelect" style="font-size:var(--t-xs);border:1px solid var(--line);border-radius:var(--r);padding:3px 8px;background:var(--paper-sunken);color:var(--ink-soft)">
+          <option value="7" selected>최근 7일</option>
+          <option value="14">최근 14일</option>
+          <option value="30">최근 30일</option>
+        </select>
+      </div>
+      <div class="chart-wrap tall"><canvas id="chartTagTrend"></canvas></div>
+    </div>
+
+    <!-- G2. 검열 단어 + 심각도 -->
+    <div class="grid2" style="margin-bottom:var(--s4)">
+      <div class="card bd-reveal">
+        <div class="card-title">유의 단어 잡지 — 카테고리별 단어 수</div>
+        <div id="lexiconMeta" style="font-size:var(--t-xs);color:var(--ink-faint);margin-bottom:var(--s3)">버전: 로드 중…</div>
+        <div class="chart-wrap"><canvas id="chartCautionCats"></canvas></div>
+        <div class="word-pills" id="cautionWordPills"></div>
+      </div>
+      <div class="card bd-reveal">
+        <div class="card-title">백혈구 AI 윤리 알림 심각도 분포 (최근 7일)</div>
+        <div class="chart-wrap" style="height:200px"><canvas id="chartSeverity"></canvas></div>
+        <div class="card-title" style="margin-top:var(--s4)">일별 알림 추이</div>
+        <div class="chart-wrap" style="height:120px"><canvas id="chartAlertTrend"></canvas></div>
+      </div>
+    </div>
+
+    <!-- G3. 지식 공간 자료 흐름 -->
+    <div class="card bd-reveal" style="margin-bottom:var(--s4)">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:var(--s3)">
+        <div class="card-title" style="margin:0">지식 공간 — 자료 투입 / 산출 흐름</div>
+        <select id="kfHoursSelect" style="font-size:var(--t-xs);border:1px solid var(--line);border-radius:var(--r);padding:3px 8px;background:var(--paper-sunken);color:var(--ink-soft)">
+          <option value="24" selected>최근 24시간</option>
+          <option value="48">최근 48시간</option>
+          <option value="168">최근 7일</option>
+        </select>
+      </div>
+      <div class="kf-stats">
+        <div><span class="kf-stat-val" id="kfTotalFetched" style="color:var(--willow)">—</span><span class="kf-stat-lbl">건 투입 (가져옴)</span></div>
+        <div><span class="kf-stat-val" id="kfTotalProduced" style="color:#B4734A">—</span><span class="kf-stat-lbl">건 산출 (생산)</span></div>
+      </div>
+      <div class="chart-wrap tall"><canvas id="chartKnowledgeFlow"></canvas></div>
+    </div>
+
+    <!-- G4. 유저 vs AI 생성 비율 -->
+    <div class="grid2" style="margin-bottom:var(--s4)">
+      <div class="card bd-reveal">
+        <div class="card-title">포스트 작성자 — 유저 vs AI 비율</div>
+        <div class="chart-wrap"><canvas id="chartPostRatio"></canvas></div>
+      </div>
+      <div class="card bd-reveal">
+        <div class="card-title">댓글 작성자 — 유저 vs AI 비율</div>
+        <div class="chart-wrap"><canvas id="chartCommentRatio"></canvas></div>
+      </div>
+    </div>
+    <div class="card bd-reveal" style="margin-bottom:var(--s4)">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:var(--s3)">
+        <div class="card-title" style="margin:0">일별 포스트 + 댓글 유저 / AI 추이</div>
+        <select id="ratioDaysSelect" style="font-size:var(--t-xs);border:1px solid var(--line);border-radius:var(--r);padding:3px 8px;background:var(--paper-sunken);color:var(--ink-soft)">
+          <option value="7" selected>최근 7일</option>
+          <option value="14">최근 14일</option>
+          <option value="30">최근 30일</option>
+        </select>
+      </div>
+      <div class="chart-wrap tall"><canvas id="chartAuthorTrend"></canvas></div>
+    </div>
+
+    <!-- ══ 뉴스 수집 현황 ══ -->
+    <div class="analytics-divider" style="margin-top:28px">뉴스 수집 현황</div>
+    <div class="section-grid">
+      <div class="card" style="grid-column:1/-1">
+        <div class="card-title" style="display:flex;align-items:center;justify-content:space-between">
+          <span>매개자 AI 뉴스 브리핑</span>
+          <button id="newsTickBtn" class="btn-sm" style="font-size:12px;padding:5px 12px;border-radius:8px;background:var(--grad-rich);color:#fff;border:0;cursor:pointer">지금 수집</button>
+        </div>
+        <div id="newsStatusBar" style="font-size:12px;color:var(--muted);margin-bottom:12px">로딩 중…</div>
+        <div id="newsBriefList" style="display:flex;flex-direction:column;gap:8px;max-height:400px;overflow-y:auto"></div>
+      </div>
+    </div>
+
+  </div><!-- /mainContent -->
+
+</div>
+
+<script src="buddle.ux.js"></script>
+<script>
+(function () {
+  "use strict";
+
+  /* ── 인증 확인 ── */
+  const TOKEN_KEY = "buddle.auth.v1";
+  let _access = null;
+
+  (function hydrate() {
+    try {
+      const raw = sessionStorage.getItem(TOKEN_KEY);
+      if (!raw) return;
+      const t = JSON.parse(raw);
+      if (t && typeof t.a === "string") _access = t.a;
+    } catch (_) {}
+  })();
+
+  if (!_access) {
+    location.replace("login.html?next=admin.html");
+    return;
+  }
+
+  /* ── JWT 페이로드 파싱 (서명 검증 없음 — 표시 전용) ── */
+  function jwtPayload(token) {
+    try { return JSON.parse(atob(token.split(".")[1])); } catch (_) { return {}; }
+  }
+
+  // JWT에는 email이 없으므로 /v1/users/me로 가져옴
+  api("GET", "/v1/users/me").then(me => {
+    if (me && me.email) document.getElementById("adminEmail").textContent = me.email;
+  }).catch(() => {});
+
+  document.getElementById("logoutBtn").onclick = () => {
+    sessionStorage.removeItem(TOKEN_KEY);
+    location.href = "login.html";
+  };
+
+  /* ── API 헬퍼 ── */
+  async function api(method, path, body) {
+    const res = await fetch(path, {
+      method,
+      headers: { "Content-Type": "application/json", "Authorization": "Bearer " + _access },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    if (res.status === 403) {
+      alert("관리자 권한이 없습니다. 관리자 계정으로 로그인하세요.");
+      location.replace("login.html");
+      return null;
+    }
+    if (res.status === 401) {
+      sessionStorage.removeItem(TOKEN_KEY);
+      location.replace("login.html?next=admin.html");
+      return null;
+    }
+    if (!res.ok) throw new Error(res.statusText);
+    return res.status === 204 ? null : res.json();
+  }
+
+  /* ── 유틸 ── */
+  function pct(v) { return (v * 100).toFixed(1) + "%"; }
+  function fmt(v) { return typeof v === "number" ? v.toLocaleString() : "—"; }
+  function ms(v) { return v === 0 ? "0 ms (Prometheus)" : v.toFixed(0) + " ms"; }
+  function sign(v) { return (v >= 0 ? "+" : "") + (v * 100).toFixed(1) + "%"; }
+
+  /* ── 메인 리포트 렌더 ── */
+  function renderReport(r) {
+    /* verdict */
+    const vDot = document.getElementById("verdictDot");
+    const vLabel = document.getElementById("verdictLabel");
+    const vTime = document.getElementById("verdictTime");
+    const vSub = document.getElementById("verdictSub");
+    const vBanner = document.getElementById("verdictBanner");
+
+    vDot.className = "verdict-dot " + r.verdict;
+    const vMap = { ok: "시스템 정상", warn: "주의 필요", critical: "즉시 점검" };
+    vLabel.textContent = (vMap[r.verdict] || r.verdict) + " (" + r.verdict.toUpperCase() + ")";
+    vTime.textContent = "리포트 생성: " + new Date(r.generated_at).toLocaleString("ko-KR");
+    vSub.textContent = r.window_days + "일 윈도우";
+    vBanner.style.display = "flex";
+
+    /* golden signals */
+    const g = r.golden;
+    document.getElementById("mTraffic").textContent = fmt(g.traffic_requests);
+    document.getElementById("mRpm").textContent = g.requests_per_min.toFixed(3) + " /분";
+    document.getElementById("mErrRate").textContent = pct(g.error_rate);
+    document.getElementById("mP50").textContent = ms(g.latency_p50_ms);
+    document.getElementById("mP95").textContent = ms(g.latency_p95_ms);
+    document.getElementById("mSat").textContent = g.saturation_pct.toFixed(0) + "%";
+
+    /* engagement */
+    const e = r.engagement;
+    document.getElementById("mDau").textContent = fmt(e.dau);
+    document.getElementById("mWau").textContent = fmt(e.wau);
+    document.getElementById("mMau").textContent = fmt(e.mau);
+    document.getElementById("mStick").textContent = pct(e.stickiness);
+    document.getElementById("mNew").textContent = fmt(e.new_users_in_window);
+    document.getElementById("mGrowth").textContent = sign(e.growth_rate);
+    document.getElementById("mSession").textContent = e.avg_session_minutes.toFixed(1) + "분 / 세션당 " + e.avg_activities_per_session.toFixed(1) + "회";
+
+    /* components */
+    const compList = document.getElementById("compList");
+    compList.innerHTML = "";
+    (r.components || []).forEach(c => {
+      const row = document.createElement("div");
+      row.className = "comp-row";
+      row.innerHTML = '<div class="comp-dot ' + (c.state || "ok") + '"></div>'
+        + '<span class="comp-name">' + c.name + '</span>'
+        + '<span class="comp-detail">' + c.detail + '</span>';
+      compList.appendChild(row);
+    });
+
+    /* security */
+    document.getElementById("mIntegrity").textContent = r.integrity_ok ? "✓ 정상" : "✗ 검증 실패 ⚠";
+    document.getElementById("mIntegrity").style.color = r.integrity_ok ? "var(--pos)" : "#C0563B";
+    document.getElementById("mAuthority").textContent = r.authority_state === "tech_elevated" ? "TECH_ELEVATED ⚠" : r.authority_state;
+    document.getElementById("mAuthority").style.color = r.authority_state === "tech_elevated" ? "#C0563B" : "inherit";
+    document.getElementById("mAlerts").textContent = fmt(r.open_ethics_alerts) + "건";
+
+    /* topics */
+    const topicList = document.getElementById("topicList");
+    topicList.innerHTML = "";
+    (r.top_topics || []).forEach(t => {
+      const chip = document.createElement("span");
+      chip.className = "topic-chip";
+      chip.textContent = "#" + t.tag + " " + t.count;
+      topicList.appendChild(chip);
+    });
+    if (!r.top_topics || !r.top_topics.length) {
+      topicList.innerHTML = '<span style="font-size:var(--t-xs);color:var(--ink-faint)">아직 주제 데이터 없음</span>';
+    }
+
+    /* notes */
+    const notesList = document.getElementById("notesList");
+    notesList.innerHTML = "";
+    (r.notes || []).forEach(n => {
+      const li = document.createElement("li");
+      li.textContent = n;
+      if (n.includes("CRITICAL") || n.includes("실패") || n.includes("TECH_ELEVATED")) li.className = "critical";
+      else if (n.includes("높음") || n.includes("증가") || n.includes("누적")) li.className = "warn";
+      notesList.appendChild(li);
+    });
+
+    document.getElementById("loadingMsg").style.display = "none";
+    document.getElementById("mainContent").style.display = "block";
+  }
+
+  /* ── 윤리 알림 렌더 ── */
+  function renderEthics(alerts) {
+    const tbody = document.getElementById("ethicsBody");
+    if (!alerts || !alerts.length) {
+      tbody.innerHTML = '<tr><td colspan="4" class="empty-row">미처리 알림 없음</td></tr>';
+      return;
+    }
+    tbody.innerHTML = alerts.map(a => {
+      const badge = a.status === "open"
+        ? '<span class="badge-open">미처리</span>'
+        : '<span class="badge-resolved">해결됨</span>';
+      const ts = a.created_at ? new Date(a.created_at).toLocaleString("ko-KR") : "—";
+      const content = (a.content || "").slice(0, 60) + ((a.content || "").length > 60 ? "…" : "");
+      return '<tr><td>' + badge + '</td><td>' + content + '</td><td>' + (a.severity || "—") + '</td><td>' + ts + '</td></tr>';
+    }).join("");
+  }
+
+  /* ── 스냅샷 ── */
+  document.getElementById("snapshotBtn").onclick = async () => {
+    const btn = document.getElementById("snapshotBtn");
+    btn.disabled = true; btn.textContent = "저장 중…";
+    try {
+      const r = await api("POST", "/v1/admin/monitor/snapshot");
+      if (r) alert("스냅샷 저장 완료 (id: " + r.snapshot_id + ")");
+    } catch (e) { alert("오류: " + e.message); }
+    finally { btn.disabled = false; btn.textContent = "스냅샷 저장"; }
+  };
+
+  /* ── 자동조정 ── */
+  async function runAutotune(apply) {
+    const btnId = apply ? "autotuneApplyBtn" : "autotuneBtn";
+    const btn = document.getElementById(btnId);
+    btn.disabled = true; btn.textContent = "분석 중…";
+    try {
+      const r = await api("POST", "/v1/admin/monitor/autotune?apply=" + apply);
+      if (!r) return;
+      document.getElementById("autotuneCard").style.display = "block";
+      document.getElementById("atAlpha").textContent = r.alpha.toFixed(3);
+      document.getElementById("atBeta").textContent = r.beta.toFixed(3);
+      document.getElementById("atGamma").textContent = r.gamma.toFixed(3);
+      document.getElementById("atRationale").textContent =
+        (r.changed ? (apply ? "✓ 적용됨: " : "제안: ") : "변경 없음: ") + r.rationale;
+    } catch (e) { alert("오류: " + e.message); }
+    finally {
+      btn.disabled = false;
+      btn.textContent = apply ? "정책 자동조정 (적용)" : "정책 자동조정 (미적용)";
+    }
+  }
+
+  document.getElementById("autotuneBtn").onclick = () => runAutotune(false);
+  document.getElementById("autotuneApplyBtn").onclick = () => runAutotune(true);
+  document.getElementById("refreshBtn").onclick = loadAllWithCharts;
+
+  /* ── Chart.js 공통 설정 ── */
+  const PALETTE = ["#3D8A6B","#B4734A","#4A7BB4","#8B5E99","#C0953B","#5B8F8F","#B45A5A","#7A8A4A"];
+  const PALETTE_LIGHT = ["#EAF3EF","#F6EDE6","#E8EEF6","#F0EAF5","#F5EDDF","#E5F0F0","#F5E8E8","#EEF0E5"];
+
+  if (window.Chart) {
+    Chart.defaults.font.family = "'Spline Sans', system-ui, sans-serif";
+    Chart.defaults.color = "#908DA0";
+    Chart.defaults.plugins.legend.labels.boxWidth = 12;
+    Chart.defaults.plugins.legend.labels.usePointStyle = true;
+  }
+
+  const _charts = {};
+  function mkChart(id, config) {
+    if (_charts[id]) _charts[id].destroy();
+    const ctx = document.getElementById(id);
+    if (!ctx) return;
+    _charts[id] = new Chart(ctx, config);
+  }
+
+  /* ── G1. 화제 태그 유행 (Line) ── */
+  async function loadTagTrend(days) {
+    try {
+      const d = await api("GET", "/v1/admin/analytics/tag-trends?days=" + days + "&top_n=8");
+      if (!d) return;
+      mkChart("chartTagTrend", {
+        type: "line",
+        data: {
+          labels: d.labels,
+          datasets: (d.datasets || []).map((ds, i) => ({
+            label: "#" + ds.tag,
+            data: ds.counts,
+            borderColor: PALETTE[i % PALETTE.length],
+            backgroundColor: PALETTE[i % PALETTE.length] + "22",
+            borderWidth: 2,
+            pointRadius: 3,
+            tension: 0.35,
+            fill: false,
+          })),
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          plugins: { legend: { position: "bottom" } },
+          scales: { y: { beginAtZero: true, ticks: { precision: 0 } } },
+        },
+      });
+    } catch(e) { console.warn("tag-trends 오류:", e); }
+  }
+
+  document.getElementById("tagDaysSelect").onchange = function() { loadTagTrend(+this.value); };
+
+  /* ── G2. 검열 단어 (Doughnut + Line) ── */
+  async function loadCautionSummary() {
+    try {
+      const d = await api("GET", "/v1/admin/analytics/caution-summary?days=7");
+      if (!d) return;
+
+      document.getElementById("lexiconMeta").textContent =
+        "잡지 버전: " + d.lexicon_version + " | 총 " + d.total_words + "개 단어";
+
+      // 카테고리 도넛
+      const cats = d.categories || [];
+      const catLabels = { self_harm: "자해·자살", harm_to_others: "타인 위해", political: "정치", religious: "종교", discrimination: "차별", sensitive: "민감", general: "기타" };
+      mkChart("chartCautionCats", {
+        type: "doughnut",
+        data: {
+          labels: cats.map(c => catLabels[c.name] || c.name),
+          datasets: [{ data: cats.map(c => c.word_count), backgroundColor: PALETTE, borderWidth: 2 }],
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          plugins: { legend: { position: "right" } },
+          cutout: "60%",
+        },
+      });
+
+      // 카테고리별 샘플 단어 태그
+      const pills = document.getElementById("cautionWordPills");
+      pills.innerHTML = "";
+      cats.forEach((c, i) => {
+        (c.sample_words || []).forEach(w => {
+          const s = document.createElement("span");
+          s.className = "word-pill";
+          s.style.borderColor = PALETTE[i % PALETTE.length];
+          s.style.color = PALETTE[i % PALETTE.length];
+          s.style.background = PALETTE_LIGHT[i % PALETTE_LIGHT.length];
+          s.textContent = w;
+          pills.appendChild(s);
+        });
+      });
+
+      // 심각도 도넛
+      const sevMap = { low: "낮음", mid: "중간", high: "높음" };
+      const sevColors = { low: "#3D8A6B", mid: "#B4734A", high: "#C0563B" };
+      const sevData = d.severity_distribution || {};
+      const sevKeys = Object.keys(sevData);
+      mkChart("chartSeverity", {
+        type: "doughnut",
+        data: {
+          labels: sevKeys.map(k => sevMap[k] || k),
+          datasets: [{ data: sevKeys.map(k => sevData[k]), backgroundColor: sevKeys.map(k => sevColors[k] || "#908DA0"), borderWidth: 2 }],
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          plugins: { legend: { position: "right" } },
+          cutout: "60%",
+        },
+      });
+
+      // 일별 알림 추이 (bar)
+      mkChart("chartAlertTrend", {
+        type: "bar",
+        data: {
+          labels: d.alert_trend_labels,
+          datasets: [{ label: "윤리 알림", data: d.alert_trend_counts, backgroundColor: "#C0563B55", borderColor: "#C0563B", borderWidth: 1.5 }],
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: { y: { beginAtZero: true, ticks: { precision: 0 } } },
+        },
+      });
+    } catch(e) { console.warn("caution-summary 오류:", e); }
+  }
+
+  /* ── G3. 지식 공간 흐름 (Grouped Bar) ── */
+  async function loadKnowledgeFlow(hours) {
+    try {
+      const d = await api("GET", "/v1/admin/analytics/knowledge-flow?hours=" + hours);
+      if (!d) return;
+      document.getElementById("kfTotalFetched").textContent = d.total_fetched.toLocaleString();
+      document.getElementById("kfTotalProduced").textContent = d.total_produced.toLocaleString();
+      mkChart("chartKnowledgeFlow", {
+        type: "bar",
+        data: {
+          labels: d.labels,
+          datasets: [
+            { label: "투입 (가져옴)", data: d.fetched, backgroundColor: "#3D8A6B99", borderColor: "#3D8A6B", borderWidth: 1.5 },
+            { label: "산출 (생산)", data: d.produced, backgroundColor: "#B4734A99", borderColor: "#B4734A", borderWidth: 1.5 },
+          ],
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          plugins: { legend: { position: "bottom" } },
+          scales: { x: { ticks: { maxTicksLimit: 12 } }, y: { beginAtZero: true, ticks: { precision: 0 } } },
+        },
+      });
+    } catch(e) { console.warn("knowledge-flow 오류:", e); }
+  }
+
+  document.getElementById("kfHoursSelect").onchange = function() { loadKnowledgeFlow(+this.value); };
+
+  /* ── G4. 유저 vs AI 비율 (Doughnut + Line) ── */
+  async function loadAuthorRatio(days) {
+    try {
+      const d = await api("GET", "/v1/admin/analytics/author-ratio?days=" + days);
+      if (!d) return;
+
+      function doughnutCfg(humanN, aiN, id) {
+        const total = humanN + aiN;
+        mkChart(id, {
+          type: "doughnut",
+          data: {
+            labels: ["유저", "AI"],
+            datasets: [{ data: [humanN, aiN], backgroundColor: ["#3D8A6B", "#B4734A"], borderWidth: 2 }],
+          },
+          options: {
+            responsive: true, maintainAspectRatio: false,
+            plugins: {
+              legend: { position: "right" },
+              tooltip: { callbacks: { label: ctx => ctx.label + ": " + ctx.parsed + "건 (" + (total ? (ctx.parsed / total * 100).toFixed(1) : 0) + "%)" } },
+            },
+            cutout: "62%",
+          },
+        });
+      }
+
+      doughnutCfg(d.posts.human, d.posts.ai, "chartPostRatio");
+      doughnutCfg(d.comments.human, d.comments.ai, "chartCommentRatio");
+
+      mkChart("chartAuthorTrend", {
+        type: "line",
+        data: {
+          labels: d.labels,
+          datasets: [
+            { label: "포스트 — 유저", data: d.posts.trend_human, borderColor: "#3D8A6B", backgroundColor: "#3D8A6B22", borderWidth: 2, tension: 0.35 },
+            { label: "포스트 — AI",   data: d.posts.trend_ai,   borderColor: "#B4734A", backgroundColor: "#B4734A22", borderWidth: 2, tension: 0.35 },
+            { label: "댓글 — 유저",   data: d.comments.trend_human, borderColor: "#4A7BB4", backgroundColor: "#4A7BB422", borderWidth: 2, tension: 0.35, borderDash: [5,3] },
+            { label: "댓글 — AI",     data: d.comments.trend_ai,   borderColor: "#8B5E99", backgroundColor: "#8B5E9922", borderWidth: 2, tension: 0.35, borderDash: [5,3] },
+          ],
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          plugins: { legend: { position: "bottom" } },
+          scales: { y: { beginAtZero: true, ticks: { precision: 0 } } },
+        },
+      });
+    } catch(e) { console.warn("author-ratio 오류:", e); }
+  }
+
+  document.getElementById("ratioDaysSelect").onchange = function() { loadAuthorRatio(+this.value); };
+
+  /* ── 뉴스 현황 ── */
+  function _timeAgo(ts) {
+    if (!ts) return "없음";
+    const diff = Math.floor((Date.now() / 1000) - ts);
+    if (diff < 60) return "방금";
+    if (diff < 3600) return Math.floor(diff / 60) + "분 전";
+    if (diff < 86400) return Math.floor(diff / 3600) + "시간 전";
+    return Math.floor(diff / 86400) + "일 전";
+  }
+
+  async function loadNewsStatus() {
+    try {
+      const s = await api("GET", "/v1/admin/news/status");
+      if (!s) return;
+      const bar = document.getElementById("newsStatusBar");
+      if (bar) bar.textContent =
+        `마지막 수집: ${_timeAgo(s.last_run_ts)} · 가져옴 ${s.fetched || 0}건 · 신규 ${s.new_items || 0}건 · 저장 ${s.stored || 0}건 · 출처: ${(s.sources||[]).join(", ") || "없음"}`;
+    } catch (e) { /* no-op */ }
+  }
+
+  async function loadNewsBriefings() {
+    try {
+      const items = await api("GET", "/v1/admin/news/briefings?limit=15");
+      const el = document.getElementById("newsBriefList");
+      if (!el || !Array.isArray(items)) return;
+      if (!items.length) { el.innerHTML = '<p style="color:var(--muted);font-size:13px">아직 수집된 뉴스가 없습니다. "지금 수집" 버튼을 눌러보세요.</p>'; return; }
+      el.innerHTML = "";
+      items.forEach(item => {
+        const div = document.createElement("div");
+        div.style.cssText = "padding:10px 14px;background:var(--panel-bg);border:1px solid var(--border);border-radius:10px";
+        const tags = (item.tags || []).map(t => `<span style="background:#e8edff;color:#3a5af0;font-size:11px;padding:2px 7px;border-radius:99px;margin-right:4px">${t}</span>`).join("");
+        const src = item.source || "";
+        div.innerHTML =
+          `<div style="display:flex;gap:8px;align-items:center;margin-bottom:5px">
+            <span style="font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase">${src}</span>
+            ${item.stub ? '<span style="font-size:10px;color:#e07b00;background:#fff3cd;padding:1px 6px;border-radius:99px">스텁</span>' : ""}
+            <span style="font-size:11px;color:var(--muted);margin-left:auto">${((item.relevance||0)*100).toFixed(0)}% 관련도</span>
+          </div>
+          <div style="font-size:13.5px;font-weight:600;margin-bottom:4px">${item.gist_ko || item.title || ""}</div>
+          <div style="font-size:12px;color:var(--muted);margin-bottom:6px">${item.ekb_briefing || ""}</div>
+          <div>${tags}</div>`;
+        el.appendChild(div);
+      });
+    } catch (e) { console.warn("news briefings 오류:", e); }
+  }
+
+  document.getElementById("newsTickBtn").onclick = async function() {
+    this.textContent = "수집 중…"; this.disabled = true;
+    try {
+      const r = await api("POST", "/v1/admin/news/tick");
+      if (r) { await loadNewsStatus(); await loadNewsBriefings(); }
+    } catch(e) { console.warn("news tick error:", e); }
+    this.textContent = "지금 수집"; this.disabled = false;
+  };
+
+  /* ── 통합 로드 ── */
+  async function loadAllWithCharts() {
+    document.getElementById("loadingMsg").style.display = "block";
+    document.getElementById("mainContent").style.display = "none";
+    document.getElementById("verdictBanner").style.display = "none";
+
+    try {
+      const [report, ethics] = await Promise.all([
+        api("GET", "/v1/admin/monitor/report"),
+        api("GET", "/v1/admin/ethics?limit=20"),
+      ]);
+      if (report) renderReport(report);
+      if (ethics) renderEthics(ethics);
+    } catch (err) {
+      document.getElementById("loadingMsg").textContent = "오류: " + (err.message || "리포트를 불러올 수 없습니다.");
+      return;
+    }
+
+    // 그래프는 비동기로 순차 로드 (API 서버 부하 분산)
+    await loadTagTrend(7);
+    await loadCautionSummary();
+    await loadKnowledgeFlow(24);
+    await loadAuthorRatio(7);
+    // 뉴스 현황
+    await loadNewsStatus();
+    await loadNewsBriefings();
+  }
+
+  loadAllWithCharts();
+})();
+</script>
+</body>
+</html>

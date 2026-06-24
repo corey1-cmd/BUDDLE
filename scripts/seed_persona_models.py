@@ -1,8 +1,8 @@
-"""Seed / upgrade persona models to a self-hosted GLM-4.6 vLLM backend.
+"""Seed / upgrade persona models in the database.
 
 Migration 0002 inserts four persona models (poet/analyst/friend/critic) with
 backend_kind='stub'. This script *upgrades* them (and adds a general
-'buddle-default' persona) to the real vLLM endpoint when one is configured,
+'buddle-default' persona) to the real LLM endpoint when one is configured,
 without requiring a migration. It is idempotent and safe to re-run.
 
 Behavior:
@@ -12,31 +12,31 @@ Behavior:
         so running this in a stub environment is a no-op for the backend.
 
 Environment:
-    PERSONA_ENDPOINT_URL      e.g. http://vllm-glm:8000/v1   (OpenAI-compatible)
-    PERSONA_MODEL             default "glm-4.6"
-    PERSONA_ENDPOINT_API_KEY  optional bearer key — required by hosted
-                              OpenAI-compatible APIs (e.g. Z.ai GLM-Flash for
-                              the zero-GPU dev stage); self-hosted vLLM needs
-                              none. Stored in backend_config.api_key, which
-                              the vllm_endpoint backend already sends as
-                              "Authorization: Bearer ...".
-    PERSONA_LORA_<KEY>        optional per-template LoRA name, KEY in
-                              {POET, ANALYST, FRIEND, CRITIC, DEFAULT}
+    PERSONA_ENDPOINT_URL      OpenAI-compatible chat completions base URL
+    PERSONA_MODEL             model name passed to the API
+    PERSONA_ENDPOINT_API_KEY  Bearer key (required for hosted APIs)
+    PERSONA_LORA_<KEY>        optional per-template LoRA name (vLLM only),
+                              KEY in {POET, ANALYST, FRIEND, CRITIC, DEFAULT}
 
-Usage (self-hosted vLLM):
-    PERSONA_ENDPOINT_URL=http://vllm-glm:8000/v1 \
-    PERSONA_MODEL=glm-4.6 \
+Usage (Google Gemini 무료 티어 — API 키 aistudio.google.com에서 발급):
+    PERSONA_ENDPOINT_URL=https://generativelanguage.googleapis.com/v1beta/openai
+    PERSONA_ENDPOINT_API_KEY=AIza...
+    PERSONA_MODEL=gemini-2.0-flash
     python scripts/seed_persona_models.py
 
-Usage (dev stage, Z.ai free API — no GPU server):
-    PERSONA_ENDPOINT_URL=https://api.z.ai/api/paas/v4 \
-    PERSONA_ENDPOINT_API_KEY=zai-... \
-    PERSONA_MODEL=glm-4.5-flash \
+Usage (Z.ai GLM-Flash 무료 API):
+    PERSONA_ENDPOINT_URL=https://api.z.ai/api/paas/v4
+    PERSONA_ENDPOINT_API_KEY=zai-...
+    PERSONA_MODEL=glm-4.5-flash
     python scripts/seed_persona_models.py
 
-Inside the gpu compose api container:
-    docker compose -f docker-compose.gpu.yml exec api \
-        python scripts/seed_persona_models.py
+Usage (자체 vLLM 서버):
+    PERSONA_ENDPOINT_URL=http://vllm-server:8000/v1
+    PERSONA_MODEL=glm-4.6
+    python scripts/seed_persona_models.py
+
+Docker compose 컨테이너 내부에서:
+    docker compose exec api python scripts/seed_persona_models.py
 """
 
 from __future__ import annotations

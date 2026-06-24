@@ -140,10 +140,15 @@ class SearchResult:
     `recalled` carries actual long-term-memory contents retrieved for this
     turn (EKB internal search made literal); empty when nothing was recalled
     or the memory layer is disabled.
+
+    `user_context_used` is set when the accumulated UserContextFact (facts the
+    user explicitly stated about themselves) was consulted — another form of
+    internal search alongside LTM recall.
     """
 
     internal_memory_used: bool
     external_context_used: bool
+    user_context_used: bool = False
     notes: list[str] = field(default_factory=list)
     recalled: tuple[str, ...] = ()
 

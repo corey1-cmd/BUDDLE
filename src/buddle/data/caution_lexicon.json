@@ -1,0 +1,112 @@
+{
+  "_comment": "유의 단어 잡지 (내부 지침). version을 갱신하면 프로세스 재시작 없이 자동 리로드됩니다.",
+  "version": "2026-06-23-r1",
+  "entries": [
+    {"word": "자살",        "category": "self_harm",     "context_hint": "crisis",        "added_at": "2026-06-23"},
+    {"word": "자해",        "category": "self_harm",     "context_hint": "crisis",        "added_at": "2026-06-23"},
+    {"word": "죽고싶",      "category": "self_harm",     "context_hint": "crisis",        "added_at": "2026-06-23"},
+    {"word": "죽고 싶",     "category": "self_harm",     "context_hint": "crisis",        "added_at": "2026-06-23"},
+    {"word": "사라지고싶",  "category": "self_harm",     "context_hint": "crisis",        "added_at": "2026-06-23"},
+    {"word": "살기싫",      "category": "self_harm",     "context_hint": "crisis",        "added_at": "2026-06-23"},
+    {"word": "suicide",     "category": "self_harm",     "context_hint": "crisis",        "added_at": "2026-06-23"},
+    {"word": "kill myself", "category": "self_harm",     "context_hint": "crisis",        "added_at": "2026-06-23"},
+    {"word": "want to die", "category": "self_harm",     "context_hint": "crisis",        "added_at": "2026-06-23"},
+    {"word": "폭탄",        "category": "harm_to_others","context_hint": "danger",        "added_at": "2026-06-23"},
+    {"word": "사제폭탄",    "category": "harm_to_others","context_hint": "danger",        "added_at": "2026-06-23"},
+    {"word": "총기제작",    "category": "harm_to_others","context_hint": "danger",        "added_at": "2026-06-23"},
+    {"word": "독극물",      "category": "harm_to_others","context_hint": "danger",        "added_at": "2026-06-23"},
+    {"word": "해킹방법",    "category": "harm_to_others","context_hint": "danger",        "added_at": "2026-06-23"},
+    {"word": "마약제조",    "category": "harm_to_others","context_hint": "danger",        "added_at": "2026-06-23"},
+    {"word": "죽이는법",    "category": "harm_to_others","context_hint": "danger",        "added_at": "2026-06-23"},
+    {"word": "테러",        "category": "harm_to_others","context_hint": "danger",        "added_at": "2026-06-23"},
+    {"word": "bomb",        "category": "harm_to_others","context_hint": "danger",        "added_at": "2026-06-23"},
+    {"word": "how to kill", "category": "harm_to_others","context_hint": "danger",        "added_at": "2026-06-23"},
+    {"word": "synthesize drugs", "category": "harm_to_others","context_hint": "danger",   "added_at": "2026-06-23"},
+    {"word": "정치",        "category": "political",     "context_hint": "balance",       "added_at": "2026-06-23"},
+    {"word": "선거",        "category": "political",     "context_hint": "balance",       "added_at": "2026-06-23"},
+    {"word": "종교",        "category": "religious",     "context_hint": "respect",       "added_at": "2026-06-23"},
+    {"word": "차별",        "category": "discrimination","context_hint": "empathy",       "added_at": "2026-06-23"},
+    {"word": "성별",        "category": "sensitive",     "context_hint": "neutral",       "added_at": "2026-06-23"},
+    {"word": "인종",        "category": "discrimination","context_hint": "empathy",       "added_at": "2026-06-23"}
+  ],
+  "category_reasoning_seeds": {
+    "self_harm": {
+      "experience_domain": "정서적 고통과 회복 과정",
+      "analogy_source": "신체 부상이 아물 듯 마음의 상처도 회복된다",
+      "decompose_axes": ["현재 감정", "그 감정의 원인", "지금 당장 할 수 있는 작은 것"],
+      "premise_variants": ["일시적 감정 표현", "도움 요청 신호", "실제 위기 상황"],
+      "hypotheses": [
+        {"label": "일시적 감정 표현", "likelihood": "높음"},
+        {"label": "지속적 고통으로 인한 도움 요청", "likelihood": "중간"},
+        {"label": "즉각적 개입이 필요한 위기", "likelihood": "낮음"}
+      ],
+      "direct_knowledge_path": "support",
+      "meta_reason": "이 주제는 전문적 지원이 필요한 영역이며, 감정 인정과 연결이 최우선입니다"
+    },
+    "harm_to_others": {
+      "experience_domain": "갈등 해소와 평화적 문제 해결",
+      "analogy_source": "복잡한 문제를 합법적이고 안전한 방식으로 해결하는 과정",
+      "decompose_axes": ["질문의 의도", "배경 맥락", "안전한 대안"],
+      "premise_variants": ["학문적/창작적 호기심", "허구적 맥락", "실제 위험한 의도"],
+      "hypotheses": [
+        {"label": "학문적 또는 창작적 탐구", "likelihood": "높음"},
+        {"label": "허구/게임 시나리오", "likelihood": "중간"},
+        {"label": "실제 위해 의도", "likelihood": "낮음"}
+      ],
+      "direct_knowledge_path": "redirect",
+      "meta_reason": "안전한 정보 제공 범위를 넘는 요청으로, 합법적 대안으로 안내합니다"
+    },
+    "political": {
+      "experience_domain": "다양한 관점과 민주주의적 토론",
+      "analogy_source": "지도에서 여러 경로가 같은 목적지에 닿듯, 다양한 정치관도 공동선을 추구한다",
+      "decompose_axes": ["사실 vs 의견", "여러 입장의 근거", "공통 관심사"],
+      "premise_variants": ["정보 습득 목적", "토론 준비", "개인 견해 확인"],
+      "hypotheses": [
+        {"label": "중립적 정보 탐색", "likelihood": "높음"},
+        {"label": "특정 입장 지지 기대", "likelihood": "중간"},
+        {"label": "논쟁 유발 의도", "likelihood": "낮음"}
+      ],
+      "direct_knowledge_path": "balance",
+      "meta_reason": "특정 정치 입장을 지지하기보다 다양한 시각을 균형 있게 전달합니다"
+    },
+    "religious": {
+      "experience_domain": "인간의 의미 탐색과 공동체",
+      "analogy_source": "서로 다른 지도가 같은 산을 다른 각도로 그리듯",
+      "decompose_axes": ["신앙 vs 문화적 관행", "보편적 가치", "개인적 의미"],
+      "premise_variants": ["영적 탐구", "문화적 이해", "비교 연구"],
+      "hypotheses": [
+        {"label": "영적/철학적 탐구", "likelihood": "높음"},
+        {"label": "문화·역사적 이해", "likelihood": "중간"},
+        {"label": "특정 종교 비판 의도", "likelihood": "낮음"}
+      ],
+      "direct_knowledge_path": "respect",
+      "meta_reason": "모든 신앙과 전통을 존중하며 비교문화적 관점에서 접근합니다"
+    },
+    "discrimination": {
+      "experience_domain": "공감과 다양성의 가치",
+      "analogy_source": "오케스트라가 다른 악기로 조화를 이루듯",
+      "decompose_axes": ["사실관계", "역사적 맥락", "현재 영향"],
+      "premise_variants": ["인식 제고 목적", "학문적 탐구", "편견 강화 의도"],
+      "hypotheses": [
+        {"label": "차별 인식 및 해소 목적", "likelihood": "높음"},
+        {"label": "학문적 탐구", "likelihood": "중간"},
+        {"label": "편견 강화 의도", "likelihood": "낮음"}
+      ],
+      "direct_knowledge_path": "empathy",
+      "meta_reason": "차별 없는 관점에서 다양성과 공감을 중심으로 접근합니다"
+    },
+    "sensitive": {
+      "experience_domain": "복합적 사회 현상",
+      "analogy_source": "같은 현상도 위치에 따라 다르게 보인다",
+      "decompose_axes": ["핵심 질문", "관련 맥락", "다양한 시각"],
+      "premise_variants": ["정보 목적", "개인 경험", "일반화 시도"],
+      "hypotheses": [
+        {"label": "정보 및 이해 목적", "likelihood": "높음"},
+        {"label": "개인 경험 공유", "likelihood": "중간"},
+        {"label": "단정적 일반화 시도", "likelihood": "낮음"}
+      ],
+      "direct_knowledge_path": "neutral",
+      "meta_reason": "다양한 시각을 균형 있게 담아 신중하게 접근합니다"
+    }
+  }
+}

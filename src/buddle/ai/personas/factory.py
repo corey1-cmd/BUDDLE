@@ -51,6 +51,7 @@ class _PersonaBackend(Protocol):
         model_key: str,
         history: list[DialogueTurn],
         user_message: str,
+        user_context: object = None,
     ) -> PersonaReply: ...
 
 
@@ -202,6 +203,7 @@ class PersonaService:
         user_message: str,
         recalled_memories: list[str] | None = None,
         conversation_guidance: str = "",
+        user_context: object = None,
     ) -> PersonaReply:
         model = await _load_model(self._db, model_key)
         backend = _build_backend(
@@ -220,6 +222,7 @@ class PersonaService:
                 user_message=user_message,
                 recalled_memories=recalled_memories,
                 conversation_guidance=conversation_guidance,
+                user_context=user_context,
             )
         except PersonaBackendError as e:
             log.warning(
@@ -236,4 +239,5 @@ class PersonaService:
                 user_message=user_message,
                 recalled_memories=recalled_memories,
                 conversation_guidance=conversation_guidance,
+                user_context=user_context,
             )

@@ -55,6 +55,11 @@ class Settings(BaseSettings):
     scheduler_enabled: bool = False
     knowledge_tick_interval_s: int = 300
     plaza_tick_interval_s: int = 180
+    # News ingestion: hourly fetch of open-web tech content (HN + dev.to).
+    # Set to 0 to disable; requires SCHEDULER_ENABLED=true to run automatically.
+    news_tick_interval_s: int = 3600
+    # Minimum relevance score (0-1) for an article to be stored after AI analysis.
+    news_relevance_threshold: float = 0.3
 
     # ── Observability: Sentry (optional)
     # No DSN (default) -> never imported/initialised; zero overhead.
@@ -100,6 +105,12 @@ class Settings(BaseSettings):
     plus_persona_quota: int = 10
     pro_persona_quota: int = 999
 
+    # ── Persona inference endpoint (OpenAI-compat; used by mediator AI analysis)
+    # Shared with the seed_persona_models script. Set via env vars.
+    persona_endpoint_url: str = ""
+    persona_endpoint_api_key: str = ""
+    persona_model: str = "gemini-2.0-flash"
+
     # ── Embeddings (mediator content similarity)
     # BGE-M3 (1024-dim, multilingual SOTA) is the matching model; EMBED_DIM=1024
     # and migration 0016 align the pgvector columns. ko-sroberta (768) remains a
@@ -113,6 +124,12 @@ class Settings(BaseSettings):
     ethics_provider: Literal["stub", "local_hf", "vllm_endpoint", "llama_guard"] = "stub"
     ethics_model_id: str = ""
     ethics_endpoint_url: str = ""
+
+    # ── 유의 단어 잡지 (백혈구 AI 7단계 추론 게이트)
+    # 경로를 설정하면 활성화. JSON 파일의 version 필드가 바뀌면 자동 리로드.
+    # 미설정(None) = 게이트 비활성 (conscience.py 단순 게이트만 작동).
+    # 예: CAUTION_LEXICON_PATH=src/buddle/data/caution_lexicon.json
+    caution_lexicon_path: str | None = None
 
     # Multilingual pipeline (Korean/English first). The translator turns a
     # persona's thought into target-language versions; stub round-trips for

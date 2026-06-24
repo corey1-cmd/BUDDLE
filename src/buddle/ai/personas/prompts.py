@@ -18,7 +18,7 @@ from buddle.ai.interfaces import DialogueTurn
 from buddle.config import get_settings
 
 if TYPE_CHECKING:
-    from buddle.ai.cognition import PersonaDispositions
+    from buddle.ai.cognition import PersonaDispositions, UserContextFact
 
 # How many recent turns to keep in the dialogue window sent to the LLM.
 # Older turns are dropped to keep prompts within budget. Stage 3 may replace
@@ -70,6 +70,7 @@ def build_dialogue_messages(
     knowledge_context: list[str] | None = None,
     recalled_memories: list[str] | None = None,
     conversation_guidance: str = "",
+    user_context: UserContextFact | None = None,
 ) -> list[dict[str, str]]:
     """Messages for an ongoing 1:1 dialogue with the user."""
     system = _persona_system_prompt(
@@ -114,6 +115,7 @@ def build_dialogue_messages(
             topic_offsets=topic_offsets,
             recalled_memories=tuple(recalled_memories or ()),
             conversation_guidance=conversation_guidance,
+            user_context=user_context,
         )
         messages.append({"role": "system", "content": block})
     elif settings.affect_guidance_enabled:

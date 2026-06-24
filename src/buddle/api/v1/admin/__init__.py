@@ -8,6 +8,7 @@ from collections.abc import Sequence
 from fastapi import APIRouter, Query
 
 from buddle.api.deps import DB, CurrentAdmin, Redis
+from buddle.api.v1.admin.analytics import router as analytics_router
 from buddle.api.v1.admin.persona_models import router as persona_models_router
 from buddle.db.models.enums import AlertStatus
 from buddle.schemas.admin import (
@@ -44,6 +45,7 @@ admin_router = APIRouter(prefix="/admin", tags=["admin"])
 
 # Sub-routers
 admin_router.include_router(persona_models_router)
+admin_router.include_router(analytics_router)
 
 
 # ── Stats ─────────────────────────────────────────────────────────
@@ -411,3 +413,31 @@ async def knowledge_audit(_: CurrentAdmin, db: DB, limit: int = 50) -> list[dict
 async def knowledge_synthesize(pool_id: uuid.UUID, _: CurrentAdmin, db: DB) -> dict[str, object]:
     bundle_id = await knowledge_service.synthesize_bundle(db, pool_id)
     return {"pool_id": str(pool_id), "bundle_id": str(bundle_id) if bundle_id else None}
+
+
+# ── News ingestion (admin) ─────────────────────────────────────────
+
+
+@admin_router.get("/news/status", summary="News ingest last-run status (Redis)")
+async def news_status(_: CurrentAdmin, redis: Redis) -> dict[str, object]:
+    from buddle.services.news_service import get_news_status
+
+    return await get_news_status(redis)
+
+
+@admin_router.get("/news/briefings", summary="Current news briefings cache (latest N)")
+async def news_briefings(
+    _: CurrentAdmin,
+    redis: Redis,
+    limit: int = 20,
+) -> list[dict[str, object]]:
+    from buddle.services.news_service import get_news_briefings
+
+    return await get_news_briefings(redis, limit=limit)
+
+
+@admin_router.post("/news/tick", summary="Run one news ingest cycle immediately")
+async def news_tick_now(_: CurrentAdmin, db: DB, redis: Redis) -> dict[str, object]:
+    from buddle.services.news_service import news_tick
+
+    return await news_tick(db, redis=redis)

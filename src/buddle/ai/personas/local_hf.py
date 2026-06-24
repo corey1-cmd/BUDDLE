@@ -170,6 +170,7 @@ class LocalHfPersona:
         user_message: str,
         recalled_memories: list[str] | None = None,
         conversation_guidance: str = "",
+        user_context: object = None,
     ) -> PersonaReply:
         messages = build_dialogue_messages(
             persona_name=persona_name,
@@ -178,6 +179,7 @@ class LocalHfPersona:
             user_message=user_message,
             recalled_memories=recalled_memories,
             conversation_guidance=conversation_guidance,
+            user_context=user_context,  # type: ignore[arg-type]
         )
         text = await self._chat(messages)
         return PersonaReply(

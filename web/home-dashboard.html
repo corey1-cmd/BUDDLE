@@ -501,6 +501,10 @@
       <svg width="26" height="26" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 3c0 5-4 7-4 11a4 4 0 0 0 8 0c0-4-4-6-4-11z" fill="#5C7CF0" opacity=".9"/><path d="M12 14c0 3 .5 5 .5 7" stroke="#4863D6" stroke-width="1.4" stroke-linecap="round"/></svg>
       <span style="font-family:var(--display);font-weight:600;font-size:20px;color:var(--ink);letter-spacing:-.01em">버들</span>
     </div>
+    <a id="adminBtn" href="admin.html" aria-label="관리자 대시보드" title="관리자 대시보드"
+      style="display:none;align-items:center;justify-content:center;width:36px;height:36px;border-radius:10px;background:var(--willow-wash);border:none;cursor:pointer;text-decoration:none">
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#3D8A6B" stroke-width="1.8"><path d="M12 2l9 4.5V12c0 5-4 8.5-9 10-5-1.5-9-5-9-10V6.5z"/><path d="M9 12l2 2 4-4"/></svg>
+    </a>
     <a href="profile.html" class="bd-iconbtn" aria-label="내 프로파일"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 5-6 8-6s6.5 2 8 6"/></svg></a>
     <button class="bd-iconbtn" aria-label="알림"><svg viewBox="0 0 24 24"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg></button>
   </div>
@@ -660,6 +664,13 @@
   (async function boot(){
     const authed=await buddle.requireAuth();
     if(!authed||!buddle.auth.isAuthed()) return;
+    // 관리자 여부 확인 — is_admin이면 상단 방패 버튼 표시
+    buddle.users.me().then(me=>{
+      if(me&&me.is_admin){
+        const btn=document.getElementById("adminBtn");
+        if(btn) btn.style.display="flex";
+      }
+    }).catch(()=>{});
     try{
       const list=await buddle.personas.list();
       const items=(Array.isArray(list)?list:(list&&list.items)||[]).filter(p=>p.is_active!==false);

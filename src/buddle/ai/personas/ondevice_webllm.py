@@ -68,6 +68,7 @@ class OndeviceWebllmPersona:
         user_message: str,
         recalled_memories: list[str] | None = None,
         conversation_guidance: str = "",
+        user_context: object = None,
     ) -> PersonaReply:
         # Defensive: the WebSocket route shouldn't reach here for an
         # on-device persona because the client handles dialogue. If it does,

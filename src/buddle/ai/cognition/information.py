@@ -9,16 +9,25 @@ sub-stages, grounded in cognitive psychology:
                       (Attention as a limited-capacity selective filter,
                       Broadbent/Treisman.)
   3. Comprehension  — interpret meaning: classify communicative intent, read
-                      affect (reusing ai/affect), extract topics.
+                      affect (absorbs ai/affect — no duplication), extract topics.
   4. Acceptance     — judge clarity/relevance: how specific is the message;
                       should the response seek clarification.
   5. Retention      — transfer to long-term memory: build a compact summary +
                       salient points the Decision Process (and future turns)
                       can use.
 
-Pure and rule-based: no LLM call, no I/O. Reads ONLY the current message
-(bias-safety contract). A learned model could later replace the internals
-behind InformationProcessingResult, but must keep the no-history contract.
+Bias-safety contract (enforced at signature level):
+  process_information(text) takes ONLY text — no user history, no profile,
+  no prior turns. This is the hard guarantee that opinion/bias cannot
+  accumulate through this layer. User-stated FACTS (name, age, location)
+  travel through a separate channel: user_context.UserContextFact, assembled
+  at the service layer and injected into the prompt by synthesize_prompt_block.
+
+cognition_enabled toggle:
+  When False, the full EKB pipeline is skipped and only the affect sub-stage
+  runs (perceive() is always executed — it is the minimal perception needed for
+  any humane response). The returned InformationProcessingResult carries the
+  affect result and stub defaults for all other fields.
 """
 
 from __future__ import annotations
@@ -218,16 +227,46 @@ def _retention(
     return summary, salient_points
 
 
-def process_information(text: str) -> InformationProcessingResult:
-    """Run the full EKB information-processing stage on a single message."""
+def process_information(
+    text: str,
+    *,
+    cognition_enabled: bool = True,
+) -> InformationProcessingResult:
+    """Run the EKB information-processing stage on a single message.
+
+    ALWAYS runs perceive() (affect) — it is the minimum required to respond
+    humanely. When cognition_enabled=False, skips the remaining four EKB
+    sub-stages and returns stub defaults for attention/intent/topics/clarity.
+
+    Signature contract: text only — no user arg, no history, no profile.
+    User-stated facts live in user_context.UserContextFact (separate channel).
+    """
+    # Stage 3 (Comprehension — affect): always executed, absorbs ai/affect.
+    affect = perceive(text)
+
+    if not cognition_enabled:
+        stub_attention = AttentionResult(
+            salient_tokens=[], is_question=False, is_request=False, is_urgent=False
+        )
+        return InformationProcessingResult(
+            language=_detect_language(text),
+            raw_len=len(text),
+            attention=stub_attention,
+            intent=Intent.MAKE_CONVERSATION,
+            affect=affect,
+            topics=[],
+            clarity=0.5,
+            needs_clarification=False,
+            retained_summary="",
+            salient_points=[],
+        )
+
     tokens, language = _exposure(text)
     attention = _attention(text, tokens)
 
-    affect = perceive(text)  # reuse the affect module (no duplication)
     lower = text.lower()
     intent = _comprehend_intent(lower, attention, affect.valence)
 
-    # Topics ≈ salient content tokens (transparent; a tagger could refine).
     topics = attention.salient_tokens[:8]
 
     clarity, needs_clarification = _acceptance(text, attention)

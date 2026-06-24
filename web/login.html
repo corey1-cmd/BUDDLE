@@ -3,281 +3,784 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<title>버들 — 곁에 두고, 천천히</title>
+<title>buddle — 시작하기</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Spline+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,700&family=Spline+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="buddle.css">
-<script>
-/* === security.js (inlined: no external dependency) === */
-(function (global) {
-  "use strict";
-  const NAMED = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;", "`": "&#96;" };
-  function esc(value) { return String(value == null ? "" : value).replace(/[&<>"'`]/g, (c) => NAMED[c]); }
-  function el(tag, attrs, textContent) {
-    const node = document.createElement(tag);
-    if (attrs) for (const k of Object.keys(attrs)) {
-      const v = attrs[k]; if (v == null) continue;
-      if (k === "class") node.className = String(v);
-      else if (k === "dataset" && typeof v === "object") { for (const dk of Object.keys(v)) node.dataset[dk] = String(v[dk]); }
-      else if (/^on/i.test(k)) { if (typeof v === "function") node.addEventListener(k.slice(2).toLowerCase(), v); }
-      else node.setAttribute(k, String(v));
-    }
-    if (textContent != null) node.textContent = String(textContent);
-    return node;
-  }
-  function setText(node, value) { node.textContent = String(value == null ? "" : value); }
-  function safeUrl(url) { const u = String(url || "").trim(); if (/^(https?:|mailto:|\/|#)/i.test(u) && !/^javascript:/i.test(u)) return u; return "#"; }
-  const validate = {
-    email(s) { return typeof s === "string" && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s) && s.length <= 254; },
-    password(s) { return typeof s === "string" && s.length >= 8 && s.length <= 200 && /[a-z]/.test(s) && /[A-Z]/.test(s) && /\d/.test(s); },
-    personaName(s) { return typeof s === "string" && s.trim().length >= 1 && s.length <= 64; },
-    thought(s) { return typeof s === "string" && s.trim().length >= 1 && s.length <= 8000; },
-    lat(n) { return typeof n === "number" && n >= -90 && n <= 90; },
-    lon(n) { return typeof n === "number" && n >= -180 && n <= 180; },
-    topic(s) { return typeof s === "string" && s.trim().length >= 1 && s.length <= 64; },
-  };
-  function safeKeys(obj) { if (obj && typeof obj === "object") for (const bad of ["__proto__", "constructor", "prototype"]) if (Object.prototype.hasOwnProperty.call(obj, bad)) delete obj[bad]; return obj; }
-  function preventFraming() {
-    try { if (global.top !== global.self) { let same = false; try { same = global.top.location.origin === global.location.origin; } catch (_) { same = false; } if (!same) global.top.location = global.location.href; } } catch (_) {}
-  }
-  function applyCSP() {
-    if (document.querySelector('meta[http-equiv="Content-Security-Policy"]')) return;
-    const m = document.createElement("meta");
-    m.httpEquiv = "Content-Security-Policy";
-    m.content = ["default-src 'self'","style-src 'self' 'unsafe-inline' https://fonts.googleapis.com","font-src 'self' https://fonts.gstatic.com","img-src 'self' data: https:","script-src 'self' 'unsafe-inline'","connect-src 'self' ws: wss:","frame-ancestors 'self'","base-uri 'self'","form-action 'self'","object-src 'none'"].join("; ");
-    document.head.appendChild(m);
-  }
-  function harden() { applyCSP(); preventFraming(); }
-  global.sec = Object.freeze({ esc, el, setText, safeUrl, validate, safeKeys, preventFraming, applyCSP, harden });
-})(window);
-</script>
-<script>
-/* === api.js (inlined) === */
-(function (global) {
-  "use strict";
-  const BASE = global.BUDDLE_API_BASE || "";
-  const TOKEN_KEY = "buddle.auth.v1";
-  let accessToken = null, refreshToken = null;
-  (function hydrate() {
-    try {
-      const raw = global.sessionStorage && global.sessionStorage.getItem(TOKEN_KEY);
-      if (!raw) return;
-      const t = JSON.parse(raw);
-      if (t && typeof t.a === "string") { accessToken = t.a; refreshToken = typeof t.r === "string" ? t.r : null; }
-    } catch (e) { /* memory-only */ }
-  })();
-  function persistTokens() {
-    try {
-      if (!global.sessionStorage) return;
-      if (accessToken) global.sessionStorage.setItem(TOKEN_KEY, JSON.stringify({ a: accessToken, r: refreshToken }));
-      else global.sessionStorage.removeItem(TOKEN_KEY);
-    } catch (e) { /* memory-only */ }
-  }
-  function setTokens(a, r) { accessToken = a || null; if (r !== undefined) refreshToken = r || null; persistTokens(); }
-  function clearTokens() { accessToken = null; refreshToken = null; persistTokens(); }
-  class ApiError extends Error { constructor(status, message) { super(message); this.name = "ApiError"; this.status = status; } }
-  async function request(method, path, body, opts) {
-    opts = opts || {}; const auth = opts.auth !== false; const retry = opts.retry !== false;
-    const headers = { "Content-Type": "application/json" };
-    if (auth && accessToken) headers["Authorization"] = "Bearer " + accessToken;
-    const res = await fetch(BASE + path, { method, headers, body: body != null ? JSON.stringify(body) : undefined });
-    if (res.status === 401 && auth && retry && refreshToken) { const ok = await tryRefresh(); if (ok) return request(method, path, body, { auth, retry: false }); }
-    if (!res.ok) { let d = res.statusText; try { const j = await res.json(); d = j.message || j.detail || d; } catch (e) {} throw new ApiError(res.status, d); }
-    if (res.status === 204) return null;
-    const ct = res.headers.get("content-type") || "";
-    return ct.includes("application/json") ? res.json() : res.text();
-  }
-  async function tryRefresh() { try { const d = await request("POST", "/v1/auth/refresh", { refresh_token: refreshToken }, { auth: false, retry: false }); setTokens(d.access_token, d.refresh_token); return true; } catch (e) { clearTokens(); return false; } }
-  const auth = {
-    async signup(email, password, pc) { return request("POST", "/v1/auth/signup", { email, password, password_confirm: pc }, { auth: false }); },
-    async login(email, password) { const d = await request("POST", "/v1/auth/login", { email, password }, { auth: false }); setTokens(d.access_token, d.refresh_token); return d; },
-    logout() { clearTokens(); }, isAuthed() { return !!accessToken; },
-  };
-  global.buddle = { ApiError, setTokens, clearTokens, auth };
-})(window);
-</script>
 <style>
-  /* login: the 0.05s first impression. White ground, gradient wordmark,
-     one continuous page — no boxed-off hero panel creating a seam. */
-  body{background:var(--paper);}
-  .bd-phone{display:flex;flex-direction:column;justify-content:center;padding:0;min-height:100dvh;}
+/* ── 전체 레이아웃 ── */
+html, body { height: 100%; }
+body {
+  background: var(--paper);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100dvh;
+  padding: var(--s4);
+}
 
-  .brandhead{text-align:center;padding:var(--s7) var(--s5) var(--s5);}
-  .wordmark{font-family:var(--display);font-weight:700;font-size:46px;letter-spacing:-.01em;
-    background:linear-gradient(90deg,#6685F2 0%,#A98DEE 100%);-webkit-background-clip:text;background-clip:text;color:transparent;
-    margin-bottom:var(--s3);}
-  .tagline{font-size:var(--t-body);color:var(--ink-soft);}
+.login-shell {
+  width: 100%;
+  max-width: 400px;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
 
-  /* a single proof line — quiet trust, not a wall of logos */
-  .proof{display:flex;align-items:center;justify-content:center;gap:var(--s2);padding:var(--s5) var(--s4) calc(var(--s5) + env(safe-area-inset-bottom));font-size:var(--t-xs);color:var(--ink-faint);flex-wrap:wrap;}
-  .proof .pill{display:flex;align-items:center;gap:5px;color:var(--willow);font-weight:600;}
-  .proof .pill svg{width:14px;height:14px;stroke:currentColor;flex:none;}
+/* ── Hero / 브랜드 헤더 ── */
+.hero {
+  background: var(--accent-grad);
+  border-radius: var(--r-lg) var(--r-lg) 0 0;
+  padding: var(--s7) var(--s6) var(--s6);
+  position: relative;
+  overflow: hidden;
+  text-align: center;
+}
+.hero::before {
+  content: "";
+  position: absolute;
+  top: -40px; right: -40px;
+  width: 200px; height: 200px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255,255,255,.18) 0%, transparent 70%);
+  pointer-events: none;
+}
+.hero::after {
+  content: "";
+  position: absolute;
+  bottom: -20px; left: -20px;
+  width: 120px; height: 120px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255,255,255,.10) 0%, transparent 70%);
+  pointer-events: none;
+}
+.hero-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px; height: 56px;
+  border-radius: 18px;
+  background: rgba(255,255,255,.22);
+  backdrop-filter: blur(8px);
+  margin: 0 auto var(--s4);
+}
+.hero-icon svg { width: 32px; height: 32px; }
+.hero-wordmark {
+  font-family: var(--display);
+  font-weight: 700;
+  font-size: 36px;
+  color: #fff;
+  letter-spacing: -.02em;
+  display: block;
+  margin-bottom: var(--s2);
+}
+.hero-tagline {
+  font-size: var(--t-sm);
+  color: rgba(255,255,255,.82);
+  line-height: 1.55;
+}
 
-  /* form sheet — its own elevated card */
-  .sheet{margin:0 var(--s4);background:var(--paper-raised);border:1px solid var(--line);
-    border-radius:var(--r-lg);box-shadow:var(--shadow-lg);padding:var(--s5);position:relative;z-index:2;}
+/* ── 폼 카드 ── */
+.form-card {
+  background: var(--paper-raised);
+  border: 1px solid var(--line);
+  border-top: none;
+  border-radius: 0 0 var(--r-lg) var(--r-lg);
+  padding: var(--s5);
+  box-shadow: var(--shadow-lg);
+}
 
-  .tabs{display:flex;gap:4px;background:var(--paper-sunken);border-radius:var(--r-pill);padding:4px;margin-bottom:var(--s5);}
-  .tabs button{flex:1;border:0;background:transparent;font-family:var(--body);font-size:var(--t-sm);font-weight:600;color:var(--ink-soft);padding:9px 0;border-radius:var(--r-pill);cursor:pointer;transition:background var(--dur) var(--ease),color var(--dur) var(--ease);}
-  .tabs button.on{background:var(--accent-grad);color:#fff;box-shadow:var(--shadow-pop-sm);}
+/* ── 탭 ── */
+.tabs {
+  display: flex;
+  gap: 4px;
+  background: var(--paper-sunken);
+  border-radius: var(--r-pill);
+  padding: 4px;
+  margin-bottom: var(--s5);
+}
+.tab-btn {
+  flex: 1;
+  border: 0;
+  background: transparent;
+  font-family: var(--body);
+  font-size: var(--t-sm);
+  font-weight: 600;
+  color: var(--ink-soft);
+  padding: 10px 0;
+  border-radius: var(--r-pill);
+  cursor: pointer;
+  transition: background var(--dur) var(--ease), color var(--dur) var(--ease), box-shadow var(--dur) var(--ease);
+}
+.tab-btn.on {
+  background: var(--accent-grad);
+  color: #fff;
+  box-shadow: var(--shadow-pop-sm);
+}
 
-  .field{margin-bottom:var(--s4);}
-  .field label{display:block;font-size:var(--t-sm);font-weight:600;color:var(--ink);margin-bottom:var(--s2);}
-  .field .wrap{position:relative;}
-  .field.invalid .bd-input{border-color:#C0563B;box-shadow:0 0 0 4px rgba(192,86,59,.12);}
-  .eye{position:absolute;right:10px;top:50%;transform:translateY(-50%);background:none;border:0;cursor:pointer;padding:6px;color:var(--ink-faint);}
-  .eye svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:1.7;}
+/* ── 필드 ── */
+.field {
+  margin-bottom: var(--s4);
+}
+.field label {
+  display: block;
+  font-size: var(--t-sm);
+  font-weight: 600;
+  color: var(--ink);
+  margin-bottom: var(--s2);
+}
+.field-wrap {
+  position: relative;
+}
+.field.invalid .bd-input {
+  border-color: #C0563B;
+  box-shadow: 0 0 0 4px rgba(192, 86, 59, .12);
+}
+.field-err {
+  font-size: var(--t-xs);
+  color: #C0563B;
+  margin-top: 6px;
+  display: none;
+}
+.field.invalid .field-err {
+  display: block;
+}
 
-  .strength{display:none;margin-top:var(--s2);}
-  .strength.show{display:block;}
-  .strength .bd-meter{height:6px;}
-  .strength small{display:block;font-size:var(--t-xs);color:var(--ink-faint);margin-top:5px;}
+/* 눈 버튼 */
+.eye-btn {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: 0;
+  cursor: pointer;
+  padding: 6px;
+  color: var(--ink-faint);
+  border-radius: var(--r-sm);
+  transition: color var(--dur) var(--ease);
+  line-height: 0;
+}
+.eye-btn:hover { color: var(--ink-soft); }
+.eye-btn svg { width: 20px; height: 20px; stroke: currentColor; fill: none; stroke-width: 1.7; }
 
-  .form-err{font-size:var(--t-sm);color:#C0563B;margin-bottom:var(--s3);min-height:0;opacity:0;transition:opacity var(--dur) var(--ease);}
-  .form-err.show{opacity:1;}
-  .hint{font-size:var(--t-xs);color:var(--ink-faint);margin-top:var(--s4);text-align:center;line-height:1.55;}
-  .hint b{color:var(--willow);}
+/* ── 비밀번호 강도 ── */
+.strength { margin-top: var(--s3); display: none; }
+.strength.show { display: block; }
+
+.strength-bar-row {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  margin-bottom: var(--s3);
+}
+.strength-bar-track {
+  flex: 1;
+  height: 5px;
+  border-radius: var(--r-pill);
+  background: var(--paper-sunken);
+  overflow: hidden;
+}
+.strength-bar-fill {
+  height: 100%;
+  border-radius: var(--r-pill);
+  width: 5%;
+  background: var(--line-strong);
+  transition: width .35s var(--ease), background .35s var(--ease);
+}
+.strength-label {
+  font-size: var(--t-xs);
+  font-weight: 700;
+  min-width: 28px;
+  text-align: right;
+  color: var(--ink-faint);
+  transition: color .2s;
+}
+
+/* 요건 체크리스트 */
+.req-list {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.req-item {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: var(--t-xs);
+  color: var(--ink-faint);
+  transition: color .2s;
+}
+.req-item.met { color: #3D8A6B; }
+.req-icon {
+  width: 16px; height: 16px;
+  border-radius: 50%;
+  border: 1.5px solid var(--line-strong);
+  display: flex; align-items: center; justify-content: center;
+  flex: none;
+  transition: background .2s, border-color .2s;
+}
+.req-item.met .req-icon {
+  background: #3D8A6B;
+  border-color: #3D8A6B;
+}
+.req-icon svg { width: 9px; height: 9px; stroke: #fff; fill: none; stroke-width: 2.5; }
+.req-item:not(.met) .req-icon svg { display: none; }
+
+/* 선택 요건 (특수문자) */
+.req-item.optional { opacity: .7; }
+.req-item.optional.met { opacity: 1; }
+
+/* ── 전역 오류 메시지 ── */
+.form-err {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  background: rgba(192, 86, 59, .08);
+  border: 1px solid rgba(192, 86, 59, .2);
+  border-radius: var(--r);
+  padding: var(--s3) var(--s3);
+  font-size: var(--t-sm);
+  color: #C0563B;
+  margin-bottom: var(--s4);
+  display: none;
+}
+.form-err.show { display: flex; }
+.form-err svg { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 1.8; flex: none; }
+
+/* ── 성공 메시지 ── */
+.form-ok {
+  display: none;
+  align-items: center;
+  gap: var(--s2);
+  background: rgba(61, 138, 107, .08);
+  border: 1px solid rgba(61, 138, 107, .2);
+  border-radius: var(--r);
+  padding: var(--s3) var(--s3);
+  font-size: var(--t-sm);
+  color: #3D8A6B;
+  margin-bottom: var(--s4);
+}
+.form-ok.show { display: flex; }
+.form-ok svg { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 1.8; flex: none; }
+
+/* ── 제출 버튼 ── */
+.submit-btn {
+  width: 100%;
+  font-family: var(--body);
+  font-size: var(--t-body);
+  font-weight: 700;
+  padding: 15px 18px;
+  border-radius: var(--r);
+  border: none;
+  background: var(--accent-grad);
+  color: #fff;
+  cursor: pointer;
+  box-shadow: var(--shadow-pop);
+  transition: opacity var(--dur) var(--ease), transform var(--dur) var(--ease), box-shadow var(--dur) var(--ease);
+  position: relative;
+  overflow: hidden;
+}
+.submit-btn::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(255,255,255,.08) 0%, transparent 100%);
+  pointer-events: none;
+}
+.submit-btn:hover { opacity: .92; transform: translateY(-1px); }
+.submit-btn:active { transform: translateY(1px); box-shadow: var(--shadow-pop-sm); }
+.submit-btn:disabled { opacity: .45; cursor: default; transform: none; box-shadow: none; }
+
+/* ── 하단 힌트 ── */
+.hint {
+  text-align: center;
+  font-size: var(--t-xs);
+  color: var(--ink-faint);
+  margin-top: var(--s4);
+  line-height: 1.6;
+}
+.hint a {
+  color: var(--willow);
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+}
+.hint a:hover { text-decoration: underline; }
+
+/* ── 안전 배지 ── */
+.trust-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s4);
+  margin-top: var(--s5);
+  flex-wrap: wrap;
+}
+.trust-item {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: var(--t-xs);
+  color: var(--ink-faint);
+  font-weight: 500;
+}
+.trust-item svg {
+  width: 13px; height: 13px;
+  stroke: var(--pos);
+  fill: none;
+  stroke-width: 2;
+  flex: none;
+}
+
+/* ── 로딩 스피너 ── */
+.spinner {
+  display: none;
+  width: 18px; height: 18px;
+  border: 2px solid rgba(255,255,255,.4);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin .7s linear infinite;
+  flex: none;
+}
+.submit-btn .btn-inner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s2);
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── 구분선 ── */
+.divider {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  margin: var(--s5) 0;
+  color: var(--ink-faint);
+  font-size: var(--t-xs);
+}
+.divider::before, .divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--line);
+}
 </style>
 </head>
 <body>
-<div class="bd-phone">
 
-  <div class="brandhead">
-    <div class="wordmark">buddle</div>
-    <p class="tagline">생각을 적으면, 언어를 넘어 닿습니다.</p>
+<div class="login-shell">
+
+  <!-- 히어로 브랜드 헤더 -->
+  <div class="hero">
+    <div class="hero-icon">
+      <svg viewBox="0 0 32 32" fill="none">
+        <path d="M16 4c0 6-5 9-5 14a5 5 0 0 0 10 0c0-5-5-8-5-14z" fill="rgba(255,255,255,.95)"/>
+        <path d="M16 18c0 4 .6 6.5 .6 9" stroke="rgba(255,255,255,.6)" stroke-width="1.6" stroke-linecap="round"/>
+      </svg>
+    </div>
+    <span class="hero-wordmark">buddle</span>
+    <p class="hero-tagline">생각을 적으면, 언어를 넘어 닿습니다.</p>
   </div>
 
-  <main class="sheet bd-reveal">
+  <!-- 폼 카드 -->
+  <div class="form-card">
+
+    <!-- 로그인 / 회원가입 탭 -->
     <div class="tabs" role="tablist">
-      <button id="tabLogin" class="on" role="tab" aria-selected="true">로그인</button>
-      <button id="tabSignup" role="tab" aria-selected="false">회원가입</button>
+      <button class="tab-btn on" id="tabLogin" role="tab" aria-selected="true">로그인</button>
+      <button class="tab-btn" id="tabSignup" role="tab" aria-selected="false">회원가입</button>
     </div>
 
+    <!-- 성공 -->
+    <div class="form-ok" id="formOk">
+      <svg viewBox="0 0 24 24"><path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="9"/></svg>
+      <span id="formOkText">로그인 성공! 이동 중…</span>
+    </div>
+
+    <!-- 오류 -->
+    <div class="form-err" id="formErr">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 8v4M12 16h.01"/></svg>
+      <span id="formErrText">오류가 발생했습니다.</span>
+    </div>
+
+    <!-- 이메일 -->
     <div class="field" id="fEmail">
       <label for="email">이메일</label>
-      <div class="wrap"><input id="email" class="bd-input" type="email" inputmode="email" autocomplete="email" placeholder="you@example.com" /></div>
+      <div class="field-wrap">
+        <input id="email" class="bd-input" type="email" inputmode="email"
+          autocomplete="email" placeholder="you@example.com" />
+      </div>
+      <div class="field-err">올바른 이메일 주소를 입력해 주세요.</div>
     </div>
 
+    <!-- 비밀번호 -->
     <div class="field" id="fPassword">
       <label for="password">비밀번호</label>
-      <div class="wrap">
-        <input id="password" class="bd-input" type="password" autocomplete="current-password" placeholder="비밀번호" style="padding-right:44px" />
-        <button class="eye" id="eyeBtn" type="button" aria-label="비밀번호 표시"><svg id="eyeIcon" viewBox="0 0 24 24"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg></button>
+      <div class="field-wrap">
+        <input id="password" class="bd-input" type="password"
+          autocomplete="current-password" placeholder="비밀번호"
+          style="padding-right:46px" />
+        <button class="eye-btn" id="eyeBtn" type="button" aria-label="비밀번호 표시/숨기기">
+          <svg id="eyeIconShow" viewBox="0 0 24 24"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg>
+          <svg id="eyeIconHide" viewBox="0 0 24 24" style="display:none"><path d="M17.9 17.9A10 10 0 0 1 12 19c-6.5 0-10-7-10-7a17.8 17.8 0 0 1 4.1-5.1M9.9 4.2A9.9 9.9 0 0 1 12 4c6.5 0 10 7 10 7a17.7 17.7 0 0 1-2.3 3.4M3 3l18 18"/></svg>
+        </button>
       </div>
+      <!-- 비밀번호 강도 (회원가입 전용) -->
       <div class="strength" id="strength">
-        <div class="bd-meter"><i id="strengthBar" style="width:8%"></i></div>
-        <small id="strengthText">비밀번호 강도</small>
+        <div class="strength-bar-row">
+          <div class="strength-bar-track">
+            <div class="strength-bar-fill" id="strengthFill"></div>
+          </div>
+          <span class="strength-label" id="strengthLabel">—</span>
+        </div>
+        <!-- 요건 체크리스트 -->
+        <div class="req-list">
+          <div class="req-item" id="req8">
+            <div class="req-icon"><svg viewBox="0 0 10 10"><polyline points="1.5,5 4,7.5 8.5,2.5"/></svg></div>
+            <span>8자 이상</span>
+          </div>
+          <div class="req-item" id="reqCase">
+            <div class="req-icon"><svg viewBox="0 0 10 10"><polyline points="1.5,5 4,7.5 8.5,2.5"/></svg></div>
+            <span>영문 대문자 + 소문자 포함</span>
+          </div>
+          <div class="req-item" id="reqNum">
+            <div class="req-icon"><svg viewBox="0 0 10 10"><polyline points="1.5,5 4,7.5 8.5,2.5"/></svg></div>
+            <span>숫자(0–9) 포함</span>
+          </div>
+          <div class="req-item optional" id="reqSpecial">
+            <div class="req-icon"><svg viewBox="0 0 10 10"><polyline points="1.5,5 4,7.5 8.5,2.5"/></svg></div>
+            <span>특수문자 또는 14자 이상 <em style="font-style:normal;opacity:.7">(선택 — 강함)</em></span>
+          </div>
+        </div>
+      </div>
+      <div class="field-err" id="pwErr">
+        위 조건을 모두 충족해야 합니다.
       </div>
     </div>
 
+    <!-- 비밀번호 확인 (회원가입 전용) -->
     <div class="field" id="fConfirm" style="display:none">
       <label for="confirm">비밀번호 확인</label>
-      <div class="wrap"><input id="confirm" class="bd-input" type="password" autocomplete="new-password" placeholder="비밀번호 다시 입력" /></div>
+      <div class="field-wrap">
+        <input id="confirm" class="bd-input" type="password"
+          autocomplete="new-password" placeholder="비밀번호 다시 입력" />
+      </div>
+      <div class="field-err">비밀번호가 일치하지 않습니다.</div>
     </div>
 
-    <div class="form-err" id="formErr"></div>
-    <button id="submit" class="bd-btn bd-btn--primary bd-btn--block">로그인</button>
-    <p class="hint" id="modeHint">계정이 없다면 <b>회원가입</b> 탭을 선택하세요.</p>
-  </main>
+    <!-- 제출 버튼 -->
+    <button class="submit-btn" id="submitBtn" disabled>
+      <div class="btn-inner">
+        <div class="spinner" id="spinner"></div>
+        <span id="submitLabel">로그인</span>
+      </div>
+    </button>
 
-  <div class="proof">
-    <span class="pill"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l6.5 2.5v5c0 4.5-2.8 7.8-6.5 9.5-3.7-1.7-6.5-5-6.5-9.5v-5L12 3z"/></svg>AI가 매개하는 다국어 소셜 공간</span>
-    <span>· 안전한 연결</span>
+    <!-- 탭 전환 힌트 -->
+    <p class="hint" id="modeHint">
+      계정이 없다면 <a id="switchLink">회원가입</a> 탭을 선택하세요.
+    </p>
+
+  </div><!-- /form-card -->
+
+  <!-- 신뢰 배지 -->
+  <div class="trust-row">
+    <div class="trust-item">
+      <svg viewBox="0 0 24 24"><path d="M12 3l6.5 2.5v5c0 4.5-2.8 7.8-6.5 9.5-3.7-1.7-6.5-5-6.5-9.5v-5z"/></svg>
+      안전한 연결
+    </div>
+    <div class="trust-item">
+      <svg viewBox="0 0 24 24"><path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="9"/></svg>
+      편향 방지 AI
+    </div>
+    <div class="trust-item">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 8v4l3 3"/></svg>
+      다국어 지원
+    </div>
   </div>
 
-</div>
+</div><!-- /login-shell -->
 
-<script src="buddle.ux.js"></script>
 <script>
-  sec.harden();
+(function () {
+  "use strict";
 
-  let mode = "login";
-  const $ = (id) => document.getElementById(id);
-  const email = $("email"), password = $("password"), confirm = $("confirm");
-  const fEmail = $("fEmail"), fPassword = $("fPassword"), fConfirm = $("fConfirm");
-  const submit = $("submit"), formErr = $("formErr"), modeHint = $("modeHint");
-  const strength = $("strength"), strengthBar = $("strengthBar"), strengthText = $("strengthText");
-
-  function setMode(m) {
-    mode = m; const signup = m === "signup";
-    $("tabLogin").classList.toggle("on", !signup);
-    $("tabSignup").classList.toggle("on", signup);
-    $("tabLogin").setAttribute("aria-selected", String(!signup));
-    $("tabSignup").setAttribute("aria-selected", String(signup));
-    fConfirm.style.display = signup ? "block" : "none";
-    strength.classList.toggle("show", signup);
-    password.autocomplete = signup ? "new-password" : "current-password";
-    submit.textContent = signup ? "회원가입" : "로그인";
-    modeHint.innerHTML = signup
-      ? "비밀번호는 8자 이상, 영문 대·소문자와 숫자를 포함하세요."
-      : '계정이 없다면 <b>회원가입</b> 탭을 선택하세요.';
-    clearErrors(); validateForm();
-  }
-  $("tabLogin").onclick = () => setMode("login");
-  $("tabSignup").onclick = () => setMode("signup");
-
-  $("eyeBtn").onclick = () => {
-    const showing = password.type === "text";
-    password.type = showing ? "password" : "text";
-    if (mode === "signup") confirm.type = password.type;
-    $("eyeIcon").style.opacity = showing ? "1" : ".6";
-  };
-
-  function clearErrors() { [fEmail, fPassword, fConfirm].forEach(f => f.classList.remove("invalid")); formErr.classList.remove("show"); formErr.textContent = ""; }
-  function validateForm() {
-    const okEmail = sec.validate.email(email.value.trim());
-    const okPw = mode === "signup" ? sec.validate.password(password.value) : password.value.length > 0;
-    const okConfirm = mode === "login" || password.value === confirm.value;
-    submit.disabled = !(okEmail && okPw && okConfirm);
-  }
-  email.addEventListener("input", validateForm);
-  password.addEventListener("input", () => { updateStrength(); validateForm(); });
-  confirm.addEventListener("input", validateForm);
-
-  function updateStrength() {
-    if (mode !== "signup") return;
-    const v = password.value; let score = 0;
-    if (v.length >= 8) score++;
-    if (/[a-z]/.test(v) && /[A-Z]/.test(v)) score++;
-    if (/\d/.test(v)) score++;
-    if (/[^A-Za-z0-9]/.test(v) || v.length >= 14) score++;
-    const pct = [10, 40, 70, 100][Math.max(0, score - 1)] || 8;
-    const colors = ["#C7A87C", "#9DBE8E", "#5FA37E", "#5C7CF0"];
-    const labels = ["약함", "보통", "양호", "강함"];
-    strengthBar.style.width = pct + "%";
-    strengthBar.style.background = colors[Math.max(0, score - 1)] || colors[0];
-    strengthText.textContent = v ? "강도: " + (labels[Math.max(0, score - 1)] || "약함") : "비밀번호 강도";
-  }
-
-  submit.addEventListener("click", async () => {
-    clearErrors();
-    const e = email.value.trim();
-    if (!sec.validate.email(e)) { fEmail.classList.add("invalid"); return; }
-    if (mode === "signup" && !sec.validate.password(password.value)) { fPassword.classList.add("invalid"); return; }
-    if (mode === "signup" && password.value !== confirm.value) { fConfirm.classList.add("invalid"); return; }
-    submit.disabled = true; submit.textContent = mode === "signup" ? "가입 중…" : "로그인 중…";
-    try {
-      if (mode === "signup") { await buddle.auth.signup(e, password.value, confirm.value); await buddle.auth.login(e, password.value); }
-      else { await buddle.auth.login(e, password.value); }
-      location.href = nextTarget();
-    } catch (err) {
-      const msg = (err && err.status === 401) ? "이메일 또는 비밀번호가 올바르지 않습니다."
-        : (err && err.status === 409) ? "이미 가입된 이메일입니다." : "잠시 후 다시 시도해 주세요.";
-      formErr.textContent = msg; formErr.classList.add("show");
-      submit.disabled = false; submit.textContent = mode === "signup" ? "회원가입" : "로그인";
+  /* ── 보안: 클릭재킹 방지 ── */
+  try {
+    if (window.top !== window.self) {
+      let same = false;
+      try { same = window.top.location.origin === window.location.origin; } catch (_) {}
+      if (!same) window.top.location = window.location.href;
     }
-  });
-  [email, password, confirm].forEach(inp => inp.addEventListener("keydown", e => { if (e.key === "Enter" && !submit.disabled) submit.click(); }));
+  } catch (_) {}
 
-  // ?next= 안전 복귀: 같은 폴더의 *.html(+쿼리)만 허용 — 오픈 리다이렉트 차단.
+  /* ── 토큰 저장소 ── */
+  const TOKEN_KEY = "buddle.auth.v1";
+  let _access = null, _refresh = null;
+
+  (function hydrate() {
+    try {
+      const raw = sessionStorage.getItem(TOKEN_KEY);
+      if (!raw) return;
+      const t = JSON.parse(raw);
+      if (t && typeof t.a === "string") { _access = t.a; _refresh = t.r || null; }
+    } catch (_) {}
+  })();
+
+  function saveTokens(a, r) {
+    _access = a; _refresh = r;
+    try { sessionStorage.setItem(TOKEN_KEY, JSON.stringify({ a, r })); } catch (_) {}
+  }
+
+  /* ── 이미 로그인 상태면 건너뜀 ── */
+  if (_access) { location.replace(nextTarget()); return; }
+
+  /* ── 안전한 next 복귀 URL ── */
   function nextTarget() {
     const next = new URLSearchParams(location.search).get("next") || "";
-    return /^[a-z0-9-]+\.html(\?[\w=&%.~-]*)?$/i.test(next) ? next : "home-dashboard.html";
+    return /^[a-z0-9_-]+\.html(\?[\w=&%.~-]*)?$/i.test(next) ? next : "home-dashboard.html";
   }
-  // 이미 세션이 있으면(다른 탭 페이지에서 진입 등) 로그인 화면을 건너뛴다.
-  if (buddle.auth.isAuthed()) { location.replace(nextTarget()); }
 
-  setMode("login");
+  /* ── API 헬퍼 ── */
+  async function apiPost(path, body) {
+    const res = await fetch(path, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+      let detail = res.statusText;
+      try { const j = await res.json(); detail = j.detail || j.message || detail; } catch (_) {}
+      const err = new Error(detail);
+      err.status = res.status;
+      throw err;
+    }
+    return res.json();
+  }
+
+  /* ── DOM refs ── */
+  const tabLogin  = document.getElementById("tabLogin");
+  const tabSignup = document.getElementById("tabSignup");
+  const switchLink = document.getElementById("switchLink");
+  const fEmail    = document.getElementById("fEmail");
+  const fPassword = document.getElementById("fPassword");
+  const fConfirm  = document.getElementById("fConfirm");
+  const emailInp  = document.getElementById("email");
+  const passInp   = document.getElementById("password");
+  const confInp   = document.getElementById("confirm");
+  const eyeBtn    = document.getElementById("eyeBtn");
+  const eyeShow   = document.getElementById("eyeIconShow");
+  const eyeHide   = document.getElementById("eyeIconHide");
+  const strengthEl = document.getElementById("strength");
+  const submitBtn = document.getElementById("submitBtn");
+  const submitLabel = document.getElementById("submitLabel");
+  const spinner   = document.getElementById("spinner");
+  const formErr   = document.getElementById("formErr");
+  const formErrText = document.getElementById("formErrText");
+  const formOk    = document.getElementById("formOk");
+  const formOkText = document.getElementById("formOkText");
+  const modeHint  = document.getElementById("modeHint");
+
+  let mode = "login";
+
+  /* ── 모드 전환 ── */
+  function setMode(m) {
+    mode = m;
+    const isSignup = m === "signup";
+
+    tabLogin.classList.toggle("on", !isSignup);
+    tabSignup.classList.toggle("on", isSignup);
+    tabLogin.setAttribute("aria-selected", String(!isSignup));
+    tabSignup.setAttribute("aria-selected", String(isSignup));
+
+    fConfirm.style.display = isSignup ? "block" : "none";
+    strengthEl.classList.toggle("show", isSignup);
+
+    passInp.autocomplete = isSignup ? "new-password" : "current-password";
+    submitLabel.textContent = isSignup ? "회원가입하기" : "로그인";
+
+    switchLink.textContent = isSignup ? "로그인" : "회원가입";
+    modeHint.innerHTML = isSignup
+      ? '이미 계정이 있으신가요? <a id="switchLink">로그인</a>'
+      : '계정이 없다면 <a id="switchLink">회원가입</a> 탭을 선택하세요.';
+
+    // 힌트 링크 재연결 (innerHTML 교체 후)
+    const newSwitch = document.getElementById("switchLink");
+    if (newSwitch) newSwitch.onclick = () => setMode(isSignup ? "login" : "signup");
+
+    clearState();
+    validate();
+  }
+
+  tabLogin.onclick  = () => setMode("login");
+  tabSignup.onclick = () => setMode("signup");
+  switchLink.onclick = () => setMode(mode === "login" ? "signup" : "login");
+
+  /* ── 눈 버튼 ── */
+  eyeBtn.onclick = () => {
+    const showing = passInp.type === "text";
+    passInp.type = showing ? "password" : "text";
+    confInp.type = passInp.type;
+    eyeShow.style.display = showing ? "block" : "none";
+    eyeHide.style.display = showing ? "none"  : "block";
+  };
+
+  /* ── 초기화 ── */
+  function clearState() {
+    [fEmail, fPassword, fConfirm].forEach(f => f.classList.remove("invalid"));
+    formErr.classList.remove("show");
+    formOk.classList.remove("show");
+  }
+
+  /* ── 유효성 검사 ── */
+  function validateEmail(s) { return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s) && s.length <= 254; }
+
+  /* 강도 점수 계산 — 강도 표시와 버튼 활성화 기준이 정확히 일치
+     score 0-1 = 약함 (disabled)
+     score 2   = 보통 (disabled)
+     score 3   = 양호 ← 버튼 활성화 (8자+대소문자+숫자 모두 충족)
+     score 4   = 강함 (선택 요건 추가) */
+  function strengthScore(v) {
+    let s = 0;
+    if (v.length >= 8) s++;
+    if (/[a-z]/.test(v) && /[A-Z]/.test(v)) s++;
+    if (/\d/.test(v)) s++;
+    if (/[^A-Za-z0-9]/.test(v) || v.length >= 14) s++;
+    return s;
+  }
+
+  function validate() {
+    const okEmail = validateEmail(emailInp.value.trim());
+    const score   = mode === "signup" ? strengthScore(passInp.value) : -1;
+    const okPw    = mode === "signup" ? score >= 3 : passInp.value.length > 0;
+    const okConf  = mode !== "signup" || passInp.value === confInp.value;
+    submitBtn.disabled = !(okEmail && okPw && okConf);
+    return { okEmail, okPw, okConf };
+  }
+
+  /* ── 비밀번호 강도 + 체크리스트 ── */
+  const SCORE_COLORS = ["#C7A87C", "#C7A87C", "#B4734A", "#3D8A6B", "#5C7CF0"];
+  const SCORE_LABELS = ["", "약함", "보통", "양호", "강함"];
+  const SCORE_PCTS   = [4,  18,    45,    75,    100  ];
+
+  function updateStrength() {
+    const v = passInp.value;
+
+    const ok8      = v.length >= 8;
+    const okCase   = /[a-z]/.test(v) && /[A-Z]/.test(v);
+    const okNum    = /\d/.test(v);
+    const okExtra  = /[^A-Za-z0-9]/.test(v) || v.length >= 14;
+
+    // 체크리스트 업데이트
+    document.getElementById("req8").classList.toggle("met", ok8);
+    document.getElementById("reqCase").classList.toggle("met", okCase);
+    document.getElementById("reqNum").classList.toggle("met", okNum);
+    document.getElementById("reqSpecial").classList.toggle("met", okExtra);
+
+    const score = strengthScore(v);
+    const fill  = document.getElementById("strengthFill");
+    const label = document.getElementById("strengthLabel");
+
+    if (!v) {
+      fill.style.width = "4%";
+      fill.style.background = "var(--line-strong)";
+      label.textContent = "";
+      label.style.color = "var(--ink-faint)";
+      return;
+    }
+
+    fill.style.width      = SCORE_PCTS[score] + "%";
+    fill.style.background = SCORE_COLORS[score];
+    label.textContent     = SCORE_LABELS[score] || "약함";
+    label.style.color     = SCORE_COLORS[score];
+  }
+
+  emailInp.addEventListener("input", validate);
+  passInp.addEventListener("input", () => { updateStrength(); validate(); });
+  confInp.addEventListener("input", validate);
+
+  /* ── 엔터키 제출 ── */
+  [emailInp, passInp, confInp].forEach(inp => {
+    inp.addEventListener("keydown", e => { if (e.key === "Enter" && !submitBtn.disabled) doSubmit(); });
+  });
+
+  /* ── 제출 ── */
+  function setLoading(on, label) {
+    submitBtn.disabled = on;
+    spinner.style.display = on ? "block" : "none";
+    submitLabel.textContent = label;
+  }
+
+  function showError(msg) {
+    formErr.classList.add("show");
+    formErrText.textContent = msg;
+    formOk.classList.remove("show");
+  }
+
+  function showOk(msg) {
+    formOk.classList.add("show");
+    formOkText.textContent = msg;
+    formErr.classList.remove("show");
+  }
+
+  async function doSubmit() {
+    clearState();
+    const e = emailInp.value.trim();
+    const p = passInp.value;
+    const c = confInp.value;
+
+    // 클라이언트 검증
+    let hasErr = false;
+    if (!validateEmail(e)) { fEmail.classList.add("invalid"); hasErr = true; }
+    if (mode === "signup" && strengthScore(p) < 3) { fPassword.classList.add("invalid"); hasErr = true; }
+    if (mode === "signup" && p !== c) { fConfirm.classList.add("invalid"); hasErr = true; }
+    if (hasErr) return;
+
+    if (mode === "signup") {
+      setLoading(true, "가입 중…");
+      try {
+        await apiPost("/v1/auth/signup", { email: e, password: p, password_confirm: c });
+        showOk("가입 완료! 자동 로그인 중…");
+        // 가입 후 자동 로그인
+        const data = await apiPost("/v1/auth/login", { email: e, password: p });
+        saveTokens(data.access_token, data.refresh_token);
+        showOk("환영합니다! 홈으로 이동합니다.");
+        setTimeout(() => location.replace(nextTarget()), 800);
+      } catch (err) {
+        setLoading(false, "회원가입하기");
+        if (err.status === 409) showError("이미 가입된 이메일입니다. 로그인 탭을 선택하세요.");
+        else if (err.status === 422) showError("입력 형식을 확인해 주세요 (이메일, 비밀번호 8자 이상).");
+        else showError("회원가입 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.");
+      }
+    } else {
+      setLoading(true, "로그인 중…");
+      try {
+        const data = await apiPost("/v1/auth/login", { email: e, password: p });
+        saveTokens(data.access_token, data.refresh_token);
+        showOk("로그인 성공! 이동 중…");
+        setTimeout(() => location.replace(nextTarget()), 600);
+      } catch (err) {
+        setLoading(false, "로그인");
+        if (err.status === 401 || err.status === 403)
+          showError("이메일 또는 비밀번호가 올바르지 않습니다.");
+        else if (err.status === 429)
+          showError("로그인 시도가 너무 많습니다. 잠시 후 다시 시도해 주세요.");
+        else if (err.status === 423)
+          showError("계정이 일시적으로 잠겼습니다. 잠시 후 다시 시도해 주세요.");
+        else
+          showError("서버에 연결할 수 없습니다. 인터넷 연결을 확인해 주세요.");
+      }
+    }
+  }
+
+  submitBtn.addEventListener("click", doSubmit);
+
+  /* ── 초기 검증 실행 ── */
+  validate();
+})();
 </script>
-</body></html>
+</body>
+</html>

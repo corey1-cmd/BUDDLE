@@ -19,6 +19,7 @@ from buddle.ai.cognition.signals import (
     InformationProcessingResult,
     ResponseStrategy,
 )
+from buddle.ai.cognition.user_context import UserContextFact, render_context_block
 
 _STRATEGY_GUIDANCE: dict[ResponseStrategy, str] = {
     ResponseStrategy.CELEBRATE: (
@@ -57,17 +58,21 @@ def synthesize_prompt_block(
     safety_guidance: str = "",
     debias_guidance: str = "",
     conversation_guidance: str = "",
+    user_context: UserContextFact | None = None,
+    caution_guidance: str = "",
 ) -> str:
     """Build the compact cognitive-guidance block for the system prompt.
 
-    safety_guidance (leukocyte) and debias_guidance (mediator), when present,
-    are surfaced prominently — safety first — so the persona's reply respects
-    them. They are produced by the pure conscience/debias gates.
+    우선순위 (높은 것이 먼저):
+      1. caution_guidance  — 백혈구 AI 7단계 추론 (유의 단어 감지 시)
+      2. safety_guidance   — conscience gate (자해·타해 신호)
+      3. debias_guidance   — mediator 편향 완화
+      4. user_context      — 사용자 공개 사실 (EKB Search 내부 탐색 결과)
+      5. conversation_guidance — 관계/분위기 대화 원칙
+      6. response strategy — 최종 응답 전략
 
-    conversation_guidance (the relationship/mood/principles block) carries the
-    human-conversation-psychology guidance: how to converse given the current
-    Social-Penetration level, the recent mood, and which of the ten principles
-    apply this turn.
+    caution_guidance가 존재하면 7단계 추론을 마친 뒤 응답하도록 페르소나에
+    명시적으로 지시한다 (즉시 답변 금지).
     """
     guidance = _STRATEGY_GUIDANCE.get(
         decision.chosen, _STRATEGY_GUIDANCE[ResponseStrategy.CONVERSE]
@@ -81,8 +86,15 @@ def synthesize_prompt_block(
         f" (강도 {info.affect.intensity:.2f})",
         f"- 핵심 주제: {topics}",
         f"- 다룰 점: {decision.problem}",
-        f"- 참고 소스: {search_notes}",
+        f"- 탐색(내부·외부): {search_notes}",
     ]
+    # EKB Search — 사용자 공개 정보 (내부 탐색 결과).
+    # UserContextFact는 Search 단계에서 "이 사람에 대해 이미 아는 것"으로 조회됨.
+    # 사실(이름·위치 등)만 포함; 의견·말투는 포함되지 않음.
+    if user_context:
+        context_block = render_context_block(user_context)
+        if context_block:
+            lines.append(context_block)
     # Long-term memory (EKB internal search results). Reference material, not
     # instructions: surface naturally, never enumerate or show off recall.
     if decision.search.recalled:
@@ -93,7 +105,10 @@ def synthesize_prompt_block(
             "- 위 기억은 자연스럽게만 활용하세요. 기억을 나열하거나 '기억하고 있다'고 "
             "과시하지 말고, 대화에 도움이 될 때만 부드럽게 반영하세요."
         )
-    # Safety (leukocyte) comes first when present — it outranks everything.
+    # 백혈구 AI 7단계 추론 (최우선 — 즉시 답변 금지 지시 포함).
+    if caution_guidance:
+        lines.insert(0, caution_guidance)
+    # Safety (leukocyte conscience) — 자해·타해 신호 처리.
     if safety_guidance:
         lines.append(safety_guidance)
     if debias_guidance:

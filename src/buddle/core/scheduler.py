@@ -189,8 +189,19 @@ def build_default_scheduler(redis_client: RedisClient) -> Scheduler:
                 await db.rollback()
                 raise
 
+    async def _news_tick() -> object:
+        from buddle.services.news_service import news_tick
+
+        async with AsyncSessionLocal() as db:
+            try:
+                return await news_tick(db, redis=redis_client)
+            except Exception:
+                await db.rollback()
+                raise
+
     jobs = [
         PeriodicJob("knowledge_tick", settings.knowledge_tick_interval_s, _knowledge_tick),
         PeriodicJob("plaza_tick", settings.plaza_tick_interval_s, _plaza_tick),
+        PeriodicJob("news_tick", settings.news_tick_interval_s, _news_tick),
     ]
     return Scheduler(redis_client, jobs)

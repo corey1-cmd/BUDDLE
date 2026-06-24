@@ -62,6 +62,7 @@ class PersonaStub:
         user_message: str,
         recalled_memories: list[str] | None = None,
         conversation_guidance: str = "",
+        user_context: object = None,
     ) -> PersonaReply:
         display_name = await self._lookup_display_name(model_key)
         # Tiny "memory" effect: include count of prior user turns

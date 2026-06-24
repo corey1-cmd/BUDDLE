@@ -154,6 +154,26 @@
   .seg button.on{background:var(--grad-rich);color:#fff;}
   .logout{margin-top:8px;width:100%;padding:13px;border:1px solid var(--line);border-radius:13px;background:var(--white);color:#c0392b;font-family:var(--body);font-size:14.5px;font-weight:600;cursor:pointer;}
 
+  /* ── persona management sub-view inside drawer ─────────────────────── */
+  .pmv{display:none;flex-direction:column;height:100%;}
+  .pmv.open{display:flex;}
+  .pmv-head{display:flex;align-items:center;gap:12px;padding:22px 24px;border-bottom:1px solid var(--line);}
+  .pmv-back{width:36px;height:36px;border-radius:10px;border:1px solid var(--line);background:var(--white);display:grid;place-items:center;cursor:pointer;flex:none;}
+  .pmv-back svg{width:17px;height:17px;stroke:var(--forest);}
+  .pmv-head h2{font-family:var(--display);font-weight:600;font-size:19px;color:var(--forest-700);}
+  .pmv-list{overflow-y:auto;padding:12px 20px 20px;flex:1;min-height:0;}
+  .pcard{display:flex;align-items:center;gap:12px;padding:12px 14px;background:var(--white);border:1px solid var(--line);border-radius:13px;margin-bottom:9px;cursor:pointer;transition:background .14s;}
+  .pcard:hover{background:var(--paper-sunken);}
+  .pcard-ava{width:42px;height:42px;border-radius:14px;flex:none;display:grid;place-items:center;font-family:var(--display);font-weight:600;font-size:18px;color:#fff;background:var(--grad-rich2);box-shadow:0 4px 12px rgba(108,100,225,.22);}
+  .pcard-info{flex:1;min-width:0;}
+  .pcard-info strong{display:block;font-size:14.5px;font-weight:600;color:var(--ink);}
+  .pcard-info small{display:block;font-size:12px;color:var(--ink-soft);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .pcard-arrow{width:16px;height:16px;stroke:var(--ink-faint);flex:none;}
+  .pmv-new{display:flex;align-items:center;gap:12px;padding:13px 14px;background:transparent;border:1.5px dashed var(--line-strong);border-radius:13px;cursor:pointer;color:var(--willow-press);font-family:var(--body);font-size:14px;font-weight:600;width:100%;margin-top:2px;transition:background .14s;}
+  .pmv-new:hover{background:var(--willow-wash);}
+  .pmv-new-icon{width:36px;height:36px;border-radius:12px;border:1.5px dashed var(--line-strong);display:grid;place-items:center;flex:none;}
+  .pmv-new-icon svg{width:16px;height:16px;stroke:var(--willow);}
+
   /* ── generating glow: login-like pastel aurora while persona is replying ── */
   .phone.generating::before{
     content:"";position:fixed;inset:0;z-index:0;pointer-events:none;
@@ -626,7 +646,7 @@
 <div class="phone">
 
   <header>
-    <button class="back" aria-label="뒤로" onclick="history.length > 1 ? history.back() : location.href='feed.html'">
+    <button class="back" aria-label="뒤로" onclick="history.length > 1 ? history.back() : location.href='home-dashboard.html'">
       <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
     </button>
     <button class="head-persona" id="personaPicker" aria-haspopup="menu" aria-expanded="false">
@@ -669,32 +689,46 @@
 <!-- settings drawer -->
 <div class="scrim" id="scrim"></div>
 <aside class="drawer" id="drawer" role="dialog" aria-modal="true" aria-labelledby="setTitle" aria-hidden="true">
-  <div class="drawer-head">
-    <h2 id="setTitle">설정</h2>
-    <button class="x" id="closeSettings" aria-label="닫기"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+  <!-- main settings view -->
+  <div id="settingsMain" style="display:flex;flex-direction:column;height:100%;">
+    <div class="drawer-head">
+      <h2 id="setTitle">설정</h2>
+      <button class="x" id="closeSettings" aria-label="닫기"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+    </div>
+    <div class="drawer-body">
+      <div class="group-label">대화</div>
+      <div class="srow">
+        <div class="txt"><strong>위치 기반 대화</strong><small>가까운 사람들과 비슷한 관심사로 매칭. 정확한 위치는 공개되지 않습니다.</small></div>
+        <label class="toggle"><input type="checkbox" id="locToggle" checked /><span class="track" aria-hidden="true"></span></label>
+      </div>
+      <div class="srow">
+        <div class="txt"><strong>선호 언어</strong><small>글과 대화에 사용할 기본 언어</small></div>
+        <div class="seg" id="langSeg"><button class="on" data-lang="ko">한국어</button><button data-lang="en">English</button></div>
+      </div>
+
+      <div class="group-label">페르소나</div>
+      <div class="srow link" id="managePersona">
+        <div class="txt"><strong>페르소나 관리</strong><small>이름·모델·관심사·위치 수정</small></div>
+        <svg class="arrow" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+      </div>
+
+      <div class="group-label">계정</div>
+      <div class="srow">
+        <div class="txt"><strong id="acctName">남궁성재</strong><small id="acctEmail">corey426912@gmail.com</small></div>
+      </div>
+      <button class="logout" id="logout">로그아웃</button>
+    </div>
   </div>
-  <div class="drawer-body">
-    <div class="group-label">대화</div>
-    <div class="srow">
-      <div class="txt"><strong>위치 기반 대화</strong><small>가까운 사람들과 비슷한 관심사로 매칭. 정확한 위치는 공개되지 않습니다.</small></div>
-      <label class="toggle"><input type="checkbox" id="locToggle" checked /><span class="track" aria-hidden="true"></span></label>
-    </div>
-    <div class="srow">
-      <div class="txt"><strong>선호 언어</strong><small>글과 대화에 사용할 기본 언어</small></div>
-      <div class="seg" id="langSeg"><button class="on" data-lang="ko">한국어</button><button data-lang="en">English</button></div>
-    </div>
 
-    <div class="group-label">페르소나</div>
-    <div class="srow link" id="managePersona">
-      <div class="txt"><strong>페르소나 관리</strong><small>이름·모델·관심사·위치 수정</small></div>
-      <svg class="arrow" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+  <!-- persona management sub-view -->
+  <div class="pmv" id="personaMgmtView">
+    <div class="pmv-head">
+      <button class="pmv-back" id="pmvBack" aria-label="설정으로 돌아가기">
+        <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
+      </button>
+      <h2>페르소나 관리</h2>
     </div>
-
-    <div class="group-label">계정</div>
-    <div class="srow">
-      <div class="txt"><strong id="acctName">남궁성재</strong><small id="acctEmail">corey426912@gmail.com</small></div>
-    </div>
-    <button class="logout" id="logout">로그아웃</button>
+    <div class="pmv-list" id="pmvList"></div>
   </div>
 </aside>
 
@@ -1032,7 +1066,16 @@
   const openBtn = document.getElementById("openSettings");
   const closeBtn = document.getElementById("closeSettings");
   function openSettings(){ scrim.classList.add("open"); drawer.classList.add("open"); drawer.setAttribute("aria-hidden","false"); closeBtn.focus(); }
-  function closeSettings(){ scrim.classList.remove("open"); drawer.classList.remove("open"); drawer.setAttribute("aria-hidden","true"); openBtn.focus(); }
+  function closeSettings(){
+    scrim.classList.remove("open"); drawer.classList.remove("open"); drawer.setAttribute("aria-hidden","true"); openBtn.focus();
+    // also reset any open sub-view
+    const pmv = document.getElementById("personaMgmtView");
+    const sm = document.getElementById("settingsMain");
+    if (pmv && pmv.classList.contains("open")) {
+      pmv.classList.remove("open");
+      if (sm) sm.style.display = "flex";
+    }
+  }
   openBtn.onclick = openSettings;
   closeBtn.onclick = closeSettings;
   scrim.onclick = closeSettings;
@@ -1048,7 +1091,52 @@
     [...e.currentTarget.children].forEach(b => b.classList.toggle("on", b === btn));
     console.log("preferred language:", btn.dataset.lang);
   });
-  document.getElementById("managePersona").onclick = () => console.log("→ 페르소나 상세/수정 (2b)");
+  // persona management sub-view
+  const settingsMain = document.getElementById("settingsMain");
+  const personaMgmtView = document.getElementById("personaMgmtView");
+  const pmvList = document.getElementById("pmvList");
+
+  function openPersonaMgmt() {
+    settingsMain.style.display = "none";
+    personaMgmtView.classList.add("open");
+    renderPersonaMgmt();
+  }
+  function closePersonaMgmt() {
+    personaMgmtView.classList.remove("open");
+    settingsMain.style.display = "flex";
+  }
+
+  function renderPersonaMgmt() {
+    pmvList.innerHTML = "";
+    const list = (typeof personas !== "undefined" && Array.isArray(personas)) ? personas : personaList;
+    list.forEach(p => {
+      const card = document.createElement("div");
+      card.className = "pcard";
+      const avaGrads = ["var(--grad-rich2)","linear-gradient(135deg,#6F8FF5,#F0AFDA)","linear-gradient(135deg,#A98DEE,#6F8FF5)","linear-gradient(135deg,#5dc9c8,#6F8FF5)"];
+      const gradIdx = list.indexOf(p) % avaGrads.length;
+      const tags = Array.isArray(p.tags) ? p.tags.join(" · ") : (p.tags || "");
+      const model = p.model || p.model_key || "기본 모델";
+      card.innerHTML = `
+        <div class="pcard-ava" style="background:${avaGrads[gradIdx]}">${sec.esc(p.ava || (p.name||"?")[0])}</div>
+        <div class="pcard-info">
+          <strong>${sec.esc(p.name || "페르소나")}</strong>
+          <small>${sec.esc(model)}${tags ? " · " + sec.esc(tags) : ""}</small>
+        </div>
+        <svg class="pcard-arrow" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>`;
+      card.addEventListener("click", () => {
+        location.href = `persona-create.html?edit=${encodeURIComponent(p.id)}`;
+      });
+      pmvList.appendChild(card);
+    });
+    const newBtn = document.createElement("button");
+    newBtn.className = "pmv-new";
+    newBtn.innerHTML = `<span class="pmv-new-icon"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg></span>새 페르소나 만들기`;
+    newBtn.addEventListener("click", () => { location.href = "persona-create.html"; });
+    pmvList.appendChild(newBtn);
+  }
+
+  document.getElementById("managePersona").onclick = openPersonaMgmt;
+  document.getElementById("pmvBack").onclick = closePersonaMgmt;
   document.getElementById("logout").onclick = async () => {
     try { await buddle.auth.logout(); } catch (_) {}
     location.replace("login.html");

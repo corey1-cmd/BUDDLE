@@ -31,6 +31,7 @@ from buddle.ai.cognition.signals import (
     SearchResult,
     StrategyCandidate,
 )
+from buddle.ai.cognition.user_context import UserContextFact
 
 # Base affinity of each intent for each strategy (before persona weighting).
 # Rows: intent -> {strategy: base_score in 0..1}.
@@ -83,18 +84,30 @@ def _recognize_problem(info: InformationProcessingResult) -> str:
     return base
 
 
+def _has_facts(ctx: UserContextFact | None) -> bool:
+    if ctx is None:
+        return False
+    return bool(ctx.name or ctx.age is not None or ctx.location or ctx.occupation or ctx.explicit_interests)
+
+
 def _search(
     info: InformationProcessingResult,
     *,
     has_history: bool,
     has_external: bool,
     recalled_memories: tuple[str, ...] = (),
+    user_context: UserContextFact | None = None,
 ) -> SearchResult:
     """Step 2: decide which knowledge sources to draw on.
 
+    Internal search sources (EKB):
+      - recalled_memories: LTM entries retrieved for this turn
+      - user_context: facts the user explicitly stated about themselves
+        (사용자가 직접 고지한 정보 — 이름·나이·위치 등). This is the
+        'prior knowledge about this individual' source in EKB's internal search.
+
     When the caller actually retrieved long-term memories (`recalled_memories`
-    non-empty), internal memory IS in use regardless of intent heuristics —
-    the EKB internal search has concretely happened.
+    non-empty), internal memory IS in use regardless of intent heuristics.
     """
     notes: list[str] = []
     # Internal memory is useful when the message references ongoing topics or
@@ -110,6 +123,25 @@ def _search(
         notes.append(f"장기 기억 {len(recalled_memories)}건 회상(EKB 내부 탐색)")
     elif internal:
         notes.append("대화 이력(내부 기억) 참조")
+
+    # User-disclosed facts: another internal search source.
+    # These are FACTS (name, age, location, stated interests), never opinions.
+    user_ctx_used = _has_facts(user_context)
+    if user_ctx_used:
+        fields: list[str] = []
+        assert user_context is not None
+        if user_context.name:
+            fields.append("이름")
+        if user_context.age is not None:
+            fields.append("나이")
+        if user_context.location:
+            fields.append("거주지")
+        if user_context.occupation:
+            fields.append("직업")
+        if user_context.explicit_interests:
+            fields.append("관심사")
+        notes.append(f"사용자 공개 정보 참조({', '.join(fields)})")
+
     # External context (mediator-delivered bundles) helps informational intents.
     external = has_external and info.intent in {
         Intent.ASK_INFO,
@@ -120,8 +152,9 @@ def _search(
     if not notes:
         notes.append("현재 메시지만으로 충분")
     return SearchResult(
-        internal_memory_used=internal,
+        internal_memory_used=internal or user_ctx_used,
         external_context_used=external,
+        user_context_used=user_ctx_used,
         notes=notes,
         recalled=tuple(recalled_memories[:5]),
     )
@@ -178,8 +211,13 @@ def decide(
     has_history: bool = False,
     has_external: bool = False,
     recalled_memories: tuple[str, ...] = (),
+    user_context: UserContextFact | None = None,
 ) -> DecisionResult:
-    """Run the full EKB decision process and choose a response strategy."""
+    """Run the full EKB decision process and choose a response strategy.
+
+    `user_context` is passed to the Search step as the internal source for
+    user-disclosed facts (EKB: 'prior knowledge about this individual').
+    """
     disp = dispositions or PersonaDispositions.default()
 
     problem = _recognize_problem(info)
@@ -188,6 +226,7 @@ def decide(
         has_history=has_history,
         has_external=has_external,
         recalled_memories=recalled_memories,
+        user_context=user_context,
     )
     candidates = _evaluate(info, disp)
 
