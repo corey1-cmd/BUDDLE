@@ -197,7 +197,10 @@ async def signup_and_login(client):  # type: ignore[no-untyped-def]
         *, email: str | None = None, password: str = "TestPass123!"
     ) -> dict[str, str]:
         counter["n"] += 1
-        email = email or f"user{counter['n']}-{id(counter):x}@buddle.test"
+        # Use a real gTLD (.app), not the reserved .test TLD (RFC 2606): the
+        # required email-validator (>=2.2) rejects special-use domains, which
+        # would fail every signup-based test on a fresh install.
+        email = email or f"user{counter['n']}-{id(counter):x}@buddle.app"
 
         r = await client.post(
             "/v1/auth/signup",

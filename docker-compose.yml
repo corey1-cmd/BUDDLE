@@ -1,21 +1,4 @@
 services:
-  postgres:
-    image: pgvector/pgvector:pg16
-    container_name: buddle-postgres
-    environment:
-      POSTGRES_USER: ${POSTGRES_USER:-buddle}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change_me}
-      POSTGRES_DB: ${POSTGRES_DB:-buddle_dev}
-    ports:
-      - "5432:5432"
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-buddle} -d ${POSTGRES_DB:-buddle_dev}"]
-      interval: 5s
-      timeout: 3s
-      retries: 10
-
   redis:
     image: redis:7-alpine
     container_name: buddle-redis
@@ -39,11 +22,12 @@ services:
     environment:
       # compose 기동 = 살아있는 광장: 인앱 스케줄러를 켠다(테스트/스크립트 기본값은 off).
       SCHEDULER_ENABLED: ${SCHEDULER_ENABLED:-true}
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4
     ports:
       - "8000:8000"
     depends_on:
-      postgres:
-        condition: service_healthy
       redis:
         condition: service_healthy
     volumes:
@@ -88,6 +72,5 @@ services:
       - prometheus
 
 volumes:
-  pgdata:
   redisdata:
   grafanadata:

@@ -51,6 +51,9 @@ htmlcov/
 *.swo
 .DS_Store
 
+# Claude Code (local settings/permissions — not project code)
+.claude/
+
 # Logs
 *.log
 logs/

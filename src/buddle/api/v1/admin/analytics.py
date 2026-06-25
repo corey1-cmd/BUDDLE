@@ -54,7 +54,9 @@ async def tag_trends(
     top_tags = [r[0] for r in top_rows]
 
     if not top_tags:
-        labels = [(since + timedelta(days=i)).strftime("%m-%d") for i in range(days)]
+        # Match the populated branch's label count (days + 1, inclusive of today)
+        # so the chart x-axis is consistent whether or not data exists.
+        labels = [(since + timedelta(days=i)).strftime("%m-%d") for i in range(days + 1)]
         return {"labels": labels, "datasets": []}
 
     # 일별 × 태그 집계

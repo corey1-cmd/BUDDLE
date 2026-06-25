@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -69,6 +70,30 @@ class CautionReasoningResult:
     caution_guidance: str          # synthesize_prompt_block에 주입할 최종 블록
 
 
+# 위기/위해처럼 놓치면 위험한 카테고리는 재현율을 위해 부분일치(substring)를
+# 유지한다. 그 외 주제-민감 카테고리(정치·종교·성별·차별 등)는 정밀도를 위해
+# 단어 경계를 적용해 일상 대화의 합성어 오탐을 줄인다.
+_HIGH_RECALL_HINTS = frozenset({"crisis", "danger"})
+_HANGUL = "가-힣"
+
+
+def _compile_matcher(word: str, context_hint: str) -> re.Pattern[str]:
+    """유의 단어를 매칭 규칙으로 컴파일한다.
+
+    - ASCII 단어: 단어 경계 \\b로 둘러싼다 ('bomb'이 'bombard'에 오탐되지 않음).
+    - 한글(비위기): 후행 경계 (?![가-힣])로 접두 합성어를 배제한다
+      ('차별'이 '차별화'에, '정치'가 '정치인'에 오탐되지 않음). 조사가 붙은
+      형태('차별을')는 낮은 심각도이므로 정밀도를 위해 일부 놓치는 것을 감수.
+    - 한글(위기/위해): 부분일치 유지 — 재현율(놓치지 않음)이 안전상 우선.
+    """
+    escaped = re.escape(word)
+    if word.isascii():
+        return re.compile(rf"\b{escaped}\b", re.IGNORECASE)
+    if context_hint in _HIGH_RECALL_HINTS:
+        return re.compile(escaped)
+    return re.compile(rf"{escaped}(?![{_HANGUL}])")
+
+
 # ── 잡지(CautionLexicon) — 파일 기반, 자동 리로드 ────────────────────────
 
 class CautionLexicon:
@@ -84,6 +109,7 @@ class CautionLexicon:
         self._mtime: float = -1.0
         self._version: str = ""
         self._entries: list[CautionEntry] = []
+        self._matchers: list[tuple[re.Pattern[str], CautionEntry]] = []
         self._seeds: dict[str, dict[str, Any]] = {}
         self._reload()
 
@@ -101,12 +127,15 @@ class CautionLexicon:
         return False
 
     def detect(self, text: str) -> list[CautionMatch]:
-        """text에 포함된 유의 단어를 반환한다 (순서 보존, 중복 제거)."""
-        lower = text.lower()
+        """text에 포함된 유의 단어를 반환한다 (순서 보존, 중복 제거).
+
+        단어 경계 규칙은 _compile_matcher 참고. ASCII는 \\b 경계, 한글 비위기
+        카테고리는 후행 경계로 합성어 오탐을 줄인다.
+        """
         seen: set[str] = set()
         matches: list[CautionMatch] = []
-        for entry in self._entries:
-            if entry.word not in seen and entry.word in lower:
+        for pattern, entry in self._matchers:
+            if entry.word not in seen and pattern.search(text):
                 seen.add(entry.word)
                 matches.append(CautionMatch(
                     word=entry.word,
@@ -139,6 +168,9 @@ class CautionLexicon:
                 for e in data.get("entries", [])
             ]
             self._entries = entries
+            self._matchers = [
+                (_compile_matcher(e.word, e.context_hint), e) for e in entries
+            ]
             self._seeds = data.get("category_reasoning_seeds", {})
             self._version = str(data.get("version", ""))
             try:
@@ -359,9 +391,33 @@ def _build_caution_guidance(
     steps: list[ReasoningStep],
     lexicon: CautionLexicon,
 ) -> str:
-    """프롬프트에 주입할 최종 caution_guidance 블록을 생성한다."""
+    """프롬프트에 주입할 최종 caution_guidance 블록을 생성한다.
+
+    위기(context_hint == "crisis", 예: 자해·자살) 감지 시에는 분석을 앞세우지
+    않는다. 백혈구 AI는 여전히 가장 먼저 작동하지만(caution-first), 위기에서는
+    '즉시 추론'이 아니라 '즉시 공감·안전'을 최우선 지침으로 내린다. 이렇게 하면
+    뒤따르는 conscience 안전 게이트와 충돌하지 않고 같은 방향으로 정렬된다.
+    """
     words_str = ", ".join(f"'{m.word}'" for m in matches[:5])
     cats_str = ", ".join(dict.fromkeys(m.category for m in matches))
+
+    is_crisis = any(m.context_hint == "crisis" for m in matches)
+
+    if is_crisis:
+        # 위기: 분석보다 공감·안전이 먼저. 7단계는 보조 수단으로만 남긴다.
+        header = [
+            f"[백혈구 AI — 위기 신호 감지 / 잡지 버전 {lexicon.version}]",
+            f"- 감지된 유의 단어: {words_str}",
+            "- 이것은 위기 신호일 수 있습니다. 분석을 앞세우지 말고, 먼저 진심으로 "
+            "공감하며 사용자가 혼자가 아님을 따뜻하게 전하세요.",
+            "- 임상적·분석적 어조('유사 사례로 추정하면…')를 쓰지 마세요. "
+            "지금 필요한 것은 추론이 아니라 곁에 있어주는 태도입니다.",
+            "- 필요하면 전문 도움을 부드럽게 안내하세요(예: 자살예방상담전화 1393, "
+            "정신건강상담 1577-0199 — 24시간).",
+            "- 아래 7단계는 공감을 전한 뒤, 대화를 이어갈 때만 보조적으로 참고하세요.",
+            "",
+        ]
+        return "\n".join(header + [steps[primary_step - 1].guidance] if steps else header)
 
     lines = [
         f"[백혈구 AI — 유의 단어 감지 / 잡지 버전 {lexicon.version}]",

@@ -6,6 +6,39 @@ AI-mediated human-to-human social ecosystem. 5종의 AI (페르소나·매개자
 
 ## 진행 상태
 
+### 현재 상황 (2026-06-25 업데이트)
+
+Phase 4 백엔드. 5종 AI(페르소나·매개자·백혈구·기술자·중앙관리자) + EKB 인지 파이프라인 +
+오픈웹 뉴스 매개 파이프라인이 모두 동작.
+
+**뉴스 매개 파이프라인 (테크밈 등 공개 잡지 → 페르소나).** 백그라운드에서 다음 흐름이 닫혀 있다:
+
+```
+수집(fetch)         HN + dev.to + Techmeme RSS  (공개 API, robots 준수)   ai/news/fetcher.py
+  → 분석·태깅       매개자 AI가 기사별 gist/태그/EKB 브리핑 생성            ai/news/mediator.py
+  → 조합(combine)   매개자가 여러 분석을 '하나의 종합 브리핑'으로 조합       ai/news/mediator.py:synthesize_digest
+  → 저장            Redis 캐시(25h) + KnowledgeAudit 로그                  services/news_service.py
+  → 백그라운드 페이지 관리자 대시보드: 종합 브리핑 카드 + 태그별 목록         web/admin.html (뉴스 수집 현황)
+  → 전달            대화 토픽이 겹칠 때만 페르소나에 주입(탈선 방지)         api/v1/dialogue.py
+```
+
+- 스케줄러 `news_tick`(기본 1h, `SCHEDULER_ENABLED=true`)이 자동 구동. 관리자 `POST /v1/admin/news/tick`으로 즉시 수집.
+- 무료 티어(예: Gemini) 429를 지수 백오프로 재시도하고, AI 불가 시 결정적 폴백으로 degrade(파이프라인 무중단).
+
+**최근 수정 (2026-06-25).**
+
+- DB 연결(Supabase 풀러 안전성): `statement_cache_size=0`(pgbouncer/Supavisor prepared-statement 충돌 방지) + 풀 크기 설정화·보수적 기본값. → `db/session.py`, `config.py`
+- 백혈구 유의어 검출: 심각도 차등 매칭 — 위기/위해는 high-recall(부분일치 유지), 주제-민감(정치·차별 등)은 단어 경계로 합성어 오탐 제거(`차별화`/`정치인` 미발동). → `ai/cognition/caution.py`
+- 위기(self-harm) 상황: 백혈구가 분석을 앞세우지 않고 공감·안전 우선 지침을 내도록 정렬(상담 1393/1577-0199 안내). → `ai/cognition/caution.py`
+- 사용자 컨텍스트: 느슨한 정규식(`나는 행복해`→이름 오추출)을 LLM 추출로 교체(사실만, 의견·말투 배제), 핫패스 비용 게이트 + 실패 시 안전 degrade. → `services/user_context_service.py`
+- 매개자 429 백오프 + `response_format: json_object`(미지원 시 자동 폴백), HN 병렬 페치, Techmeme RSS 배선. → `ai/news/`
+- 보안 헤더: HTML 응답에 CORP 추가, nonce 기반 CSP는 향후 과제로 명시. → `core/security_headers.py`
+
+**알려진 이슈(코드 외부 / 환경).**
+
+- 라이브 Supabase 연결이 `tenant/user not found`로 실패 — 프로젝트 일시정지/자격증명/리전 확인 필요(운영 측). 코드 경로는 testcontainers(pgvector)로 검증됨.
+- 의존성 핀(lockfile) 부재 → 신규 환경에서 최신 FastAPI/email-validator/pytest-asyncio가 테스트 하니스와 충돌(앱 결함 아님). 재현 가능 빌드를 위해 향후 lockfile 권장.
+
 ### Stage 1 (완료) — 인프라 부트스트랩
 
 - ✅ 리포 골격, docker-compose, Alembic
@@ -295,41 +328,44 @@ make logs         # API 로그 팔로우
 
 ```
 src/buddle/
-├── main.py
-├── config.py
+├── main.py              FastAPI 앱 팩토리 (v1 라우터 + web/ 정적 서빙)
+├── config.py            Settings (DB 풀·뉴스·페르소나 엔드포인트·유의어 잡지 등)
 ├── lifespan.py
-├── core/                logging, exceptions, ids, cursor
-├── db/                  Base, session, models (12 ORM models)
+├── core/                logging, exceptions, ids, cursor, scheduler, security_headers
+├── db/                  Base, session(asyncpg, pgbouncer-safe), models (22 마이그레이션)
 ├── api/v1/
-│   ├── auth/users/personas/persona-models/posts/feed/inbox 라우터
-│   ├── dialogue.py      WebSocket 대화 라우트  ← Stage 2
-│   └── admin/           persona-model 레지스트리 CRUD + stats/ethics/security/policy
-├── services/            도메인 서비스 (auth/user/persona/post/inbox/dialogue/admin)
+│   ├── auth/users/personas/posts/feed/inbox/dialogue/debate/profile/relationship …
+│   ├── dialogue.py      WebSocket 대화 — EKB 인지 + 뉴스 브리핑 주입
+│   └── admin/
+│       ├── __init__.py      stats/ethics/security/policy + news(status/briefings/digest/tick)
+│       └── analytics.py     태그추이·유의어·지식흐름·저자비율 그래프
+├── services/            도메인 서비스
+│   ├── news_service.py      수집→조합→저장→재조립 오케스트레이션
+│   ├── user_context_service.py  LLM 기반 사용자 사실 추출(편향 비흡수)
+│   └── …(auth/user/persona/post/inbox/dialogue/admin/memory/profile/conversation)
 ├── ai/
 │   ├── interfaces.py    PersonaAI/MediatorAI Protocol
-│   ├── personas/        ← Stage 2: 실제 백엔드 어댑터
-│   │   ├── factory.py       PersonaService (디스패치+캐시+fallback)
-│   │   ├── prompts.py       system_prompt + history 빌더
-│   │   ├── vllm_endpoint.py
-│   │   ├── local_hf.py
-│   │   └── ondevice_webllm.py
+│   ├── cognition/       EKB 인지 파이프라인
+│   │   ├── information.py / decision.py / synthesize.py
+│   │   ├── caution.py       백혈구 유의어 7단계 추론(심각도 차등 매칭)
+│   │   ├── user_context.py  자기개시 사실 모델(순수)
+│   │   └── conscience.py / debias.py
+│   ├── news/            ← 뉴스 매개 파이프라인
+│   │   ├── fetcher.py       HN + dev.to + Techmeme RSS (병렬 수집)
+│   │   └── mediator.py      기사 분석·태깅 + synthesize_digest(조합)
+│   ├── personas/        실제 백엔드 어댑터 (factory/prompts/vllm/local_hf/ondevice)
+│   ├── memory/ profile/ conversation/ argument/   장기기억·프로필·대화심리·논증
 │   └── stubs/           echo 구현 (디버그/폴백)
 ├── security/            JWT, argon2
+├── data/                caution_lexicon.json (유의어 잡지, 핫리로드)
 └── schemas/             Pydantic
 
-migrations/
-├── 0001_initial         15 테이블 + 7 ENUM + 3 확장
-└── 0002_persona_model_registry  persona_models + ENUM 2종 + 4개 기본 stub
+web/                     정적 프로토타입 (login/feed/chat/admin/profile/debate …)
+                         admin.html = 백그라운드 페이지(뉴스 종합 브리핑 + 태그 목록)
 
-tests/integration/
-├── test_auth.py                       (8)
-├── test_personas.py                   (7)
-├── test_posts_feed_inbox.py           (5)
-├── test_admin_persona_models.py       (5)
-├── test_persona_backends.py           (6)   ← Stage 2
-└── test_dialogue_ws.py                (4)   ← Stage 2
-                                       ─────
-                                       35
+migrations/versions/     0001 … 0022 (persona memory·user profile·argument 등 포함)
+
+tests/                   unit/ (순수 로직) + integration/ (testcontainers pgvector) + verification/
 ```
 
 ## 페르소나 EKB 인지 파이프라인

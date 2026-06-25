@@ -13,10 +13,17 @@ _settings = get_settings()
 engine = create_async_engine(
     _settings.database_url,
     echo=False,
-    pool_size=10,
-    max_overflow=20,
+    pool_size=_settings.db_pool_size,
+    max_overflow=_settings.db_max_overflow,
     pool_pre_ping=True,
-    pool_recycle=3600,
+    pool_recycle=_settings.db_pool_recycle_s,
+    connect_args={
+        # Supabase Supavisor / pgbouncer compatibility: asyncpg's client-side
+        # prepared-statement cache breaks behind a transaction-mode pooler
+        # ("prepared statement __asyncpg__ already exists"). Disabling it (0)
+        # makes the engine safe behind any pooler; harmless for direct Postgres.
+        "statement_cache_size": _settings.db_statement_cache_size,
+    },
 )
 
 AsyncSessionLocal = async_sessionmaker(

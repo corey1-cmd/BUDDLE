@@ -11,6 +11,7 @@ by URL hash before passing to the mediator AI for analysis.
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import re
 import time
@@ -26,6 +27,7 @@ _TIMEOUT = 15.0  # seconds per request
 _HN_TOP_STORIES = "https://hacker-news.firebaseio.com/v1/topstories.json"
 _HN_ITEM = "https://hacker-news.firebaseio.com/v1/item/{}.json"
 _DEVTO_ARTICLES = "https://dev.to/api/articles?top=7&per_page=15"
+_TECHMEME_RSS = "https://www.techmeme.com/feed.xml"
 
 
 @dataclass(frozen=True, slots=True)
@@ -43,7 +45,11 @@ class RawArticle:
 
 
 async def fetch_hacker_news(*, limit: int = 20) -> list[RawArticle]:
-    """Fetch top stories from Hacker News Firebase API."""
+    """Fetch top stories from Hacker News Firebase API.
+
+    The per-item lookups are issued concurrently (one round trip each) instead
+    of serially, so fetching N stories takes ~one request latency, not N.
+    """
     articles: list[RawArticle] = []
     try:
         async with httpx.AsyncClient(timeout=_TIMEOUT, follow_redirects=True) as client:
@@ -51,27 +57,31 @@ async def fetch_hacker_news(*, limit: int = 20) -> list[RawArticle]:
             r.raise_for_status()
             ids: list[int] = r.json()[:limit]
 
-            for item_id in ids:
+            async def _fetch_item(item_id: int) -> RawArticle | None:
                 try:
                     ir = await client.get(_HN_ITEM.format(item_id))
                     ir.raise_for_status()
                     item = ir.json()
                     if not item or item.get("type") != "story":
-                        continue
+                        return None
                     url = item.get("url") or f"https://news.ycombinator.com/item?id={item_id}"
-                    title = item.get("title", "").strip()
+                    title = (item.get("title") or "").strip()
                     if not title:
-                        continue
-                    articles.append(RawArticle(
+                        return None
+                    return RawArticle(
                         url=url,
                         title=title,
                         source="hackernews",
                         score=item.get("score", 0),
                         comments=item.get("descendants", 0),
                         published_at=item.get("time", int(time.time())),
-                    ))
+                    )
                 except Exception as e:
                     log.debug("hn.item_fetch_error", item_id=item_id, error=str(e))
+                    return None
+
+            results = await asyncio.gather(*(_fetch_item(i) for i in ids))
+            articles = [a for a in results if isinstance(a, RawArticle)]
     except Exception as e:
         log.warning("hn.fetch_error", error=str(e))
     return articles
@@ -132,17 +142,18 @@ async def fetch_rss(url: str, *, source_name: str, limit: int = 10) -> list[RawA
     return articles
 
 
-async def fetch_all(*, hn_limit: int = 15, devto_limit: int = 10) -> list[RawArticle]:
-    """Aggregate from all configured sources. Dedup by URL."""
-    import asyncio
-
-    hn, devto = await asyncio.gather(
+async def fetch_all(
+    *, hn_limit: int = 15, devto_limit: int = 10, rss_limit: int = 10
+) -> list[RawArticle]:
+    """Aggregate from all configured sources (HN + dev.to + Techmeme). Dedup by URL."""
+    hn, devto, techmeme = await asyncio.gather(
         fetch_hacker_news(limit=hn_limit),
         fetch_devto(limit=devto_limit),
+        fetch_rss(_TECHMEME_RSS, source_name="techmeme", limit=rss_limit),
         return_exceptions=True,
     )
     all_articles: list[RawArticle] = []
-    for result in (hn, devto):
+    for result in (hn, devto, techmeme):
         if isinstance(result, list):
             all_articles.extend(result)
 

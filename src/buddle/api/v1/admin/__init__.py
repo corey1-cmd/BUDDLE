@@ -436,6 +436,13 @@ async def news_briefings(
     return await get_news_briefings(redis, limit=limit)
 
 
+@admin_router.get("/news/digest", summary="Mediator-combined news digest (the combination stage)")
+async def news_digest(_: CurrentAdmin, redis: Redis) -> dict[str, object]:
+    from buddle.services.news_service import get_news_digest
+
+    return await get_news_digest(redis)
+
+
 @admin_router.post("/news/tick", summary="Run one news ingest cycle immediately")
 async def news_tick_now(_: CurrentAdmin, db: DB, redis: Redis) -> dict[str, object]:
     from buddle.services.news_service import news_tick

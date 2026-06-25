@@ -204,4 +204,7 @@ def build_default_scheduler(redis_client: RedisClient) -> Scheduler:
         PeriodicJob("plaza_tick", settings.plaza_tick_interval_s, _plaza_tick),
         PeriodicJob("news_tick", settings.news_tick_interval_s, _news_tick),
     ]
+    # A non-positive interval means "disabled" (see Settings docs). Drop those
+    # jobs so the loop never busy-spins on sleep(0) hammering the Redis lock.
+    jobs = [j for j in jobs if j.interval_s > 0]
     return Scheduler(redis_client, jobs)

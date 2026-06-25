@@ -32,6 +32,19 @@ class Settings(BaseSettings):
     database_url: str = Field(
         default="postgresql+asyncpg://buddle:change_me@localhost:5432/buddle_dev"
     )
+    # Connection pool sizing. Conservative defaults suit a managed pooler
+    # (Supabase Supavisor / pgbouncer) and free-tier connection limits — the
+    # pooler does the heavy multiplexing, so a large app-side pool is wasteful
+    # and can exhaust the tenant's connection quota.
+    db_pool_size: int = 5
+    db_max_overflow: int = 10
+    db_pool_recycle_s: int = 1800
+    # asyncpg client-side prepared-statement cache. MUST be 0 behind a
+    # transaction-mode pooler (Supabase Supavisor / pgbouncer), otherwise queries
+    # fail with "prepared statement __asyncpg__ already exists". 0 is safe
+    # everywhere (direct Postgres included); raise it only for a dedicated,
+    # non-pooled connection if you need the micro-optimisation.
+    db_statement_cache_size: int = 0
 
     # ── Redis
     redis_url: str = Field(default="redis://localhost:6379/0")

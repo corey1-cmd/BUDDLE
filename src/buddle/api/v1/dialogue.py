@@ -44,6 +44,7 @@ from buddle.ai.conversation import (
     is_request,
     situation_for,
 )
+from buddle.ai.interfaces import DialogueTurn
 from buddle.ai.memory import extract_candidates
 from buddle.ai.personas import PersonaService
 from buddle.config import get_settings
@@ -60,7 +61,8 @@ from buddle.schemas.dialogue import (
     ServerTyping,
 )
 from buddle.security.jwt import decode_token
-from buddle.ai.cognition.user_context import UserContextFact, extract_facts, merge_facts
+from buddle.ai.cognition.user_context import UserContextFact, merge_facts
+from buddle.services.user_context_service import extract_facts_llm
 from buddle.services import (
     conversation_service,
     dialogue_service,
@@ -471,15 +473,60 @@ async def dialogue_ws(
 
                 # EKB Search — user-disclosed facts (internal knowledge source).
                 # Extract facts from the current message and merge into the
-                # session's accumulated context. Opinions are never captured here;
-                # extract_facts() returns only explicitly self-disclosed data.
+                # session's accumulated context. Opinions are never captured here.
+                # The LLM extractor judges precisely (e.g. "나는 행복해" yields no
+                # name); it is gated by a cheap regex so most turns skip the call,
+                # and degrades to no facts on failure. Never breaks the dialogue.
                 session_key = str(client_msg.session_id) if client_msg.session_id else "_nosession"
-                new_facts = extract_facts(client_msg.content)
+                try:
+                    new_facts = await extract_facts_llm(
+                        client_msg.content, settings=get_settings()
+                    )
+                except Exception as e:
+                    log.warning("user_context.extract_failed", error=str(e))
+                    new_facts = UserContextFact()
                 accumulated_ctx = merge_facts(
                     session_user_contexts.get(session_key, UserContextFact()),
                     new_facts,
                 )
                 session_user_contexts[session_key] = accumulated_ctx
+
+                # EKB Stage B — external news context (mediator-delivered).
+                # The hourly news pipeline stores AI-mediated briefings in Redis;
+                # here we surface them to the persona ONLY when the current
+                # message's topics overlap a briefing's tags, so casual turns are
+                # never derailed by unrelated tech news. Injected through the
+                # existing mediator_bundle channel (renders as a background note
+                # and sets has_external in the cognition pipeline). Never breaks
+                # the dialogue — any failure degrades to no news context.
+                if redis_client is not None and get_settings().news_tick_interval_s > 0:
+                    try:
+                        from buddle.services.news_service import (
+                            build_news_context_block,
+                            get_news_briefings,
+                            get_news_digest,
+                        )
+
+                        topics = process_information(client_msg.content).topics
+                        if topics:
+                            briefings = await get_news_briefings(
+                                redis_client,
+                                topics=topics,
+                                limit=3,
+                                require_topic_match=True,
+                            )
+                            # Only when the conversation actually touches the news
+                            # do we add the mediator-combined digest as the lead.
+                            if briefings:
+                                digest = str((await get_news_digest(redis_client)).get("text", ""))
+                                news_block = build_news_context_block(briefings, digest=digest)
+                                if news_block:
+                                    history = [
+                                        *history,
+                                        DialogueTurn(role="mediator_bundle", content=news_block),
+                                    ]
+                    except Exception as e:
+                        log.warning("news.context_inject_failed", error=str(e))
 
                 with contextlib.suppress(Exception):
                     await _send_json(websocket, ServerTyping(state="start"))

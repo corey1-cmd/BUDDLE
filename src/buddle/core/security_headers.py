@@ -23,6 +23,10 @@ _API_HEADERS: dict[str, str] = {
 }
 
 # ── HTML 정적 파일 전용 ───────────────────────────────────────────────────
+# NOTE(future hardening): script-src/style-src 아래 'unsafe-inline'은 정적 HTML이
+# 인라인 <script>/<style>를 쓰기 때문에 현재 불가피하다. XSS 방어를 강화하려면
+# per-request nonce(CSP nonce-...)로 전환해야 하는데, 이는 모든 정적 페이지를
+# 템플릿 렌더링으로 바꿔 요청마다 nonce를 주입해야 하므로 별도 작업으로 분리한다.
 _HTML_CSP = (
     "default-src 'self'; "
     # 인라인 <style> 및 외부 Google Fonts 허용
@@ -47,6 +51,9 @@ _HTML_HEADERS: dict[str, str] = {
     "X-Frame-Options": "SAMEORIGIN",
     "Referrer-Policy": "strict-origin-when-cross-origin",
     "Cross-Origin-Opener-Policy": "same-origin",
+    # API와 마찬가지로 CORP를 명시해 교차 출처 임베드를 제한한다(이전엔 누락).
+    # 같은 앱 내(동일 출처) 로드만 허용.
+    "Cross-Origin-Resource-Policy": "same-origin",
     "Permissions-Policy": "geolocation=(), microphone=(), camera=()",
     "Content-Security-Policy": _HTML_CSP,
 }

@@ -316,6 +316,11 @@ body { background: var(--paper-sunken); }
           <button id="newsTickBtn" class="btn-sm" style="font-size:12px;padding:5px 12px;border-radius:8px;background:var(--grad-rich);color:#fff;border:0;cursor:pointer">지금 수집</button>
         </div>
         <div id="newsStatusBar" style="font-size:12px;color:var(--muted);margin-bottom:12px">로딩 중…</div>
+        <div id="newsDigestCard" style="display:none;padding:12px 16px;margin-bottom:14px;background:var(--grad-soft,#f3f6ff);border:1px solid #d6e0ff;border-radius:12px">
+          <div style="font-size:11px;font-weight:700;color:#3a5af0;text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px">🧩 매개자 종합 브리핑 (조합)</div>
+          <div id="newsDigestText" style="font-size:13.5px;line-height:1.55;color:var(--text,#1a1a2e)"></div>
+          <div id="newsDigestMeta" style="font-size:11px;color:var(--muted);margin-top:6px"></div>
+        </div>
         <div id="newsBriefList" style="display:flex;flex-direction:column;gap:8px;max-height:400px;overflow-y:auto"></div>
       </div>
     </div>
@@ -745,6 +750,23 @@ body { background: var(--paper-sunken); }
     } catch (e) { /* no-op */ }
   }
 
+  async function loadNewsDigest() {
+    try {
+      const d = await api("GET", "/v1/admin/news/digest");
+      const card = document.getElementById("newsDigestCard");
+      if (!card) return;
+      if (d && d.text) {
+        document.getElementById("newsDigestText").textContent = d.text;
+        const tags = (d.tags || []).slice(0, 6).join(" · ");
+        document.getElementById("newsDigestMeta").textContent =
+          `${d.count || 0}건 조합${tags ? " · " + tags : ""} · ${_timeAgo(d.ts)}`;
+        card.style.display = "block";
+      } else {
+        card.style.display = "none";
+      }
+    } catch (e) { /* no-op */ }
+  }
+
   async function loadNewsBriefings() {
     try {
       const items = await api("GET", "/v1/admin/news/briefings?limit=15");
@@ -775,7 +797,7 @@ body { background: var(--paper-sunken); }
     this.textContent = "수집 중…"; this.disabled = true;
     try {
       const r = await api("POST", "/v1/admin/news/tick");
-      if (r) { await loadNewsStatus(); await loadNewsBriefings(); }
+      if (r) { await loadNewsStatus(); await loadNewsDigest(); await loadNewsBriefings(); }
     } catch(e) { console.warn("news tick error:", e); }
     this.textContent = "지금 수집"; this.disabled = false;
   };
@@ -805,6 +827,7 @@ body { background: var(--paper-sunken); }
     await loadAuthorRatio(7);
     // 뉴스 현황
     await loadNewsStatus();
+    await loadNewsDigest();
     await loadNewsBriefings();
   }
 

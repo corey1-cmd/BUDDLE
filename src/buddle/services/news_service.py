@@ -25,7 +25,7 @@ from dataclasses import asdict, dataclass
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from buddle.ai.news.fetcher import RawArticle, fetch_all
-from buddle.ai.news.mediator import MediatedArticle, analyse_batch
+from buddle.ai.news.mediator import MediatedArticle, analyse_batch, synthesize_digest
 from buddle.core.logging import get_logger
 from buddle.core.types import RedisClient
 from buddle.db.models.knowledge_audit import KnowledgeAudit
@@ -35,6 +35,7 @@ log = get_logger(__name__)
 _BRIEFINGS_KEY = "buddle:news:briefings"
 _SEEN_KEY = "buddle:news:seen"
 _STATUS_KEY = "buddle:news:status"
+_DIGEST_KEY = "buddle:news:digest"   # mediator-combined briefing (the 'combination' stage)
 _BRIEFINGS_TTL = 60 * 60 * 25   # 25 hours
 _SEEN_TTL = 60 * 60 * 48        # 48 hours (dedup window)
 _MAX_STORED = 60                 # max articles kept in cache
@@ -132,6 +133,23 @@ async def news_tick(db: AsyncSession, *, redis: RedisClient) -> dict[str, object
     for m in kept:
         await _mark_seen(redis, m.raw.url_hash)
 
+    # Combination stage — the mediator weaves the kept articles into ONE cohesive
+    # digest (not a flat list). Stored separately for the background page and as
+    # the lead block delivered to personas. Failure here never breaks ingestion.
+    digest_text = ""
+    if kept:
+        try:
+            digest_text = await synthesize_digest(kept, settings=settings)
+            if digest_text:
+                digest_tags = list({t for m in kept for t in m.tags})[:8]
+                await redis.setex(_DIGEST_KEY, _BRIEFINGS_TTL, json.dumps(
+                    {"text": digest_text, "tags": digest_tags,
+                     "count": len(kept), "ts": int(time.time())},
+                    ensure_ascii=False,
+                ))
+        except Exception as e:
+            log.warning("news.digest_error", error=str(e))
+
     # Save status snapshot
     sources = list({m.raw.source for m in kept})
     status = {
@@ -153,16 +171,35 @@ async def news_tick(db: AsyncSession, *, redis: RedisClient) -> dict[str, object
     return {"fetched": fetched, "new": len(new_articles), "stored": len(kept)}
 
 
+def _topic_overlap(briefing: dict[str, object], topic_set: set[str]) -> int:
+    """Number of briefing tags that appear (substring-aware) in the topics.
+
+    Tags are short Korean/English topical labels; conversation topics are
+    salient content tokens. We count a tag as overlapping when it shares a
+    token with — or is a substring of — any topic, so '인공지능' matches a
+    topic of 'AI인공지능' and vice versa.
+    """
+    tags_lower = {str(t).lower() for t in (briefing.get("tags") or [])}
+    overlap = 0
+    for tag in tags_lower:
+        if tag in topic_set or any(tag in t or t in tag for t in topic_set):
+            overlap += 1
+    return overlap
+
+
 async def get_news_briefings(
     redis: RedisClient,
     *,
     topics: list[str] | None = None,
     limit: int = 8,
+    require_topic_match: bool = False,
 ) -> list[dict[str, object]]:
     """Read path — called by persona AI during conversation (EKB Stage B: Search).
 
-    Returns articles filtered by topic overlap with the current conversation
-    topics, sorted by relevance, capped at `limit`.
+    Returns articles sorted by relevance (boosted by topic overlap), capped at
+    `limit`. When `require_topic_match` is True and `topics` are given, briefings
+    with zero topic overlap are dropped — so casual conversation turns are not
+    derailed by unrelated tech news. With no topics (admin view) all are returned.
     """
     raw_items = await redis.lrange(_BRIEFINGS_KEY, 0, _MAX_STORED - 1)
     briefings: list[dict[str, object]] = []
@@ -175,10 +212,11 @@ async def get_news_briefings(
     if topics:
         topic_set = {t.lower() for t in topics}
 
+        if require_topic_match:
+            briefings = [b for b in briefings if _topic_overlap(b, topic_set) > 0]
+
         def _score(b: dict[str, object]) -> float:
-            tags_lower = {str(t).lower() for t in (b.get("tags") or [])}
-            overlap = len(topic_set & tags_lower)
-            return float(b.get("relevance", 0.5)) + overlap * 0.2
+            return float(b.get("relevance", 0.5)) + _topic_overlap(b, topic_set) * 0.2
 
         briefings.sort(key=_score, reverse=True)
 
@@ -196,15 +234,34 @@ async def get_news_status(redis: RedisClient) -> dict[str, object]:
     return {"last_run_ts": 0, "fetched": 0, "new_items": 0, "stored": 0, "sources": []}
 
 
-def build_news_context_block(briefings: list[dict[str, object]]) -> str:
+async def get_news_digest(redis: RedisClient) -> dict[str, object]:
+    """Return the mediator-combined digest (the 'combination' stage output)."""
+    raw = await redis.get(_DIGEST_KEY)
+    if raw:
+        try:
+            return json.loads(raw)
+        except json.JSONDecodeError:
+            pass
+    return {"text": "", "tags": [], "count": 0, "ts": 0}
+
+
+def build_news_context_block(
+    briefings: list[dict[str, object]],
+    *,
+    digest: str = "",
+) -> str:
     """EKB Stage B reassembly — produce a compact prompt injection block.
 
-    This block is injected into the synthesize prompt so the persona can
-    naturally reference current tech news without hallucinating.
+    Injected into the synthesis prompt so the persona can naturally reference
+    current tech news without hallucinating. When a mediator-combined `digest`
+    is provided it leads the block (the synthesised view), followed by the
+    specific topic-relevant items.
     """
-    if not briefings:
+    if not briefings and not digest:
         return ""
     lines = ["[최신 기술·사회 뉴스 브리핑 — 자연스럽게 대화에 활용하세요]"]
+    if digest:
+        lines.append(f"· 매개자 종합: {digest}")
     for i, b in enumerate(briefings[:5], 1):
         briefing = b.get("ekb_briefing") or b.get("gist_ko") or b.get("title", "")
         tags = ", ".join(str(t) for t in (b.get("tags") or [])[:3])

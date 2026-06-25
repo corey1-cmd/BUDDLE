@@ -12,6 +12,7 @@ KnowledgeAudit. Falls back to a stub (title-only) if the AI call fails.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import re
 from dataclasses import dataclass, field
@@ -24,6 +25,24 @@ from buddle.core.logging import get_logger
 log = get_logger(__name__)
 
 _TIMEOUT = 25.0
+# Free-tier endpoints (e.g. Gemini) frequently 429 on RPM limits; retry those
+# and transient 5xx with exponential backoff. 4xx other than 429 are not
+# retried. This is a background job, so a few seconds of backoff is acceptable.
+_MAX_ATTEMPTS = 4
+_RETRYABLE_STATUS = frozenset({429, 500, 502, 503, 504})
+_BACKOFF_BASE_S = 1.5
+_RETRY_AFTER_CAP_S = 30.0
+
+
+def _retry_after_seconds(resp: httpx.Response) -> float | None:
+    """Parse a Retry-After header (delta-seconds form) if present and sane."""
+    val = resp.headers.get("retry-after")
+    if not val:
+        return None
+    try:
+        return max(0.0, min(float(val), _RETRY_AFTER_CAP_S))
+    except ValueError:
+        return None
 
 
 @dataclass(slots=True)
@@ -92,8 +111,19 @@ def _stub_mediation(article: RawArticle) -> MediatedArticle:
     )
 
 
-async def _call_ai(messages: list[dict[str, str]], *, settings: object) -> str:
-    """Call the configured persona endpoint (OpenAI-compat) for analysis."""
+async def _call_ai(
+    messages: list[dict[str, str]],
+    *,
+    settings: object,
+    json_mode: bool = True,
+    temperature: float = 0.3,
+    max_tokens: int = 400,
+) -> str:
+    """Call the configured persona endpoint (OpenAI-compat).
+
+    json_mode=True asks for a strict JSON object (article analysis); set False
+    for free-text generation (the combined digest).
+    """
     endpoint_url = getattr(settings, "persona_endpoint_url", "")
     api_key = getattr(settings, "persona_endpoint_api_key", "")
     model = getattr(settings, "persona_model", "gemini-2.0-flash")
@@ -101,27 +131,60 @@ async def _call_ai(messages: list[dict[str, str]], *, settings: object) -> str:
     if not endpoint_url:
         return ""
 
-    payload = {
+    payload: dict[str, object] = {
         "model": model,
         "messages": messages,
-        "temperature": 0.3,
-        "max_tokens": 400,
+        "temperature": temperature,
+        "max_tokens": max_tokens,
     }
+    if json_mode:
+        # Ask for strict JSON so parsing doesn't rely on fence-stripping. If the
+        # endpoint rejects it (400), we transparently drop it and retry.
+        payload["response_format"] = {"type": "json_object"}
     headers = {"Content-Type": "application/json"}
     if api_key:
         headers["Authorization"] = f"Bearer {api_key}"
 
     url = endpoint_url.rstrip("/") + "/chat/completions"
-    for attempt in (1, 2):
-        try:
-            async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
+    async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
+        for attempt in range(1, _MAX_ATTEMPTS + 1):
+            try:
                 resp = await client.post(url, json=payload, headers=headers)
-            if resp.status_code >= 500 and attempt == 1:
+            except httpx.RequestError as e:  # network/timeout — retry with backoff
+                log.warning("mediator.ai_call_error", attempt=attempt, error=str(e))
+                if attempt < _MAX_ATTEMPTS:
+                    await asyncio.sleep(_BACKOFF_BASE_S * 2 ** (attempt - 1))
+                    continue
+                return ""
+
+            # Endpoint doesn't support response_format → drop it and retry once.
+            if resp.status_code == 400 and "response_format" in payload:
+                payload.pop("response_format")
+                log.warning("mediator.ai_no_json_mode", attempt=attempt)
                 continue
-            resp.raise_for_status()
-            return resp.json()["choices"][0]["message"]["content"]
-        except Exception as e:
-            log.warning("mediator.ai_call_error", attempt=attempt, error=str(e))
+
+            if resp.status_code in _RETRYABLE_STATUS and attempt < _MAX_ATTEMPTS:
+                delay = _retry_after_seconds(resp) or _BACKOFF_BASE_S * 2 ** (attempt - 1)
+                log.warning(
+                    "mediator.ai_retry",
+                    attempt=attempt,
+                    status=resp.status_code,
+                    delay_s=round(delay, 1),
+                )
+                await asyncio.sleep(delay)
+                continue
+
+            try:
+                resp.raise_for_status()
+                return resp.json()["choices"][0]["message"]["content"]
+            except Exception as e:
+                log.warning(
+                    "mediator.ai_call_error",
+                    attempt=attempt,
+                    status=resp.status_code,
+                    error=str(e),
+                )
+                return ""
     return ""
 
 
@@ -141,8 +204,6 @@ async def analyse_batch(
     max_concurrent: int = 4,
 ) -> list[MediatedArticle]:
     """Analyse a batch of articles with bounded concurrency."""
-    import asyncio
-
     semaphore = asyncio.Semaphore(max_concurrent)
 
     async def _bounded(art: RawArticle) -> MediatedArticle:
@@ -158,3 +219,52 @@ async def analyse_batch(
             log.warning("mediator.batch_item_error", url=art.url, error=str(res))
             mediated.append(_stub_mediation(art))
     return mediated
+
+
+# ── Combination step (매개자 AI들이 조합) ─────────────────────────────────────
+
+
+def _fallback_digest(articles: list[MediatedArticle]) -> str:
+    """Deterministic combination when the AI is unavailable: join top gists."""
+    parts = [a.gist_ko for a in articles[:4] if a.gist_ko]
+    return " ".join(parts)
+
+
+async def synthesize_digest(
+    articles: list[MediatedArticle],
+    *,
+    settings: object,
+    max_items: int = 8,
+) -> str:
+    """Combine several analysed articles into ONE cohesive Korean briefing.
+
+    This is the mediator's 'combination' stage: instead of a flat list, the
+    mediator AI weaves the day's items into a connected 2-4 sentence digest the
+    persona can reference naturally — drawing out common themes and the overall
+    direction of tech/society. Falls back to a joined-gist digest if the AI
+    call fails or no endpoint is configured.
+    """
+    usable = [a for a in articles if not a.stub and a.gist_ko][:max_items]
+    if not usable:
+        return _fallback_digest(articles)
+
+    bullet_lines = "\n".join(
+        f"- {a.gist_ko} [태그: {', '.join(a.tags[:3])}]" for a in usable
+    )
+    system = (
+        "당신은 BUDDLE 플랫폼의 매개자 AI입니다. 여러 건의 기술·사회 뉴스 분석을 "
+        "받아 하나의 자연스러운 '종합 브리핑'으로 조합합니다.\n"
+        "- 개별 나열이 아니라 공통 주제와 흐름을 연결하세요.\n"
+        "- 2-4문장의 한국어로, 페르소나가 대화에서 자연스럽게 인용할 수 있게.\n"
+        "- 과장 없이, 사실에 근거해 오늘의 기술·사회 동향을 요약하세요.\n"
+        "- 코드 블록이나 머리말 없이 본문만 출력하세요."
+    )
+    messages = [
+        {"role": "system", "content": system},
+        {"role": "user", "content": f"다음 분석들을 하나의 종합 브리핑으로 조합하세요:\n{bullet_lines}"},
+    ]
+    text = await _call_ai(
+        messages, settings=settings, json_mode=False, temperature=0.4, max_tokens=320
+    )
+    text = re.sub(r"^```.*?\n|```$", "", text.strip(), flags=re.DOTALL).strip()
+    return text or _fallback_digest(articles)
