@@ -25,6 +25,19 @@ Phase 4 백엔드. 5종 AI(페르소나·매개자·백혈구·기술자·중앙
 - 스케줄러 `news_tick`(기본 1h, `SCHEDULER_ENABLED=true`)이 자동 구동. 관리자 `POST /v1/admin/news/tick`으로 즉시 수집.
 - 무료 티어(예: Gemini) 429를 지수 백오프로 재시도하고, AI 불가 시 결정적 폴백으로 degrade(파이프라인 무중단).
 
+**사용자 지식 공간 매개 (개인 글 → 페르소나 대화).** 사용자의 글이 정리되어 대화에 활용되는 루프:
+
+```
+글 작성        사용자 글(content_raw) 저장                              services/post_service.py
+  → 백혈구 평가  유해성 평가·억제(assess) + 유닛 재심사(_screen_unit)        services/leukocyte_service.py
+  → 매개자 분석  태깅·임베딩 + 유닛 추출(extract_units)                     services/knowledge_service.py
+  → 지식공간 정리 KnowledgeUnit(topic_tags로 조회 가능) + ConversationPool   services/knowledge_service.py
+  → 대화 전달    토픽이 겹칠 때 페르소나가 자기 지식 공간을 참고            api/v1/dialogue.py
+```
+
+- EKB 응답 생성 시 페르소나는 **(1) 자기 지식 공간(사용자 글에서 정리) + (2) 뉴스 브리핑 + (3) 장기기억** 세 내부·외부 소스를 토픽 기준으로 끌어와 응답한다.
+- 기존엔 이 정리 인프라가 있었으나 `topic_tags`가 빈 값이라 조회 불가, `build_pool` 미호출로 대화풀 미형성, 대화 미배선이었다 — 이 세 가닥을 연결해 루프를 닫았다.
+
 **최근 수정 (2026-06-25).**
 
 - DB 연결(Supabase 풀러 안전성): `statement_cache_size=0`(pgbouncer/Supavisor prepared-statement 충돌 방지) + 풀 크기 설정화·보수적 기본값. → `db/session.py`, `config.py`
@@ -33,6 +46,7 @@ Phase 4 백엔드. 5종 AI(페르소나·매개자·백혈구·기술자·중앙
 - 사용자 컨텍스트: 느슨한 정규식(`나는 행복해`→이름 오추출)을 LLM 추출로 교체(사실만, 의견·말투 배제), 핫패스 비용 게이트 + 실패 시 안전 degrade. → `services/user_context_service.py`
 - 매개자 429 백오프 + `response_format: json_object`(미지원 시 자동 폴백), HN 병렬 페치, Techmeme RSS 배선. → `ai/news/`
 - 보안 헤더: HTML 응답에 CORP 추가, nonce 기반 CSP는 향후 과제로 명시. → `core/security_headers.py`
+- 지식 공간 루프 완성: 유닛에 `topic_tags` 채움(조회 가능), `knowledge_tick`에서 `ConversationPool`·토픽 그래프 구축, `fetch_context`를 대화에 배선 — 사용자 글이 페르소나 대화에 반영됨. → `services/knowledge_service.py`, `api/v1/dialogue.py`
 
 **알려진 이슈(코드 외부 / 환경).**
 

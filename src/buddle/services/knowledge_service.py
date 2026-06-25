@@ -167,9 +167,22 @@ async def consider_post(
         or 0.0
     )
     genuine = is_genuine_read(len(post.content_transformed), float(post.read_count) * 1000.0)
-    # Tags come from the mediator's PostTag; kept on the post's tag rows. We use
-    # a light proxy: the post has tags via association — here we read none extra
-    # and rely on unit gist (tags can be backfilled by update_topic_edges).
+    # Tag the units with the mediator's PostTags so they are retrievable by topic
+    # (fetch_context filters on topic_tags). Without this the knowledge space is
+    # write-only — units exist but no topic query can ever find them.
+    from buddle.db.models.tag import PostTag, Tag
+
+    post_tags = list(
+        (
+            await db.execute(
+                select(Tag.name).join(PostTag, PostTag.tag_id == Tag.id).where(
+                    PostTag.post_id == post_id
+                )
+            )
+        ).scalars()
+    )
+    topic_tags_str = ",".join(dict.fromkeys(t for t in post_tags if t))
+
     units: list[RawUnit] = extract_units(post.content_transformed)
     if not units:
         return ConsiderResult(0, 0, [])
@@ -216,7 +229,7 @@ async def consider_post(
             persona_id=post.source_persona_id,
             gist=u.gist,
             language=post.source_language,
-            topic_tags="",
+            topic_tags=topic_tags_str,
             embedding=emb,
             visibility=post.visibility.value
             if isinstance(post.visibility, PostVisibility)
@@ -466,6 +479,21 @@ async def knowledge_tick(db: AsyncSession) -> dict[str, int]:
                 counters["rescreen_ok"] += 1
         except Exception:
             counters["rescreen_ok"] += 1  # fail-open
+
+    # pools + edges: organize recent units into per-topic ConversationPools (the
+    # 'conversation pool' sub-layer the dialogue read path serves from) and grow
+    # the topic-association graph. Without this the space stays as loose units
+    # and the pool layer never forms.
+    counters["pools_built"] = 0
+    topic_set: set[str] = set()
+    for u in recent:
+        unit_topics = _tags_list(u.topic_tags)
+        if unit_topics:
+            await update_topic_edges(db, unit_topics, commit=False)
+            topic_set.update(unit_topics)
+    for topic in list(topic_set)[:20]:
+        if await build_pool(db, topic, commit=False) is not None:
+            counters["pools_built"] += 1
 
     # edges: one decay step
     edges = list((await db.execute(select(TopicEdge))).scalars())

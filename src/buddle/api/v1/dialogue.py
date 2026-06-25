@@ -491,6 +491,10 @@ async def dialogue_ws(
                 )
                 session_user_contexts[session_key] = accumulated_ctx
 
+                # Current-message topics — pure, computed once and reused by the
+                # news (external) and knowledge-space (internal) injectors below.
+                msg_topics = process_information(client_msg.content).topics
+
                 # EKB Stage B — external news context (mediator-delivered).
                 # The hourly news pipeline stores AI-mediated briefings in Redis;
                 # here we surface them to the persona ONLY when the current
@@ -507,11 +511,10 @@ async def dialogue_ws(
                             get_news_digest,
                         )
 
-                        topics = process_information(client_msg.content).topics
-                        if topics:
+                        if msg_topics:
                             briefings = await get_news_briefings(
                                 redis_client,
-                                topics=topics,
+                                topics=msg_topics,
                                 limit=3,
                                 require_topic_match=True,
                             )
@@ -527,6 +530,45 @@ async def dialogue_ws(
                                     ]
                     except Exception as e:
                         log.warning("news.context_inject_failed", error=str(e))
+
+                # EKB Search — the user's own knowledge space (Layer B). The
+                # persona draws on units distilled from the user's posts
+                # (leukocyte-screened, mediator-tagged, filed into the topic's
+                # conversation pool) that match the current topic. This closes the
+                # loop: 글 → 백혈구·매개자 → 지식공간 → 대화. Read-only on an
+                # isolated session (fetch_context records a context-ref + commits),
+                # topic-gated, fail-safe. Same mediator_bundle delivery as news.
+                if msg_topics:
+                    try:
+                        from buddle.services import knowledge_service
+
+                        gists: list[str] = []
+                        seen_g: set[str] = set()
+                        async with AsyncSessionLocal() as kn_db:
+                            for t in msg_topics[:2]:
+                                bundle = await knowledge_service.fetch_context(
+                                    kn_db,
+                                    persona_id,
+                                    topic=t,
+                                    requesting_persona_id=persona_id,
+                                    limit=4,
+                                )
+                                for it in bundle.items:
+                                    if it.gist and it.gist not in seen_g:
+                                        seen_g.add(it.gist)
+                                        gists.append(it.gist)
+                        if gists:
+                            kn_block = (
+                                "[당신의 지식 공간 — 사용자가 쓴 글에서 정리된 내용입니다. "
+                                "자연스럽게만 활용하고 나열하지 마세요]\n"
+                                + "\n".join(f"- {g[:160]}" for g in gists[:5])
+                            )
+                            history = [
+                                *history,
+                                DialogueTurn(role="mediator_bundle", content=kn_block),
+                            ]
+                    except Exception as e:
+                        log.warning("knowledge.context_inject_failed", error=str(e))
 
                 with contextlib.suppress(Exception):
                     await _send_json(websocket, ServerTyping(state="start"))
