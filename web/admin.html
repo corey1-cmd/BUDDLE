@@ -310,6 +310,24 @@ body { background: var(--paper-sunken); }
     <!-- ══ 뉴스 수집 현황 ══ -->
     <div class="analytics-divider" style="margin-top:28px">뉴스 수집 현황</div>
     <div class="section-grid">
+      <!-- 뉴스 소스 설정: 어디서 글을 찾아올지 -->
+      <div class="card" style="grid-column:1/-1">
+        <div class="card-title">뉴스 소스 설정 <span style="font-size:12px;color:var(--muted);font-weight:400">— 글을 어디서 찾아올지 (수집 시 이 목록을 참조)</span></div>
+        <div id="newsSourceList" style="display:flex;flex-direction:column;gap:6px;margin-bottom:12px">로딩 중…</div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;border-top:1px solid var(--border);padding-top:12px">
+          <input id="srcName" placeholder="이름 (예: 월스트리트저널)" style="flex:1;min-width:140px;padding:7px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px">
+          <select id="srcKind" style="padding:7px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px">
+            <option value="rss">RSS</option>
+            <option value="hackernews">Hacker News</option>
+            <option value="devto">dev.to</option>
+          </select>
+          <input id="srcUrl" placeholder="RSS 피드 URL (예: https://www.techmeme.com/feed.xml)" style="flex:2;min-width:200px;padding:7px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px">
+          <input id="srcLimit" type="number" value="10" min="1" max="50" title="가져올 개수" style="width:64px;padding:7px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px">
+          <button id="srcAddBtn" class="btn-sm" style="font-size:13px;padding:7px 14px;border-radius:8px;background:var(--grad-rich);color:#fff;border:0;cursor:pointer">추가</button>
+        </div>
+        <div id="srcMsg" style="font-size:12px;color:#c0392b;margin-top:6px"></div>
+      </div>
+
       <div class="card" style="grid-column:1/-1">
         <div class="card-title" style="display:flex;align-items:center;justify-content:space-between">
           <span>매개자 AI 뉴스 브리핑</span>
@@ -750,6 +768,73 @@ body { background: var(--paper-sunken); }
     } catch (e) { /* no-op */ }
   }
 
+  /* ── 뉴스 소스 설정 ── */
+  const _kindLabel = { rss: "RSS", hackernews: "Hacker News", devto: "dev.to" };
+
+  async function loadNewsSources() {
+    try {
+      const sources = await api("GET", "/v1/admin/news/sources");
+      const el = document.getElementById("newsSourceList");
+      if (!el || !Array.isArray(sources)) return;
+      if (!sources.length) { el.innerHTML = '<p style="color:var(--muted);font-size:13px">소스가 없습니다. 아래에서 추가하세요.</p>'; return; }
+      el.innerHTML = "";
+      sources.forEach(s => {
+        const row = document.createElement("div");
+        row.style.cssText = "display:flex;align-items:center;gap:10px;padding:8px 12px;background:var(--panel-bg);border:1px solid var(--border);border-radius:10px";
+        const off = s.enabled ? "" : "opacity:.5;";
+        row.innerHTML =
+          `<span style="${off}font-size:11px;font-weight:700;color:#3a5af0;background:#e8edff;padding:2px 8px;border-radius:99px">${_kindLabel[s.kind] || s.kind}</span>
+           <span style="${off}font-weight:600;font-size:13.5px">${s.name}</span>
+           <span style="${off}font-size:12px;color:var(--muted);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${s.url || "(고정 API)"}</span>
+           <span style="font-size:11px;color:var(--muted)">${s.limit}건</span>
+           <label style="font-size:12px;display:flex;align-items:center;gap:4px;cursor:pointer"><input type="checkbox" ${s.enabled ? "checked" : ""} data-id="${s.id}" class="srcToggle"> 활성</label>
+           <button class="srcDel" data-id="${s.id}" title="삭제" style="border:0;background:none;color:#c0392b;cursor:pointer;font-size:15px">✕</button>`;
+        el.appendChild(row);
+      });
+      el.querySelectorAll(".srcToggle").forEach(cb => {
+        cb.onchange = async function () {
+          try { await api("PATCH", `/v1/admin/news/sources/${this.dataset.id}`, { enabled: this.checked }); }
+          catch (e) { console.warn(e); this.checked = !this.checked; }
+        };
+      });
+      el.querySelectorAll(".srcDel").forEach(b => {
+        b.onclick = async function () {
+          if (!confirm("이 소스를 삭제할까요?")) return;
+          try { await api("DELETE", `/v1/admin/news/sources/${this.dataset.id}`); await loadNewsSources(); }
+          catch (e) { console.warn(e); }
+        };
+      });
+    } catch (e) { console.warn("news sources 오류:", e); }
+  }
+
+  document.getElementById("srcAddBtn").onclick = async function () {
+    const msg = document.getElementById("srcMsg");
+    msg.textContent = "";
+    const body = {
+      name: document.getElementById("srcName").value.trim(),
+      kind: document.getElementById("srcKind").value,
+      url: document.getElementById("srcUrl").value.trim(),
+      limit: +document.getElementById("srcLimit").value || 10,
+    };
+    if (!body.name) { msg.textContent = "이름을 입력하세요."; return; }
+    if (body.kind === "rss" && !body.url) { msg.textContent = "RSS는 피드 URL이 필요합니다."; return; }
+    this.disabled = true;
+    try {
+      await api("POST", "/v1/admin/news/sources", body);
+      document.getElementById("srcName").value = "";
+      document.getElementById("srcUrl").value = "";
+      await loadNewsSources();
+    } catch (e) {
+      msg.textContent = (e && e.message) ? e.message : "추가 실패 (URL/종류를 확인하세요).";
+    }
+    this.disabled = false;
+  };
+
+  // RSS일 때만 URL 입력칸 강조
+  document.getElementById("srcKind").onchange = function () {
+    document.getElementById("srcUrl").style.display = (this.value === "rss") ? "" : "none";
+  };
+
   async function loadNewsDigest() {
     try {
       const d = await api("GET", "/v1/admin/news/digest");
@@ -826,6 +911,7 @@ body { background: var(--paper-sunken); }
     await loadKnowledgeFlow(24);
     await loadAuthorRatio(7);
     // 뉴스 현황
+    await loadNewsSources();
     await loadNewsStatus();
     await loadNewsDigest();
     await loadNewsBriefings();

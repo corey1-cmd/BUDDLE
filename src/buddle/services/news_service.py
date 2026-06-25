@@ -24,7 +24,7 @@ from dataclasses import asdict, dataclass
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from buddle.ai.news.fetcher import RawArticle, fetch_all
+from buddle.ai.news.fetcher import RawArticle, fetch_configured
 from buddle.ai.news.mediator import MediatedArticle, analyse_batch, synthesize_digest
 from buddle.core.logging import get_logger
 from buddle.core.types import RedisClient
@@ -36,9 +36,25 @@ _BRIEFINGS_KEY = "buddle:news:briefings"
 _SEEN_KEY = "buddle:news:seen"
 _STATUS_KEY = "buddle:news:status"
 _DIGEST_KEY = "buddle:news:digest"   # mediator-combined briefing (the 'combination' stage)
+_SOURCES_KEY = "buddle:news:sources"  # admin-configured fetch sources (where to search)
 _BRIEFINGS_TTL = 60 * 60 * 25   # 25 hours
 _SEEN_TTL = 60 * 60 * 48        # 48 hours (dedup window)
 _MAX_STORED = 60                 # max articles kept in cache
+
+# Source kinds the fetcher can dispatch. 'rss' takes an arbitrary feed url
+# (Techmeme, WSJ, New Yorker, …); the API kinds use their own fixed endpoints.
+_ALLOWED_KINDS = ("rss", "hackernews", "devto")
+
+# Seeded on first read so behaviour matches the previous hardcoded set. Techmeme
+# is the worked example of a free, public RSS feed; add WSJ/New Yorker as rss too.
+DEFAULT_SOURCES: list[dict[str, object]] = [
+    {"id": "hackernews", "name": "Hacker News", "kind": "hackernews",
+     "url": "", "enabled": True, "limit": 20},
+    {"id": "devto", "name": "dev.to", "kind": "devto",
+     "url": "", "enabled": True, "limit": 10},
+    {"id": "techmeme", "name": "Techmeme", "kind": "rss",
+     "url": "https://www.techmeme.com/feed.xml", "enabled": True, "limit": 10},
+]
 
 
 @dataclass
@@ -101,15 +117,119 @@ async def _audit(db: AsyncSession, count: int, source_summary: str) -> None:
     await db.commit()
 
 
+# ── News-source store (where to fetch from) ────────────────────────────────
+#
+# The admin configures which sources the pipeline searches. Stored as a JSON
+# list under a single Redis key (Redis-first, like the rest of the news
+# pipeline). The fetch path (news_tick) reads this store before searching, so
+# adding Techmeme / WSJ / New Yorker is a config change, not a code change.
+
+
+def _slugify(name: str) -> str:
+    import re
+
+    slug = re.sub(r"[^a-z0-9]+", "-", name.strip().lower()).strip("-")
+    return slug or "source"
+
+
+async def get_news_sources(redis: RedisClient) -> list[dict[str, object]]:
+    """Return the configured sources, seeding the defaults on first use."""
+    raw = await redis.get(_SOURCES_KEY)
+    if raw:
+        try:
+            data = json.loads(raw)
+            if isinstance(data, list):
+                return data
+        except json.JSONDecodeError:
+            pass
+    await _save_sources(redis, DEFAULT_SOURCES)
+    return list(DEFAULT_SOURCES)
+
+
+async def _save_sources(redis: RedisClient, sources: list[dict[str, object]]) -> None:
+    await redis.set(_SOURCES_KEY, json.dumps(sources, ensure_ascii=False))
+
+
+async def add_news_source(
+    redis: RedisClient,
+    *,
+    name: str,
+    kind: str,
+    url: str = "",
+    limit: int = 10,
+    enabled: bool = True,
+) -> dict[str, object]:
+    """Add a source. Validates kind, and for `rss` validates the URL (scheme +
+    SSRF). Raises ValueError on bad input (the endpoint maps it to 400)."""
+    name = (name or "").strip()
+    kind = (kind or "").strip().lower()
+    url = (url or "").strip()
+    if not name:
+        raise ValueError("name is required")
+    if kind not in _ALLOWED_KINDS:
+        raise ValueError(f"kind must be one of {_ALLOWED_KINDS}")
+    if kind == "rss":
+        if not url:
+            raise ValueError("rss source requires a feed url")
+        from buddle.core.ssrf import SSRFValidationError, validate_outbound_url
+
+        try:
+            validate_outbound_url(url)
+        except SSRFValidationError as e:
+            raise ValueError(f"unsafe url: {e}") from e
+    else:
+        url = ""  # API kinds use fixed endpoints
+
+    sources = await get_news_sources(redis)
+    base = _slugify(name)
+    existing = {str(s.get("id")) for s in sources}
+    sid = base
+    i = 2
+    while sid in existing:
+        sid = f"{base}-{i}"
+        i += 1
+    source: dict[str, object] = {
+        "id": sid, "name": name, "kind": kind, "url": url,
+        "enabled": bool(enabled), "limit": max(1, min(int(limit), 50)),
+        "added_at": int(time.time()),
+    }
+    sources.append(source)
+    await _save_sources(redis, sources)
+    return source
+
+
+async def set_source_enabled(redis: RedisClient, source_id: str, enabled: bool) -> bool:
+    sources = await get_news_sources(redis)
+    found = False
+    for s in sources:
+        if str(s.get("id")) == source_id:
+            s["enabled"] = bool(enabled)
+            found = True
+    if found:
+        await _save_sources(redis, sources)
+    return found
+
+
+async def delete_news_source(redis: RedisClient, source_id: str) -> bool:
+    sources = await get_news_sources(redis)
+    remaining = [s for s in sources if str(s.get("id")) != source_id]
+    if len(remaining) == len(sources):
+        return False
+    await _save_sources(redis, remaining)
+    return True
+
+
 async def news_tick(db: AsyncSession, *, redis: RedisClient) -> dict[str, object]:
     """Main scheduler entry-point. Returns a summary dict for the scheduler log."""
     from buddle.config import get_settings
     settings = get_settings()
 
     log.info("news.tick.start")
-    articles = await fetch_all(hn_limit=20, devto_limit=10)
+    # Where to search: consult the admin-configured source store first.
+    sources = await get_news_sources(redis)
+    articles = await fetch_configured(sources)
     fetched = len(articles)
-    log.info("news.tick.fetched", count=fetched)
+    log.info("news.tick.fetched", count=fetched, sources=len(sources))
 
     # Filter already-seen articles
     new_articles: list[RawArticle] = []

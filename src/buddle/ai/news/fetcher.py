@@ -142,10 +142,75 @@ async def fetch_rss(url: str, *, source_name: str, limit: int = 10) -> list[RawA
     return articles
 
 
+def _dedup(articles: list[RawArticle]) -> list[RawArticle]:
+    """Keep the first occurrence per URL."""
+    seen: set[str] = set()
+    unique: list[RawArticle] = []
+    for a in articles:
+        if a.url not in seen:
+            seen.add(a.url)
+            unique.append(a)
+    return unique
+
+
+async def fetch_source(source: dict) -> list[RawArticle]:
+    """Fetch one configured source. Dispatches by `kind`:
+      - 'hackernews' / 'devto': fixed open APIs (url ignored)
+      - 'rss': arbitrary feed `url` (SSRF-validated before the request)
+
+    Disabled sources return []. Unknown kinds and unsafe URLs are skipped
+    (logged), never raised — one bad source can't break the whole sweep.
+    """
+    if not source.get("enabled", True):
+        return []
+    kind = str(source.get("kind", "")).lower()
+    limit = int(source.get("limit", 10) or 10)
+    name = str(source.get("id") or source.get("name") or kind)
+    try:
+        if kind == "hackernews":
+            return await fetch_hacker_news(limit=limit)
+        if kind == "devto":
+            return await fetch_devto(limit=limit)
+        if kind == "rss":
+            url = str(source.get("url", "")).strip()
+            if not url:
+                return []
+            # Defense-in-depth: re-validate the feed URL at fetch time (config
+            # could have been seeded/edited out of band).
+            from buddle.core.ssrf import SSRFValidationError, validate_outbound_url
+
+            try:
+                validate_outbound_url(url)
+            except SSRFValidationError as e:
+                log.warning("news.source.unsafe_url", source=name, url=url, error=str(e))
+                return []
+            return await fetch_rss(url, source_name=name, limit=limit)
+        log.warning("news.source.unknown_kind", source=name, kind=kind)
+        return []
+    except Exception as e:  # one source failing must not abort the sweep
+        log.warning("news.source.fetch_error", source=name, kind=kind, error=str(e))
+        return []
+
+
+async def fetch_configured(sources: list[dict]) -> list[RawArticle]:
+    """Fetch every enabled configured source concurrently. Dedup by URL."""
+    enabled = [s for s in sources if s.get("enabled", True)]
+    results = await asyncio.gather(*(fetch_source(s) for s in enabled), return_exceptions=True)
+    all_articles: list[RawArticle] = []
+    for r in results:
+        if isinstance(r, list):
+            all_articles.extend(r)
+    return _dedup(all_articles)
+
+
 async def fetch_all(
     *, hn_limit: int = 15, devto_limit: int = 10, rss_limit: int = 10
 ) -> list[RawArticle]:
-    """Aggregate from all configured sources (HN + dev.to + Techmeme). Dedup by URL."""
+    """Aggregate from the built-in sources (HN + dev.to + Techmeme). Dedup by URL.
+
+    Retained for callers/tests that want the default set without a source store;
+    the scheduler path now uses the admin-configured sources via fetch_configured.
+    """
     hn, devto, techmeme = await asyncio.gather(
         fetch_hacker_news(limit=hn_limit),
         fetch_devto(limit=devto_limit),
@@ -156,12 +221,4 @@ async def fetch_all(
     for result in (hn, devto, techmeme):
         if isinstance(result, list):
             all_articles.extend(result)
-
-    # Dedup by URL (keep first occurrence per URL)
-    seen: set[str] = set()
-    unique: list[RawArticle] = []
-    for a in all_articles:
-        if a.url not in seen:
-            seen.add(a.url)
-            unique.append(a)
-    return unique
+    return _dedup(all_articles)

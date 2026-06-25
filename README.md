@@ -14,7 +14,8 @@ Phase 4 백엔드. 5종 AI(페르소나·매개자·백혈구·기술자·중앙
 **뉴스 매개 파이프라인 (테크밈 등 공개 잡지 → 페르소나).** 백그라운드에서 다음 흐름이 닫혀 있다:
 
 ```
-수집(fetch)         HN + dev.to + Techmeme RSS  (공개 API, robots 준수)   ai/news/fetcher.py
+소스 설정          관리자 대시보드에서 어디서 찾아올지 구성(Redis 저장)    web/admin.html · admin/news/sources
+수집(fetch)         설정된 소스를 종류별로 디스패치(rss/hackernews/devto)   ai/news/fetcher.py:fetch_configured
   → 분석·태깅       매개자 AI가 기사별 gist/태그/EKB 브리핑 생성            ai/news/mediator.py
   → 조합(combine)   매개자가 여러 분석을 '하나의 종합 브리핑'으로 조합       ai/news/mediator.py:synthesize_digest
   → 저장            Redis 캐시(25h) + KnowledgeAudit 로그                  services/news_service.py

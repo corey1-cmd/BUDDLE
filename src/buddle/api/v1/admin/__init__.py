@@ -5,7 +5,8 @@ from __future__ import annotations
 import uuid
 from collections.abc import Sequence
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, HTTPException, Query
+from pydantic import BaseModel, Field
 
 from buddle.api.deps import DB, CurrentAdmin, Redis
 from buddle.api.v1.admin.analytics import router as analytics_router
@@ -448,3 +449,66 @@ async def news_tick_now(_: CurrentAdmin, db: DB, redis: Redis) -> dict[str, obje
     from buddle.services.news_service import news_tick
 
     return await news_tick(db, redis=redis)
+
+
+# ── News sources (where the pipeline searches) ─────────────────────────
+
+
+class NewsSourceCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=80)
+    kind: str = Field(description="rss | hackernews | devto")
+    url: str = Field(default="", max_length=2048)
+    limit: int = Field(default=10, ge=1, le=50)
+    enabled: bool = True
+
+
+class NewsSourceToggle(BaseModel):
+    enabled: bool
+
+
+@admin_router.get("/news/sources", summary="List configured news sources")
+async def news_sources(_: CurrentAdmin, redis: Redis) -> list[dict[str, object]]:
+    from buddle.services.news_service import get_news_sources
+
+    return await get_news_sources(redis)
+
+
+@admin_router.post("/news/sources", summary="Add a news source (rss/hackernews/devto)")
+async def news_source_add(
+    body: NewsSourceCreate, _: CurrentAdmin, redis: Redis
+) -> dict[str, object]:
+    from buddle.services.news_service import add_news_source
+
+    try:
+        return await add_news_source(
+            redis,
+            name=body.name,
+            kind=body.kind,
+            url=body.url,
+            limit=body.limit,
+            enabled=body.enabled,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
+
+@admin_router.patch("/news/sources/{source_id}", summary="Enable/disable a source")
+async def news_source_toggle(
+    source_id: str, body: NewsSourceToggle, _: CurrentAdmin, redis: Redis
+) -> dict[str, object]:
+    from buddle.services.news_service import set_source_enabled
+
+    if not await set_source_enabled(redis, source_id, body.enabled):
+        raise HTTPException(status_code=404, detail="source not found")
+    return {"id": source_id, "enabled": body.enabled}
+
+
+@admin_router.delete("/news/sources/{source_id}", summary="Remove a news source")
+async def news_source_delete(
+    source_id: str, _: CurrentAdmin, redis: Redis
+) -> dict[str, object]:
+    from buddle.services.news_service import delete_news_source
+
+    if not await delete_news_source(redis, source_id):
+        raise HTTPException(status_code=404, detail="source not found")
+    return {"id": source_id, "deleted": True}
