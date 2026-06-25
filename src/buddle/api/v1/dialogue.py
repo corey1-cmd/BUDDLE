@@ -535,28 +535,28 @@ async def dialogue_ws(
                 # persona draws on units distilled from the user's posts
                 # (leukocyte-screened, mediator-tagged, filed into the topic's
                 # conversation pool) that match the current topic. This closes the
-                # loop: 글 → 백혈구·매개자 → 지식공간 → 대화. Read-only on an
-                # isolated session (fetch_context records a context-ref + commits),
-                # topic-gated, fail-safe. Same mediator_bundle delivery as news.
+                # loop: 글 → 백혈구·매개자 → 지식공간 → 대화. record_ref=False keeps
+                # it a pure read on the turn session; topic-gated; fail-safe. Same
+                # mediator_bundle delivery as news.
                 if msg_topics:
                     try:
                         from buddle.services import knowledge_service
 
                         gists: list[str] = []
                         seen_g: set[str] = set()
-                        async with AsyncSessionLocal() as kn_db:
-                            for t in msg_topics[:2]:
-                                bundle = await knowledge_service.fetch_context(
-                                    kn_db,
-                                    persona_id,
-                                    topic=t,
-                                    requesting_persona_id=persona_id,
-                                    limit=4,
-                                )
-                                for it in bundle.items:
-                                    if it.gist and it.gist not in seen_g:
-                                        seen_g.add(it.gist)
-                                        gists.append(it.gist)
+                        for t in msg_topics[:2]:
+                            bundle = await knowledge_service.fetch_context(
+                                turn_db,
+                                persona_id,
+                                topic=t,
+                                requesting_persona_id=persona_id,
+                                limit=4,
+                                record_ref=False,
+                            )
+                            for it in bundle.items:
+                                if it.gist and it.gist not in seen_g:
+                                    seen_g.add(it.gist)
+                                    gists.append(it.gist)
                         if gists:
                             kn_block = (
                                 "[당신의 지식 공간 — 사용자가 쓴 글에서 정리된 내용입니다. "

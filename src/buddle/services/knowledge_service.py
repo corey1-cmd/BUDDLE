@@ -291,6 +291,20 @@ async def _related_topics(db: AsyncSession, topic: str, *, hops: int = EDGE_HOP_
     return related
 
 
+def _whole_tag_clause(topic: str):  # type: ignore[no-untyped-def]
+    """Match `topic` as a WHOLE comma-delimited tag, not a substring.
+
+    topic_tags is stored as "tag1,tag2,tag3"; we wrap it in commas and look for
+    ",topic," so 'AI' matches the 'AI' tag but never 'AIDS' (which the old
+    `LIKE '%AI%'` falsely matched). LIKE wildcards in the topic are escaped.
+    """
+    from sqlalchemy import literal
+
+    esc = topic.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    wrapped = literal(",") + KnowledgeUnit.topic_tags + literal(",")
+    return wrapped.like(f"%,{esc},%", escape="\\")
+
+
 async def fetch_context(
     db: AsyncSession,
     persona_id: uuid.UUID,
@@ -299,22 +313,23 @@ async def fetch_context(
     requesting_persona_id: uuid.UUID | None = None,
     limit: int = POOL_SERVE_LIMIT,
     include_insights: bool = False,
+    record_ref: bool = True,
 ) -> ContextBundle:
     """Read path: serve reference units for `topic` (+ related topics).
 
     Privacy: PUBLIC units always; PRIVATE units only if owned by the requesting
-    persona. Records a PersonaContextRef for the served pool (if any).
+    persona. When `record_ref` is True (default) a PersonaContextRef for the
+    served pool is written + committed; pass False for a PURE read (e.g. the
+    dialogue hot path, which must not write on every turn).
     """
     requester = requesting_persona_id or persona_id
     related = await _related_topics(db, topic)
     topics = [topic, *related]
 
-    # Units whose tags contain any of these topics, honoring visibility.
-    clauses = []
-    for t in topics:
-        clauses.append(KnowledgeUnit.topic_tags.like(f"%{t}%"))
+    # Units tagged with any of these topics (whole-tag match), honoring visibility.
     from sqlalchemy import or_
 
+    clauses = [_whole_tag_clause(t) for t in topics]
     q = select(KnowledgeUnit).where(or_(*clauses)) if clauses else select(KnowledgeUnit)
     q = q.where(
         (KnowledgeUnit.visibility == PostVisibility.PUBLIC.value)
@@ -354,17 +369,21 @@ async def fetch_context(
                 ),
             )
 
-    # Record reference to the topic's pool, if one exists.
-    pool = (
-        await db.execute(
-            select(ConversationPool).where(ConversationPool.topic == topic).limit(1)
-        )
-    ).scalar_one_or_none()
-    if pool is not None:
-        db.add(
-            PersonaContextRef(persona_id=requester, pool_id=pool.id, relevance=float(len(items)))
-        )
-        await db.commit()
+    # Record reference to the topic's pool, if one exists (write path — opt-out
+    # via record_ref=False to keep the read pure).
+    if record_ref:
+        pool = (
+            await db.execute(
+                select(ConversationPool).where(ConversationPool.topic == topic).limit(1)
+            )
+        ).scalar_one_or_none()
+        if pool is not None:
+            db.add(
+                PersonaContextRef(
+                    persona_id=requester, pool_id=pool.id, relevance=float(len(items))
+                )
+            )
+            await db.commit()
 
     return ContextBundle(topic=topic, items=items, related_topics=related)
 

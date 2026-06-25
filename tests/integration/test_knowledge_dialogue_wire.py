@@ -48,9 +48,15 @@ async def _seed_post(db):  # type: ignore[no-untyped-def]
     )
     db.add(post)
     await db.flush()
-    tag = Tag(name=_TAG)
-    db.add(tag)
-    await db.flush()
+    # get-or-create the tag (unique name) so repeated tests don't collide.
+    from sqlalchemy import select as _select
+
+    tag = (
+        await db.execute(_select(Tag).where(Tag.name == _TAG))
+    ).scalar_one_or_none() or Tag(name=_TAG)
+    if tag.id is None:
+        db.add(tag)
+        await db.flush()
     db.add(PostTag(post_id=post.id, tag_id=tag.id))
     # Positive importance so the cold-start selection gate retains the units.
     db.add(ImportanceScore(post_id=post.id, raw_score=2.0, normalized=0.8))
@@ -101,3 +107,21 @@ async def test_fetch_context_empty_topic_returns_no_items(db_session):  # type: 
         db_session, persona.id, topic="존재하지않는토픽xyz", requesting_persona_id=persona.id
     )
     assert bundle.items == []
+
+
+async def test_fetch_context_matches_whole_tag_not_substring(db_session):  # type: ignore[no-untyped-def]
+    """Tag '인공지능' must not be matched by a substring topic like '공지'."""
+    from buddle.services import knowledge_service
+
+    persona, post = await _seed_post(db_session)
+    await knowledge_service.consider_post(db_session, post.id)
+
+    whole = await knowledge_service.fetch_context(
+        db_session, persona.id, topic=_TAG, requesting_persona_id=persona.id, record_ref=False
+    )
+    assert whole.items, "whole-tag topic should match"
+
+    substr = await knowledge_service.fetch_context(
+        db_session, persona.id, topic="공지", requesting_persona_id=persona.id, record_ref=False
+    )
+    assert substr.items == [], "substring of a tag must NOT match"
