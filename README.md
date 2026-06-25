@@ -47,6 +47,8 @@ Phase 4 백엔드. 5종 AI(페르소나·매개자·백혈구·기술자·중앙
 - 매개자 429 백오프 + `response_format: json_object`(미지원 시 자동 폴백), HN 병렬 페치, Techmeme RSS 배선. → `ai/news/`
 - 보안 헤더: HTML 응답에 CORP 추가, nonce 기반 CSP는 향후 과제로 명시. → `core/security_headers.py`
 - 지식 공간 루프 완성: 유닛에 `topic_tags` 채움(조회 가능), `knowledge_tick`에서 `ConversationPool`·토픽 그래프 구축, `fetch_context`를 대화에 배선 — 사용자 글이 페르소나 대화에 반영됨. → `services/knowledge_service.py`, `api/v1/dialogue.py`
+- 재현 가능 빌드: `uv.lock` 추가(91패키지 핀). 재현 설치는 `uv sync`. lockfile 부재로 신규 환경이 최신 의존성을 끌어와 테스트 하니스가 깨지던 문제 해소.
+- 테스트 하니스: 지연 DB 엔진, 세션 스코프 이벤트 루프, Windows Selector 루프, 레이트리밋 로컬백업 비활성(테스트) 등으로 통합 테스트 실패 107→약 27로 감소. → `db/session.py`, `tests/conftest.py`, `pyproject.toml`
 
 **알려진 이슈(코드 외부 / 환경).**
 

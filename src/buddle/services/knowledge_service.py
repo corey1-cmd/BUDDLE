@@ -204,10 +204,13 @@ async def consider_post(
             genuine_read=genuine,
             importance=float(importance),
             novelty=novelty,
-            # topic_fit = average positive cohesion with existing units. When
-            # there's no prior context (cold start) this is 0.0; falls back to a
-            # neutral 0.5 so the very first units aren't unduly penalized.
-            topic_fit=mean_sim if recent else 0.5,
+            # topic_fit = average positive cohesion with existing units. On cold
+            # start (no prior context) the unit defines the space it joins, so it
+            # fits perfectly (1.0). With the neutral 0.5 fallback a maximally
+            # novel first unit scored novelty(0.30)+fit(0.075)=0.375 < 0.45 and
+            # was always dropped, so the knowledge space could never seed from
+            # writing alone (only from reads/likes). 1.0 lets first content seed.
+            topic_fit=mean_sim if recent else 1.0,
             redundancy=redundancy,
         )
         if not should_retain(signals, weights):
