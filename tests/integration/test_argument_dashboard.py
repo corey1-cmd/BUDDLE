@@ -84,7 +84,7 @@ async def _make_post(db, content: str):  # type: ignore[no-untyped-def]
     from buddle.db.models.post import Post
 
     post = Post(
-        author_kind=AuthorKind.USER,
+        author_kind=AuthorKind.HUMAN,
         content_raw=content,
         content_transformed=content,
         visibility=PostVisibility.PUBLIC,

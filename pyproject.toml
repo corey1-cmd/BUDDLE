@@ -136,6 +136,11 @@ disable_error_code = ["arg-type", "attr-defined", "call-arg", "func-returns-valu
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+# Run tests + async fixtures on ONE session-scoped event loop so the
+# session-scoped async DB engine's pooled asyncpg connections stay bound to a
+# live loop (per-test loops raise cross-loop "another operation is in progress").
+asyncio_default_fixture_loop_scope = "session"
+asyncio_default_test_loop_scope = "session"
 testpaths = ["tests"]
 pythonpath = ["src"]
 

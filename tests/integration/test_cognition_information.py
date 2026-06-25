@@ -130,7 +130,12 @@ def test_identical_message_yields_identical_result():
 
 
 def test_process_signature_takes_only_text():
+    """Bias-safety contract: the only DATA input is the current message text —
+    no user/history/profile param may leak prior context into this layer.
+    Keyword-only behaviour flags (e.g. cognition_enabled) are allowed."""
     import inspect
 
     params = list(inspect.signature(process_information).parameters)
-    assert params == ["text"]
+    assert params[0] == "text"
+    forbidden = {"user", "user_id", "history", "profile", "prior_turns", "memory", "context"}
+    assert not (set(params) & forbidden), f"history/profile leaked into signature: {params}"

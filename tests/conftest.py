@@ -11,10 +11,23 @@ Strategy:
 from __future__ import annotations
 
 import os
+import sys
 from collections.abc import AsyncIterator, Iterator
 from pathlib import Path
 
 import pytest
+
+
+@pytest.fixture(scope="session")
+def event_loop_policy():  # type: ignore[no-untyped-def]
+    """asyncpg needs the Selector loop on Windows — the default Proactor loop
+    breaks connection teardown ("'NoneType' object has no attribute 'send'").
+    No-op elsewhere. pytest-asyncio uses this fixture to build the loop."""
+    import asyncio
+
+    if sys.platform == "win32":
+        return asyncio.WindowsSelectorEventLoopPolicy()
+    return asyncio.get_event_loop_policy()
 
 
 def _testcontainers_available() -> bool:
@@ -38,6 +51,12 @@ def _configure_env() -> Iterator[None]:
     os.environ.setdefault("APP_ENV", "development")
     os.environ.setdefault("LOG_LEVEL", "WARNING")
     os.environ.setdefault("FREE_PERSONA_QUOTA", "3")
+    # The rate limiter's process-local backup bucket is module-global and so
+    # persists across tests in a session (each test gets a fresh fakeredis, but
+    # not a fresh local bucket) — it would trip after a handful of signups and
+    # fail unrelated tests. Disable that backup layer; tests exercise the Redis
+    # layer (reset per test) and the limiter logic directly.
+    os.environ.setdefault("RATELIMIT_LOCAL_BACKUP_ENABLED", "false")
 
     from buddle.config import get_settings
 
@@ -55,6 +74,22 @@ def _to_asyncpg_url(raw: str) -> str:
     return url
 
 
+def _bind_db_to(async_url: str) -> None:
+    """Point DATABASE_URL at `async_url` and force buddle.db.session to rebuild
+    its lazy engine against it — discarding any engine an early top-level import
+    may have bound to the .env (prod Supabase) URL at collection time."""
+    os.environ["DATABASE_URL"] = async_url
+
+    from buddle.config import get_settings
+
+    get_settings.cache_clear()
+
+    import buddle.db.session as _dbs
+
+    _dbs._engine = None
+    _dbs._sessionmaker = None
+
+
 @pytest.fixture(scope="session")
 def postgres_url() -> Iterator[str]:
     """Provide a Postgres URL for the test session.
@@ -68,11 +103,7 @@ def postgres_url() -> Iterator[str]:
     external = os.environ.get("BUDDLE_TEST_DATABASE_URL", "").strip()
     if external:
         async_url = _to_asyncpg_url(external)
-        os.environ["DATABASE_URL"] = async_url
-
-        from buddle.config import get_settings
-
-        get_settings.cache_clear()
+        _bind_db_to(async_url)
         yield async_url
         return
 
@@ -103,11 +134,7 @@ def postgres_url() -> Iterator[str]:
         raw = container.get_connection_url()
         async_url = raw.replace("postgresql+psycopg2://", "postgresql+asyncpg://")
         async_url = async_url.replace("postgresql://", "postgresql+asyncpg://")
-        os.environ["DATABASE_URL"] = async_url
-
-        from buddle.config import get_settings
-
-        get_settings.cache_clear()
+        _bind_db_to(async_url)
         yield async_url
     finally:
         container.stop()

@@ -17,7 +17,7 @@ async def test_signup_password_mismatch_422(client):  # type: ignore[no-untyped-
     r = await client.post(
         "/v1/auth/signup",
         json={
-            "email": "mismatch@buddle.test",
+            "email": "mismatch@buddle.app",
             "password": "Password123!",
             "password_confirm": "Different456!",
         },
@@ -26,7 +26,7 @@ async def test_signup_password_mismatch_422(client):  # type: ignore[no-untyped-
 
 
 async def test_signup_duplicate_email_409(client):  # type: ignore[no-untyped-def]
-    email = "dup@buddle.test"
+    email = "dup@buddle.app"
     body = {"email": email, "password": "Hunter22!", "password_confirm": "Hunter22!"}
 
     r1 = await client.post("/v1/auth/signup", json=body)

@@ -20,20 +20,6 @@ import pytest
 
 pytestmark = pytest.mark.asyncio
 
-
-@pytest.fixture(scope="session")
-def event_loop_policy():
-    # asyncpg needs the Selector loop on Windows (the default Proactor loop
-    # breaks connection teardown: "'NoneType' object has no attribute 'send'").
-    # No-op on POSIX where this policy is unavailable.
-    import asyncio
-    import sys
-
-    if sys.platform == "win32":
-        return asyncio.WindowsSelectorEventLoopPolicy()
-    return asyncio.get_event_loop_policy()
-
-
 _TAG = "인공지능"
 _CONTENT = "인공지능은 빠르게 발전하고 있다. 모델은 점점 더 똑똑해진다. 사회적 영향도 점점 커진다."
 
