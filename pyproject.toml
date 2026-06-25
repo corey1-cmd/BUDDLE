@@ -49,7 +49,9 @@ dev = [
     "mypy>=1.13.0",
     "testcontainers[postgres]>=4.8.0",
     "pip-audit>=2.7.0",
-    "fakeredis>=2.26.0",
+    # [lua] pulls in lupa so fakeredis can execute the rate limiter's EVAL
+    # script in CI (otherwise signups fail closed with limiter_unavailable).
+    "fakeredis[lua]>=2.26.0",
 ]
 
 [build-system]
@@ -94,6 +96,13 @@ ignore = [
 # S106: token_type="access"/"refresh" passed as a function argument — same
 #       token-kind string, not a hardcoded credential.
 "src/buddle/security/jwt.py" = ["S106"]
+# S101: `assert` is a type-narrowing guard for mypy after an explicit None/guard
+#       check (not a runtime invariant that -O could weaken). Confirmed safe.
+"src/buddle/ai/cognition/decision.py" = ["S101"]
+"src/buddle/ai/lang/morph.py" = ["S101"]
+# S311: random.uniform is used only for scheduler start-up jitter (spreading
+#       replica boots), never for anything security-sensitive.
+"src/buddle/core/scheduler.py" = ["S311"]
 
 [tool.ruff.format]
 quote-style = "double"

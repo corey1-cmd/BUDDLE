@@ -17,10 +17,10 @@ Admin endpoint returns:
 
 from __future__ import annotations
 
+import contextlib
 import json
 import time
-import uuid
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -324,10 +324,8 @@ async def get_news_briefings(
     raw_items = await redis.lrange(_BRIEFINGS_KEY, 0, _MAX_STORED - 1)
     briefings: list[dict[str, object]] = []
     for raw in raw_items:
-        try:
+        with contextlib.suppress(json.JSONDecodeError):
             briefings.append(json.loads(raw))
-        except json.JSONDecodeError:
-            pass
 
     if topics:
         topic_set = {t.lower() for t in topics}

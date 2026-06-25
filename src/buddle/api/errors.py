@@ -9,6 +9,7 @@ from __future__ import annotations
 from typing import Any
 
 from fastapi import FastAPI, Request, status
+from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
@@ -39,7 +40,10 @@ def register_exception_handlers(app: FastAPI) -> None:
             content=_error_body(
                 "VALIDATION_ERROR",
                 "Request validation failed.",
-                {"errors": exc.errors()},
+                # jsonable_encoder: Pydantic v2 puts the raised exception object
+                # in each error's `ctx`, which is not JSON-serializable and would
+                # 500 the handler. Encode it to a safe, serializable form.
+                {"errors": jsonable_encoder(exc.errors())},
             ),
         )
 

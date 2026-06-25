@@ -207,7 +207,11 @@ async def client(app):  # type: ignore[no-untyped-def]
     """httpx.AsyncClient targeting the app in-process."""
     from httpx import ASGITransport, AsyncClient
 
-    transport = ASGITransport(app=app)
+    # raise_app_exceptions=False: let the app's exception handlers turn errors
+    # into HTTP responses (e.g. 422) instead of re-raising them through the
+    # transport. Newer httpx defaults this True, which made handled validation
+    # errors propagate as exceptions and fail status-code assertions.
+    transport = ASGITransport(app=app, raise_app_exceptions=False)
     async with AsyncClient(transport=transport, base_url="http://test") as c:
         yield c
 

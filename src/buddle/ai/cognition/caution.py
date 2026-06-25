@@ -27,9 +27,8 @@ Pure: no I/O in the hot path. 파일 읽기는 mtime 변경 시에만 발생.
 from __future__ import annotations
 
 import json
-import os
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -423,7 +422,7 @@ def _build_caution_guidance(
         f"[백혈구 AI — 유의 단어 감지 / 잡지 버전 {lexicon.version}]",
         f"- 감지된 유의 단어: {words_str}",
         f"- 카테고리: {cats_str}",
-        f"- 즉시 답변하지 말고 내부 7단계 추론을 완료한 뒤 응답하세요.",
+        "- 즉시 답변하지 말고 내부 7단계 추론을 완료한 뒤 응답하세요.",
         f"- 주 전략: {primary_step}단계 — {steps[primary_step - 1].name}",
         "",
     ]

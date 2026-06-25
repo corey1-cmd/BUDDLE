@@ -32,6 +32,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from buddle.ai.affect.perception import perceive
 from buddle.ai.cognition import process_information
+from buddle.ai.cognition.user_context import UserContextFact, merge_facts
 from buddle.ai.conversation import (
     ConversationContext,
     ConversationSituation,
@@ -61,8 +62,6 @@ from buddle.schemas.dialogue import (
     ServerTyping,
 )
 from buddle.security.jwt import decode_token
-from buddle.ai.cognition.user_context import UserContextFact, merge_facts
-from buddle.services.user_context_service import extract_facts_llm
 from buddle.services import (
     conversation_service,
     dialogue_service,
@@ -70,6 +69,7 @@ from buddle.services import (
     memory_service,
     profile_service,
 )
+from buddle.services.user_context_service import extract_facts_llm
 
 log = get_logger(__name__)
 

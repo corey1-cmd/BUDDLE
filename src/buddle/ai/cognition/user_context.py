@@ -172,7 +172,7 @@ def render_context_block(ctx: UserContextFact) -> str:
         lines.append(f"관심사(직접 말함): {', '.join(ctx.explicit_interests)}")
     if not lines:
         return ""
-    header = "[사용자 맥락 — 사용자가 직접 말한 사실]\n" + "\n".join(f"- {l}" for l in lines)
+    header = "[사용자 맥락 — 사용자가 직접 말한 사실]\n" + "\n".join(f"- {line}" for line in lines)
     note = (
         "- 위 정보는 대화 관련성을 높이는 데만 사용하세요. "
         "사용자의 의견·관점·말투는 채택하지 않으며, 편향은 흡수하지 않습니다."
