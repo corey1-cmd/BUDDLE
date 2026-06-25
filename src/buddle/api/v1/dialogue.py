@@ -535,14 +535,15 @@ async def dialogue_ws(
                 # persona draws on units distilled from the user's posts
                 # (leukocyte-screened, mediator-tagged, filed into the topic's
                 # conversation pool) that match the current topic. This closes the
-                # loop: 글 → 백혈구·매개자 → 지식공간 → 대화. record_ref=False keeps
-                # it a pure read on the turn session; topic-gated; fail-safe. Same
-                # mediator_bundle delivery as news.
+                # loop: 글 → 백혈구·매개자 → 지식공간 → 대화. Delivered as INTERNAL
+                # reference via the knowledge_context channel (distinct from the
+                # external news that rides the mediator_bundle channel + sets
+                # has_external). record_ref=False = pure read; topic-gated; fail-safe.
+                knowledge_gists: list[str] = []
                 if msg_topics:
                     try:
                         from buddle.services import knowledge_service
 
-                        gists: list[str] = []
                         seen_g: set[str] = set()
                         for t in msg_topics[:2]:
                             bundle = await knowledge_service.fetch_context(
@@ -556,17 +557,7 @@ async def dialogue_ws(
                             for it in bundle.items:
                                 if it.gist and it.gist not in seen_g:
                                     seen_g.add(it.gist)
-                                    gists.append(it.gist)
-                        if gists:
-                            kn_block = (
-                                "[당신의 지식 공간 — 사용자가 쓴 글에서 정리된 내용입니다. "
-                                "자연스럽게만 활용하고 나열하지 마세요]\n"
-                                + "\n".join(f"- {g[:160]}" for g in gists[:5])
-                            )
-                            history = [
-                                *history,
-                                DialogueTurn(role="mediator_bundle", content=kn_block),
-                            ]
+                                    knowledge_gists.append(it.gist)
                     except Exception as e:
                         log.warning("knowledge.context_inject_failed", error=str(e))
 
@@ -582,6 +573,7 @@ async def dialogue_ws(
                     recalled_memories=recalled or None,
                     conversation_guidance=convo_guidance,
                     user_context=accumulated_ctx,
+                    knowledge_context=knowledge_gists or None,
                 )
 
                 # Output-side ethics gate: screen the persona's OWN reply before

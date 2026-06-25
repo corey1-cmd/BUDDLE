@@ -76,6 +76,8 @@ class PersonaAI(Protocol):
         user_message: str,
         recalled_memories: list[str] | None = None,
         conversation_guidance: str = "",
+        user_context: object = None,
+        knowledge_context: list[str] | None = None,
     ) -> PersonaReply: ...
 
 

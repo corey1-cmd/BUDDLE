@@ -204,6 +204,7 @@ class PersonaService:
         recalled_memories: list[str] | None = None,
         conversation_guidance: str = "",
         user_context: object = None,
+        knowledge_context: list[str] | None = None,
     ) -> PersonaReply:
         model = await _load_model(self._db, model_key)
         backend = _build_backend(
@@ -223,6 +224,7 @@ class PersonaService:
                 recalled_memories=recalled_memories,
                 conversation_guidance=conversation_guidance,
                 user_context=user_context,
+                knowledge_context=knowledge_context,
             )
         except PersonaBackendError as e:
             log.warning(
@@ -240,4 +242,5 @@ class PersonaService:
                 recalled_memories=recalled_memories,
                 conversation_guidance=conversation_guidance,
                 user_context=user_context,
+                knowledge_context=knowledge_context,
             )
