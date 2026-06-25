@@ -34,11 +34,15 @@ def test_service_signatures():
 
 
 def test_ws_route_and_notes_route_registered():
+    from buddle.api.v1.argument_chat_ws import router as ws_router
     from buddle.main import app
 
-    paths = {getattr(r, "path", "") for r in app.routes}
-    assert "/v1/ws/argument/{post_id}" in paths
-    assert "/v1/posts/{post_id}/context-notes" in paths
+    from tests.integration._routes import registered_paths, router_paths
+
+    # WebSocket routes aren't in OpenAPI; check the source router declares it.
+    assert "/ws/argument/{post_id}" in router_paths(ws_router)
+    # The notes route is a normal HTTP route.
+    assert "/v1/posts/{post_id}/context-notes" in registered_paths(app)
 
 
 def test_migration_0021_chains_after_0020():

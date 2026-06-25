@@ -60,11 +60,9 @@ def test_update_schema_rejects_out_of_range_traits():
 def test_sovereignty_routes_registered():
     from buddle.main import app
 
-    methods_by_path: dict[str, set[str]] = {}
-    for r in app.routes:
-        if getattr(r, "path", "") == "/v1/me/profile":
-            methods_by_path.setdefault(r.path, set()).update(getattr(r, "methods", set()))
-    assert {"GET", "PATCH", "DELETE"} <= methods_by_path.get("/v1/me/profile", set())
+    from tests.integration._routes import route_methods
+
+    assert {"GET", "PATCH", "DELETE"} <= route_methods(app, "/v1/me/profile")
 
 
 def test_migration_0018_chains_after_0017():

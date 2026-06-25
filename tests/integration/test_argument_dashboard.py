@@ -49,10 +49,9 @@ def test_service_signatures():
 def test_dashboard_route_registered_get_only():
     from buddle.main import app
 
-    methods: set[str] = set()
-    for r in app.routes:
-        if getattr(r, "path", "") == "/v1/topics/{tag_id}/debate":
-            methods |= set(getattr(r, "methods", set()))
+    from tests.integration._routes import route_methods
+
+    methods = route_methods(app, "/v1/topics/{tag_id}/debate")
     assert "GET" in methods
     assert not ({"POST", "PUT", "PATCH", "DELETE"} & methods)
 
@@ -182,11 +181,9 @@ async def test_dashboard_empty_topic_has_no_axes(db_session):  # type: ignore[no
 def test_promote_route_registered():
     from buddle.main import app
 
-    methods: set[str] = set()
-    for r in app.routes:
-        if getattr(r, "path", "") == "/v1/posts/{post_id}/debate-topic":
-            methods |= set(getattr(r, "methods", set()))
-    assert "POST" in methods
+    from tests.integration._routes import route_methods
+
+    assert "POST" in route_methods(app, "/v1/posts/{post_id}/debate-topic")
 
 
 def test_promote_service_signature():
@@ -307,7 +304,9 @@ async def test_promote_no_name_no_tag_returns_none(db_session):  # type: ignore[
 def test_opposition_routes_registered():
     from buddle.main import app
 
-    paths = {getattr(r, "path", "") for r in app.routes}
+    from tests.integration._routes import registered_paths
+
+    paths = registered_paths(app)
     assert "/v1/topics/{tag_id}/opposition" in paths
     assert "/v1/topics/{tag_id}/stance" in paths
 
@@ -315,8 +314,9 @@ def test_opposition_routes_registered():
 def test_graph_route_registered():
     from buddle.main import app
 
-    paths = {getattr(r, "path", "") for r in app.routes}
-    assert "/v1/topics/{tag_id}/graph" in paths
+    from tests.integration._routes import registered_paths
+
+    assert "/v1/topics/{tag_id}/graph" in registered_paths(app)
 
 
 def test_opposition_service_signatures():
@@ -428,9 +428,14 @@ def test_by_name_route_registered_before_tag_id_route():
     request to it would be swallowed by the tag_id path param first."""
     from buddle.main import app
 
-    paths = [getattr(r, "path", "") for r in app.routes if "topics" in getattr(r, "path", "")]
-    assert "/v1/topics/by-name/stance" in paths
-    assert paths.index("/v1/topics/by-name/stance") < paths.index("/v1/topics/{tag_id}/stance")
+    ordered = list(app.openapi()["paths"])
+    assert "/v1/topics/by-name/stance" in ordered
+    # The literal path must be registered before the {tag_id} param path, else a
+    # request to it is swallowed by the param route first.
+    if "/v1/topics/{tag_id}/stance" in ordered:
+        assert ordered.index("/v1/topics/by-name/stance") < ordered.index(
+            "/v1/topics/{tag_id}/stance"
+        )
 
 
 def test_get_or_create_tag_signature():

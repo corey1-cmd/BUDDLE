@@ -44,10 +44,9 @@ def test_schema_neutral_is_orientation_zero():
 def test_route_is_registered_get_only():
     from buddle.main import app
 
-    methods: set[str] = set()
-    for route in app.routes:
-        if getattr(route, "path", "") == "/v1/personas/{persona_id}/relationship":
-            methods |= set(getattr(route, "methods", set()))
+    from tests.integration._routes import route_methods
+
+    methods = route_methods(app, "/v1/personas/{persona_id}/relationship")
     assert "GET" in methods
     # No write methods — the bond is shaped only by conversation.
     assert not ({"POST", "PUT", "PATCH", "DELETE"} & methods)
