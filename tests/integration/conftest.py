@@ -18,6 +18,14 @@ async def _dispose_db_engine_after_test():  # type: ignore[no-untyped-def]
     "got Future ... attached to a different loop". Disposing + clearing the
     singleton here makes the next test build a fresh engine bound to its loop.
     No-op for tests that never touched the DB.
+
+    NOTE: this gives loop safety but NOT data isolation — the suite is
+    append-only, so a few stateful tests (the technician hash chain / authority
+    elevation) leak across tests and "pass alone, fail in the suite". A full
+    SAVEPOINT-per-test isolation was tried and rejected: a single outer
+    transaction makes Postgres ``now()`` constant, which breaks chronological
+    (created_at-ordered) tests. Real isolation belongs at the CI level
+    (a fresh database per test worker), not here.
     """
     yield
     import buddle.db.session as dbs
