@@ -45,9 +45,7 @@ class LlmTranslator:
             "messages": [
                 {
                     "role": "system",
-                    "content": _SYSTEM.format(
-                        src=source.english_name, tgt=target.english_name
-                    ),
+                    "content": _SYSTEM.format(src=source.english_name, tgt=target.english_name),
                 },
                 {"role": "user", "content": text},
             ],

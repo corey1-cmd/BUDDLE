@@ -20,9 +20,7 @@ from buddle.db.base import Base
 
 class PostTranslation(Base):
     __tablename__ = "post_translations"
-    __table_args__ = (
-        UniqueConstraint("post_id", "language", name="uq_post_translation_lang"),
-    )
+    __table_args__ = (UniqueConstraint("post_id", "language", name="uq_post_translation_lang"),)
 
     id: Mapped[uuid.UUID] = mapped_column(
         PGUUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid()

@@ -19,9 +19,7 @@ from buddle.db.base import Base
 
 class TopicEdge(Base):
     __tablename__ = "topic_edges"
-    __table_args__ = (
-        UniqueConstraint("topic_a", "topic_b", name="uq_topic_edge_pair"),
-    )
+    __table_args__ = (UniqueConstraint("topic_a", "topic_b", name="uq_topic_edge_pair"),)
 
     id: Mapped[uuid.UUID] = mapped_column(
         PGUUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid()

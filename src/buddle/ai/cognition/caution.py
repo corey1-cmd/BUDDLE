@@ -34,6 +34,7 @@ from typing import Any
 
 # ── 데이터 구조 ────────────────────────────────────────────────────────────
 
+
 @dataclass(frozen=True, slots=True)
 class CautionEntry:
     word: str
@@ -52,6 +53,7 @@ class CautionMatch:
 @dataclass(frozen=True, slots=True)
 class ReasoningStep:
     """한 단계의 추론 결과."""
+
     step_number: int
     name: str
     applicable: bool
@@ -61,12 +63,13 @@ class ReasoningStep:
 @dataclass(frozen=True, slots=True)
 class CautionReasoningResult:
     """7단계 추론의 전체 결과."""
+
     has_caution: bool
     matched_words: list[str]
     matched_categories: list[str]
-    primary_step: int              # 가장 먼저 적용된 단계 번호 (0 = 유의 단어 없음)
+    primary_step: int  # 가장 먼저 적용된 단계 번호 (0 = 유의 단어 없음)
     steps: list[ReasoningStep]
-    caution_guidance: str          # synthesize_prompt_block에 주입할 최종 블록
+    caution_guidance: str  # synthesize_prompt_block에 주입할 최종 블록
 
 
 # 위기/위해처럼 놓치면 위험한 카테고리는 재현율을 위해 부분일치(substring)를
@@ -94,6 +97,7 @@ def _compile_matcher(word: str, context_hint: str) -> re.Pattern[str]:
 
 
 # ── 잡지(CautionLexicon) — 파일 기반, 자동 리로드 ────────────────────────
+
 
 class CautionLexicon:
     """유의 단어 잡지.
@@ -136,11 +140,13 @@ class CautionLexicon:
         for pattern, entry in self._matchers:
             if entry.word not in seen and pattern.search(text):
                 seen.add(entry.word)
-                matches.append(CautionMatch(
-                    word=entry.word,
-                    category=entry.category,
-                    context_hint=entry.context_hint,
-                ))
+                matches.append(
+                    CautionMatch(
+                        word=entry.word,
+                        category=entry.category,
+                        context_hint=entry.context_hint,
+                    )
+                )
         return matches
 
     def seed_for(self, category: str) -> dict[str, Any]:
@@ -167,9 +173,7 @@ class CautionLexicon:
                 for e in data.get("entries", [])
             ]
             self._entries = entries
-            self._matchers = [
-                (_compile_matcher(e.word, e.context_hint), e) for e in entries
-            ]
+            self._matchers = [(_compile_matcher(e.word, e.context_hint), e) for e in entries]
             self._seeds = data.get("category_reasoning_seeds", {})
             self._version = str(data.get("version", ""))
             try:
@@ -190,6 +194,7 @@ def _get_lexicon() -> CautionLexicon | None:
     global _lexicon
     # 지연 임포트 — 설정 순환 방지
     from buddle.config import get_settings
+
     path = get_settings().caution_lexicon_path
     if not path:
         return None
@@ -201,6 +206,7 @@ def _get_lexicon() -> CautionLexicon | None:
 
 
 # ── 7단계 추론 엔진 ────────────────────────────────────────────────────────
+
 
 def _step1_direct_knowledge(
     text: str,
@@ -220,8 +226,9 @@ def _step1_direct_knowledge(
         )
     else:
         guidance = ""
-    return ReasoningStep(step_number=1, name="Direct Knowledge Check",
-                         applicable=answerable, guidance=guidance)
+    return ReasoningStep(
+        step_number=1, name="Direct Knowledge Check", applicable=answerable, guidance=guidance
+    )
 
 
 def _step2_nearest_experience(
@@ -232,8 +239,9 @@ def _step2_nearest_experience(
     """2단계: Nearest Experience Search — 유사 경험·사례 탐색."""
     domain = seed.get("experience_domain", "")
     if not domain:
-        return ReasoningStep(step_number=2, name="Nearest Experience Search",
-                             applicable=False, guidance="")
+        return ReasoningStep(
+            step_number=2, name="Nearest Experience Search", applicable=False, guidance=""
+        )
     guidance = (
         "[2단계 — 유사 경험 탐색] 직접 답변 대신 유사 경험으로 추론합니다.\n"
         f"- 유사 경험 영역: {domain}\n"
@@ -241,8 +249,9 @@ def _step2_nearest_experience(
         "- 사용자의 실제 필요를 먼저 파악한 뒤, 유사 사례를 연결하세요.\n"
         "- 위험하거나 불가능한 정보를 주지 않으면서도 연결점을 제시하세요."
     )
-    return ReasoningStep(step_number=2, name="Nearest Experience Search",
-                         applicable=True, guidance=guidance)
+    return ReasoningStep(
+        step_number=2, name="Nearest Experience Search", applicable=True, guidance=guidance
+    )
 
 
 def _step3_analogy_mapping(
@@ -253,8 +262,7 @@ def _step3_analogy_mapping(
     """3단계: Analogy Mapping — 알려진 영역으로 개념 투영."""
     analogy = seed.get("analogy_source", "")
     if not analogy:
-        return ReasoningStep(step_number=3, name="Analogy Mapping",
-                             applicable=False, guidance="")
+        return ReasoningStep(step_number=3, name="Analogy Mapping", applicable=False, guidance="")
     guidance = (
         "[3단계 — 비유 투영] 알려진 영역에 비유하여 접근합니다.\n"
         f"- 비유 축: {analogy}\n"
@@ -262,8 +270,7 @@ def _step3_analogy_mapping(
         "- Unknown Domain → Similar Structure → Known Domain 순으로 풀어내세요.\n"
         "- 비유가 완벽하지 않음을 인정하며, 한계도 함께 언급하세요."
     )
-    return ReasoningStep(step_number=3, name="Analogy Mapping",
-                         applicable=True, guidance=guidance)
+    return ReasoningStep(step_number=3, name="Analogy Mapping", applicable=True, guidance=guidance)
 
 
 def _step4_question_decomposition(
@@ -274,8 +281,9 @@ def _step4_question_decomposition(
     """4단계: Question Decomposition — 하위 문제로 분해."""
     axes = seed.get("decompose_axes", [])
     if not axes:
-        return ReasoningStep(step_number=4, name="Question Decomposition",
-                             applicable=False, guidance="")
+        return ReasoningStep(
+            step_number=4, name="Question Decomposition", applicable=False, guidance=""
+        )
     axes_str = " / ".join(f"[{a}]" for a in axes)
     guidance = (
         "[4단계 — 질문 분해] 복합 질문을 하위 문제로 나눕니다.\n"
@@ -283,8 +291,9 @@ def _step4_question_decomposition(
         "- 각 부분에 대해 가능한 범위에서 답변한 뒤 통합 결론을 내세요.\n"
         "- 답변 불가능한 부분은 왜 그런지 설명하고 안전한 대안을 제시하세요."
     )
-    return ReasoningStep(step_number=4, name="Question Decomposition",
-                         applicable=True, guidance=guidance)
+    return ReasoningStep(
+        step_number=4, name="Question Decomposition", applicable=True, guidance=guidance
+    )
 
 
 def _step5_premise_verification(
@@ -295,8 +304,9 @@ def _step5_premise_verification(
     """5단계: Premise Verification — 질문의 전제 검토."""
     variants = seed.get("premise_variants", [])
     if not variants:
-        return ReasoningStep(step_number=5, name="Premise Verification",
-                             applicable=False, guidance="")
+        return ReasoningStep(
+            step_number=5, name="Premise Verification", applicable=False, guidance=""
+        )
     variants_str = " / ".join(f"'{v}'" for v in variants)
     guidance = (
         "[5단계 — 전제 검증] 질문의 전제가 성립하는지 먼저 확인합니다.\n"
@@ -305,8 +315,9 @@ def _step5_premise_verification(
         "- 검사 항목: 논리적 모순 / 정의 불명확 / 허위 전제 / 가상 시나리오 여부.\n"
         "- 맥락을 파악한 뒤, 실제 필요에 맞는 방향으로 대화를 이어가세요."
     )
-    return ReasoningStep(step_number=5, name="Premise Verification",
-                         applicable=True, guidance=guidance)
+    return ReasoningStep(
+        step_number=5, name="Premise Verification", applicable=True, guidance=guidance
+    )
 
 
 def _step6_probabilistic_reasoning(
@@ -317,10 +328,11 @@ def _step6_probabilistic_reasoning(
     """6단계: Probabilistic Reasoning — 복수 가설 생성."""
     hypotheses: list[dict[str, str]] = seed.get("hypotheses", [])
     if not hypotheses:
-        return ReasoningStep(step_number=6, name="Probabilistic Reasoning",
-                             applicable=False, guidance="")
+        return ReasoningStep(
+            step_number=6, name="Probabilistic Reasoning", applicable=False, guidance=""
+        )
     hyp_lines = "\n".join(
-        f"  · 가설 {chr(65+i)}: {h.get('label', '')} — 가능성 {h.get('likelihood', '?')}"
+        f"  · 가설 {chr(65 + i)}: {h.get('label', '')} — 가능성 {h.get('likelihood', '?')}"
         for i, h in enumerate(hypotheses[:3])
     )
     guidance = (
@@ -330,8 +342,9 @@ def _step6_probabilistic_reasoning(
         "- 절대 하나의 결론을 단정하지 마세요.\n"
         "- 사용자가 어떤 맥락인지 부드럽게 확인해도 좋습니다."
     )
-    return ReasoningStep(step_number=6, name="Probabilistic Reasoning",
-                         applicable=True, guidance=guidance)
+    return ReasoningStep(
+        step_number=6, name="Probabilistic Reasoning", applicable=True, guidance=guidance
+    )
 
 
 def _step7_meta_cognitive(
@@ -349,8 +362,9 @@ def _step7_meta_cognitive(
         "- '모르겠습니다'로 끝내지 말고 현재 가능한 최선의 추론을 반드시 포함하세요.\n"
         "- 확신 수준(Low/Medium/High)을 명시하세요."
     )
-    return ReasoningStep(step_number=7, name="Meta-Cognitive Response",
-                         applicable=True, guidance=guidance)
+    return ReasoningStep(
+        step_number=7, name="Meta-Cognitive Response", applicable=True, guidance=guidance
+    )
 
 
 _STEP_FNS = [
@@ -416,7 +430,7 @@ def _build_caution_guidance(
             "- 아래 7단계는 공감을 전한 뒤, 대화를 이어갈 때만 보조적으로 참고하세요.",
             "",
         ]
-        return "\n".join(header + [steps[primary_step - 1].guidance] if steps else header)
+        return "\n".join([*header, steps[primary_step - 1].guidance] if steps else header)
 
     lines = [
         f"[백혈구 AI — 유의 단어 감지 / 잡지 버전 {lexicon.version}]",
@@ -442,12 +456,15 @@ def _build_caution_guidance(
             lines.append(f"  [{fb.step_number}단계] {fb.name}: {fb.guidance.split(chr(10))[0]}")
         lines.append("")
 
-    lines.append("출력 원칙: 어떤 경우에도 '모르겠습니다'로 끝내지 않습니다. "
-                 "추론 가능한 상황으로 변환하는 것을 최우선으로 합니다.")
+    lines.append(
+        "출력 원칙: 어떤 경우에도 '모르겠습니다'로 끝내지 않습니다. "
+        "추론 가능한 상황으로 변환하는 것을 최우선으로 합니다."
+    )
     return "\n".join(lines)
 
 
 # ── 공개 진입점 ────────────────────────────────────────────────────────────
+
 
 def inspect_and_reason(text: str) -> CautionReasoningResult:
     """유의 단어 검출 + 7단계 추론. Pure, synchronous.
@@ -479,6 +496,7 @@ def inspect_and_reason(text: str) -> CautionReasoningResult:
     categories = list(dict.fromkeys(m.category for m in matches))
     # 가장 많이 매칭된 카테고리의 시드를 사용 (단순 다수결)
     from collections import Counter
+
     most_common_cat = Counter(m.category for m in matches).most_common(1)[0][0]
     seed = lexicon.seed_for(most_common_cat)
 

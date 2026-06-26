@@ -35,11 +35,11 @@ log = get_logger(__name__)
 _BRIEFINGS_KEY = "buddle:news:briefings"
 _SEEN_KEY = "buddle:news:seen"
 _STATUS_KEY = "buddle:news:status"
-_DIGEST_KEY = "buddle:news:digest"   # mediator-combined briefing (the 'combination' stage)
+_DIGEST_KEY = "buddle:news:digest"  # mediator-combined briefing (the 'combination' stage)
 _SOURCES_KEY = "buddle:news:sources"  # admin-configured fetch sources (where to search)
-_BRIEFINGS_TTL = 60 * 60 * 25   # 25 hours
-_SEEN_TTL = 60 * 60 * 48        # 48 hours (dedup window)
-_MAX_STORED = 60                 # max articles kept in cache
+_BRIEFINGS_TTL = 60 * 60 * 25  # 25 hours
+_SEEN_TTL = 60 * 60 * 48  # 48 hours (dedup window)
+_MAX_STORED = 60  # max articles kept in cache
 
 # Source kinds the fetcher can dispatch. 'rss' takes an arbitrary feed url
 # (Techmeme, WSJ, New Yorker, …); the API kinds use their own fixed endpoints.
@@ -48,12 +48,23 @@ _ALLOWED_KINDS = ("rss", "hackernews", "devto")
 # Seeded on first read so behaviour matches the previous hardcoded set. Techmeme
 # is the worked example of a free, public RSS feed; add WSJ/New Yorker as rss too.
 DEFAULT_SOURCES: list[dict[str, object]] = [
-    {"id": "hackernews", "name": "Hacker News", "kind": "hackernews",
-     "url": "", "enabled": True, "limit": 20},
-    {"id": "devto", "name": "dev.to", "kind": "devto",
-     "url": "", "enabled": True, "limit": 10},
-    {"id": "techmeme", "name": "Techmeme", "kind": "rss",
-     "url": "https://www.techmeme.com/feed.xml", "enabled": True, "limit": 10},
+    {
+        "id": "hackernews",
+        "name": "Hacker News",
+        "kind": "hackernews",
+        "url": "",
+        "enabled": True,
+        "limit": 20,
+    },
+    {"id": "devto", "name": "dev.to", "kind": "devto", "url": "", "enabled": True, "limit": 10},
+    {
+        "id": "techmeme",
+        "name": "Techmeme",
+        "kind": "rss",
+        "url": "https://www.techmeme.com/feed.xml",
+        "enabled": True,
+        "limit": 10,
+    },
 ]
 
 
@@ -81,17 +92,23 @@ async def _mark_seen(redis: RedisClient, url_hash: str) -> None:
 
 async def _store_briefings(redis: RedisClient, articles: list[MediatedArticle]) -> None:
     """Prepend new briefings to the Redis list, cap at MAX_STORED."""
-    serialised = [json.dumps({
-        "url": a.raw.url,
-        "title": a.raw.title,
-        "source": a.raw.source,
-        "gist_ko": a.gist_ko,
-        "tags": a.tags,
-        "ekb_briefing": a.ekb_briefing,
-        "relevance": a.relevance,
-        "stub": a.stub,
-        "stored_at": int(time.time()),
-    }, ensure_ascii=False) for a in articles]
+    serialised = [
+        json.dumps(
+            {
+                "url": a.raw.url,
+                "title": a.raw.title,
+                "source": a.raw.source,
+                "gist_ko": a.gist_ko,
+                "tags": a.tags,
+                "ekb_briefing": a.ekb_briefing,
+                "relevance": a.relevance,
+                "stub": a.stub,
+                "stored_at": int(time.time()),
+            },
+            ensure_ascii=False,
+        )
+        for a in articles
+    ]
 
     if not serialised:
         return
@@ -189,8 +206,12 @@ async def add_news_source(
         sid = f"{base}-{i}"
         i += 1
     source: dict[str, object] = {
-        "id": sid, "name": name, "kind": kind, "url": url,
-        "enabled": bool(enabled), "limit": max(1, min(int(limit), 50)),
+        "id": sid,
+        "name": name,
+        "kind": kind,
+        "url": url,
+        "enabled": bool(enabled),
+        "limit": max(1, min(int(limit), 50)),
         "added_at": int(time.time()),
     }
     sources.append(source)
@@ -222,6 +243,7 @@ async def delete_news_source(redis: RedisClient, source_id: str) -> bool:
 async def news_tick(db: AsyncSession, *, redis: RedisClient) -> dict[str, object]:
     """Main scheduler entry-point. Returns a summary dict for the scheduler log."""
     from buddle.config import get_settings
+
     settings = get_settings()
 
     log.info("news.tick.start")
@@ -262,28 +284,36 @@ async def news_tick(db: AsyncSession, *, redis: RedisClient) -> dict[str, object
             digest_text = await synthesize_digest(kept, settings=settings)
             if digest_text:
                 digest_tags = list({t for m in kept for t in m.tags})[:8]
-                await redis.setex(_DIGEST_KEY, _BRIEFINGS_TTL, json.dumps(
-                    {"text": digest_text, "tags": digest_tags,
-                     "count": len(kept), "ts": int(time.time())},
-                    ensure_ascii=False,
-                ))
+                await redis.setex(
+                    _DIGEST_KEY,
+                    _BRIEFINGS_TTL,
+                    json.dumps(
+                        {
+                            "text": digest_text,
+                            "tags": digest_tags,
+                            "count": len(kept),
+                            "ts": int(time.time()),
+                        },
+                        ensure_ascii=False,
+                    ),
+                )
         except Exception as e:
             log.warning("news.digest_error", error=str(e))
 
     # Save status snapshot
-    sources = list({m.raw.source for m in kept})
+    kept_sources = list({m.raw.source for m in kept})
     status = {
         "last_run_ts": time.time(),
         "fetched": fetched,
         "new_items": len(new_articles),
         "stored": len(kept),
-        "sources": sources,
+        "sources": kept_sources,
     }
     await redis.setex(_STATUS_KEY, _BRIEFINGS_TTL, json.dumps(status, ensure_ascii=False))
 
     # KnowledgeAudit log
     try:
-        await _audit(db, len(kept), ",".join(sources))
+        await _audit(db, len(kept), ",".join(kept_sources))
     except Exception as e:
         log.warning("news.audit_error", error=str(e))
 
@@ -382,6 +412,8 @@ def build_news_context_block(
         lines.append(f"· 매개자 종합: {digest}")
     for i, b in enumerate(briefings[:5], 1):
         briefing = b.get("ekb_briefing") or b.get("gist_ko") or b.get("title", "")
-        tags = ", ".join(str(t) for t in (b.get("tags") or [])[:3])
+        raw_tags = b.get("tags")
+        tags_seq = raw_tags if isinstance(raw_tags, list) else []
+        tags = ", ".join(str(t) for t in tags_seq[:3])
         lines.append(f"{i}. {briefing}" + (f" [{tags}]" if tags else ""))
     return "\n".join(lines)

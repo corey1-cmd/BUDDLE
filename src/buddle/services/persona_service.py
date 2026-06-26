@@ -191,12 +191,14 @@ async def update_persona(
     # caller changing just the name doesn't clear coordinates.
     if payload.location_sharing is not None:
         if payload.location_sharing:
-            new_lat = payload.location_lat if payload.location_lat is not None else persona.location_lat
-            new_lon = payload.location_lon if payload.location_lon is not None else persona.location_lon
+            new_lat = (
+                payload.location_lat if payload.location_lat is not None else persona.location_lat
+            )
+            new_lon = (
+                payload.location_lon if payload.location_lon is not None else persona.location_lon
+            )
             if new_lat is None or new_lon is None:
-                raise ValidationError(
-                    "lat and lon are required when location_sharing is enabled."
-                )
+                raise ValidationError("lat and lon are required when location_sharing is enabled.")
             persona.location_lat = new_lat
             persona.location_lon = new_lon
         persona.location_sharing = payload.location_sharing

@@ -140,9 +140,7 @@ def merge_facts(base: UserContextFact, update: UserContextFact) -> UserContextFa
     NOT erase a previously stated name. New disclosures override old ones
     (user corrects themselves). Interests accumulate (set union, order-stable).
     """
-    merged_interests = tuple(
-        dict.fromkeys(base.explicit_interests + update.explicit_interests)
-    )
+    merged_interests = tuple(dict.fromkeys(base.explicit_interests + update.explicit_interests))
     return UserContextFact(
         name=update.name if update.name is not None else base.name,
         age=update.age if update.age is not None else base.age,

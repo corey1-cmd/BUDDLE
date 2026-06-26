@@ -50,11 +50,11 @@ from buddle.db.models.topic_edge import TopicEdge
 log = get_logger(__name__)
 
 # Tunables (config-overridable later; mirror design doc defaults).
-NOVELTY_WINDOW = 50          # how many recent units to compare for novelty
-REDUNDANCY_SIM = 0.92        # cosine >= this counts a near-duplicate
-EDGE_PROX_MIN = 0.5          # only link topics whose units are at least this close
-POOL_SERVE_LIMIT = 8         # max units returned per fetch
-EDGE_HOP_LIMIT = 1           # related-topic hops in fetch_context
+NOVELTY_WINDOW = 50  # how many recent units to compare for novelty
+REDUNDANCY_SIM = 0.92  # cosine >= this counts a near-duplicate
+EDGE_PROX_MIN = 0.5  # only link topics whose units are at least this close
+POOL_SERVE_LIMIT = 8  # max units returned per fetch
+EDGE_HOP_LIMIT = 1  # related-topic hops in fetch_context
 
 
 @dataclass(frozen=True, slots=True)
@@ -83,9 +83,7 @@ def _tags_list(raw: str) -> list[str]:
     return [t.strip() for t in raw.split(",") if t.strip()]
 
 
-async def _recent_embeddings(
-    db: AsyncSession, *, limit: int = NOVELTY_WINDOW
-) -> list[list[float]]:
+async def _recent_embeddings(db: AsyncSession, *, limit: int = NOVELTY_WINDOW) -> list[list[float]]:
     rows = (
         await db.execute(
             select(KnowledgeUnit.embedding)
@@ -175,9 +173,9 @@ async def consider_post(
     post_tags = list(
         (
             await db.execute(
-                select(Tag.name).join(PostTag, PostTag.tag_id == Tag.id).where(
-                    PostTag.post_id == post_id
-                )
+                select(Tag.name)
+                .join(PostTag, PostTag.tag_id == Tag.id)
+                .where(PostTag.post_id == post_id)
             )
         ).scalars()
     )
@@ -195,9 +193,7 @@ async def consider_post(
     new_ids: list[uuid.UUID] = []
     for u in units:
         emb = await embedder.embed_one(u.gist)
-        max_sim, near_dupes, mean_sim = _sim_stats(
-            emb, recent, dup_threshold=REDUNDANCY_SIM
-        )
+        max_sim, near_dupes, mean_sim = _sim_stats(emb, recent, dup_threshold=REDUNDANCY_SIM)
         novelty = novelty_from_similarity(max_sim)
         redundancy = redundancy_from_count(near_dupes)
         signals = SelectionSignals(
@@ -251,9 +247,7 @@ async def consider_post(
     return ConsiderResult(retained=retained, skipped=skipped, unit_ids=new_ids)
 
 
-async def update_topic_edges(
-    db: AsyncSession, topics: list[str], *, commit: bool = True
-) -> int:
+async def update_topic_edges(db: AsyncSession, topics: list[str], *, commit: bool = True) -> int:
     """Strengthen edges among a set of co-occurring topics. Returns edges touched."""
     uniq = sorted({t.strip() for t in topics if t.strip()})
     touched = 0
@@ -281,9 +275,10 @@ async def _related_topics(db: AsyncSession, topic: str, *, hops: int = EDGE_HOP_
         return []
     rows = (
         await db.execute(
-            select(TopicEdge).where(
-                (TopicEdge.topic_a == topic) | (TopicEdge.topic_b == topic)
-            ).order_by(TopicEdge.weight.desc()).limit(5)
+            select(TopicEdge)
+            .where((TopicEdge.topic_a == topic) | (TopicEdge.topic_b == topic))
+            .order_by(TopicEdge.weight.desc())
+            .limit(5)
         )
     ).scalars()
     related: list[str] = []
@@ -334,10 +329,14 @@ async def fetch_context(
 
     clauses = [_whole_tag_clause(t) for t in topics]
     q = select(KnowledgeUnit).where(or_(*clauses)) if clauses else select(KnowledgeUnit)
-    q = q.where(
-        (KnowledgeUnit.visibility == PostVisibility.PUBLIC.value)
-        | (KnowledgeUnit.persona_id == requester)
-    ).order_by(KnowledgeUnit.retention_score.desc()).limit(max(1, min(limit, 50)))
+    q = (
+        q.where(
+            (KnowledgeUnit.visibility == PostVisibility.PUBLIC.value)
+            | (KnowledgeUnit.persona_id == requester)
+        )
+        .order_by(KnowledgeUnit.retention_score.desc())
+        .limit(max(1, min(limit, 50)))
+    )
 
     rows = list((await db.execute(q)).scalars())
     items = [
@@ -391,9 +390,7 @@ async def fetch_context(
     return ContextBundle(topic=topic, items=items, related_topics=related)
 
 
-async def build_pool(
-    db: AsyncSession, topic: str, *, commit: bool = True
-) -> uuid.UUID | None:
+async def build_pool(db: AsyncSession, topic: str, *, commit: bool = True) -> uuid.UUID | None:
     """Refresh (or create) the ConversationPool for a topic from its units."""
     units = list(
         (

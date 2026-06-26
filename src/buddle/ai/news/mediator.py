@@ -176,7 +176,7 @@ async def _call_ai(
 
             try:
                 resp.raise_for_status()
-                return resp.json()["choices"][0]["message"]["content"]
+                return str(resp.json()["choices"][0]["message"]["content"])
             except Exception as e:
                 log.warning(
                     "mediator.ai_call_error",
@@ -248,9 +248,7 @@ async def synthesize_digest(
     if not usable:
         return _fallback_digest(articles)
 
-    bullet_lines = "\n".join(
-        f"- {a.gist_ko} [태그: {', '.join(a.tags[:3])}]" for a in usable
-    )
+    bullet_lines = "\n".join(f"- {a.gist_ko} [태그: {', '.join(a.tags[:3])}]" for a in usable)
     system = (
         "당신은 BUDDLE 플랫폼의 매개자 AI입니다. 여러 건의 기술·사회 뉴스 분석을 "
         "받아 하나의 자연스러운 '종합 브리핑'으로 조합합니다.\n"
@@ -261,7 +259,10 @@ async def synthesize_digest(
     )
     messages = [
         {"role": "system", "content": system},
-        {"role": "user", "content": f"다음 분석들을 하나의 종합 브리핑으로 조합하세요:\n{bullet_lines}"},
+        {
+            "role": "user",
+            "content": f"다음 분석들을 하나의 종합 브리핑으로 조합하세요:\n{bullet_lines}",
+        },
     ]
     text = await _call_ai(
         messages, settings=settings, json_mode=False, temperature=0.4, max_tokens=320

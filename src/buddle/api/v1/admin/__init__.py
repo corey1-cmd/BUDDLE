@@ -504,9 +504,7 @@ async def news_source_toggle(
 
 
 @admin_router.delete("/news/sources/{source_id}", summary="Remove a news source")
-async def news_source_delete(
-    source_id: str, _: CurrentAdmin, redis: Redis
-) -> dict[str, object]:
+async def news_source_delete(source_id: str, _: CurrentAdmin, redis: Redis) -> dict[str, object]:
     from buddle.services.news_service import delete_news_source
 
     if not await delete_news_source(redis, source_id):

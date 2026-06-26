@@ -15,7 +15,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 BUNDLE_MIN_UNITS = 3
-SIM_GROUP_THRESHOLD = 0.80   # cosine >= this => same recombination group
+SIM_GROUP_THRESHOLD = 0.80  # cosine >= this => same recombination group
 FRESHNESS_FLOOR = 0.3
 
 
@@ -30,9 +30,9 @@ class UnitView:
 
 @dataclass(frozen=True, slots=True)
 class SynthesisPlan:
-    groups: list[list[str]]        # recombination: grouped unit_ids
-    bridge_topics: list[str]       # topics spanning the units
-    contributing_ids: list[str]    # all units that fed the bundle
+    groups: list[list[str]]  # recombination: grouped unit_ids
+    bridge_topics: list[str]  # topics spanning the units
+    contributing_ids: list[str]  # all units that fed the bundle
 
 
 def should_synthesize(

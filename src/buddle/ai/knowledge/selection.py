@@ -38,10 +38,10 @@ REDUNDANCY_SIM = 0.92
 @dataclass(frozen=True, slots=True)
 class SelectionSignals:
     genuine_read: bool
-    importance: float       # ImportanceScore.normalized, [-1, 1]
-    novelty: float          # [0, 1]
-    topic_fit: float        # [0, 1]
-    redundancy: float       # [0, 1]
+    importance: float  # ImportanceScore.normalized, [-1, 1]
+    novelty: float  # [0, 1]
+    topic_fit: float  # [0, 1]
+    redundancy: float  # [0, 1]
 
 
 @dataclass(frozen=True, slots=True)

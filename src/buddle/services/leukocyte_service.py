@@ -224,9 +224,7 @@ async def screen_response(text: str) -> ResponseScreenResult:
             assessment = await assess(text)
     except EthicsError as e:
         log.warning("leukocyte.screen_response_failed", error=str(e))
-        return ResponseScreenResult(
-            allowed=True, content=text, assessment=EthicsAssessment.safe()
-        )
+        return ResponseScreenResult(allowed=True, content=text, assessment=EthicsAssessment.safe())
 
     blocked = assessment.is_flagged and (
         severity_rank(assessment.severity) >= severity_rank(_block_severity())

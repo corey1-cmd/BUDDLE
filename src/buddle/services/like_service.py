@@ -31,9 +31,7 @@ async def like_post(db: AsyncSession, user_id: uuid.UUID, post_id: uuid.UUID) ->
     await _public_post_or_404(db, post_id)
     existing = (
         await db.execute(
-            select(PostLike.id).where(
-                PostLike.user_id == user_id, PostLike.post_id == post_id
-            )
+            select(PostLike.id).where(PostLike.user_id == user_id, PostLike.post_id == post_id)
         )
     ).scalar_one_or_none()
     if existing is not None:
@@ -51,9 +49,7 @@ async def like_post(db: AsyncSession, user_id: uuid.UUID, post_id: uuid.UUID) ->
 async def unlike_post(db: AsyncSession, user_id: uuid.UUID, post_id: uuid.UUID) -> bool:
     """Remove a like (idempotent). Returns True if a like was removed."""
     result = await db.execute(
-        delete(PostLike).where(
-            PostLike.user_id == user_id, PostLike.post_id == post_id
-        )
+        delete(PostLike).where(PostLike.user_id == user_id, PostLike.post_id == post_id)
     )
     await db.commit()
     return bool(result.rowcount)
@@ -61,16 +57,13 @@ async def unlike_post(db: AsyncSession, user_id: uuid.UUID, post_id: uuid.UUID) 
 
 async def like_count(db: AsyncSession, post_id: uuid.UUID) -> int:
     return int(
-        await db.scalar(select(func.count(PostLike.id)).where(PostLike.post_id == post_id))
-        or 0
+        await db.scalar(select(func.count(PostLike.id)).where(PostLike.post_id == post_id)) or 0
     )
 
 
 async def has_liked(db: AsyncSession, user_id: uuid.UUID, post_id: uuid.UUID) -> bool:
     return (
         await db.execute(
-            select(PostLike.id).where(
-                PostLike.user_id == user_id, PostLike.post_id == post_id
-            )
+            select(PostLike.id).where(PostLike.user_id == user_id, PostLike.post_id == post_id)
         )
     ).scalar_one_or_none() is not None

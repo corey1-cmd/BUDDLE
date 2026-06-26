@@ -87,7 +87,9 @@ def _recognize_problem(info: InformationProcessingResult) -> str:
 def _has_facts(ctx: UserContextFact | None) -> bool:
     if ctx is None:
         return False
-    return bool(ctx.name or ctx.age is not None or ctx.location or ctx.occupation or ctx.explicit_interests)
+    return bool(
+        ctx.name or ctx.age is not None or ctx.location or ctx.occupation or ctx.explicit_interests
+    )
 
 
 def _search(

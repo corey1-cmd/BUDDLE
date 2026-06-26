@@ -28,7 +28,9 @@ router = APIRouter(prefix="/tags", tags=["tags"])
 async def list_tags(
     user: CurrentUser,
     db: DB,
-    q: str | None = Query(default=None, max_length=64, description="Case-insensitive name prefix/substring filter"),
+    q: str | None = Query(
+        default=None, max_length=64, description="Case-insensitive name prefix/substring filter"
+    ),
     limit: int = Query(default=50, ge=1, le=200),
 ) -> list[Tag]:
     """Return interest tags, optionally filtered by a substring of the name.

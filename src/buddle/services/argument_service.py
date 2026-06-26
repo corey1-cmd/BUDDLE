@@ -377,9 +377,7 @@ async def build_opposition(db: AsyncSession, *, topic_tag_id: uuid.UUID) -> Oppo
     return build_opposition_view(dist)
 
 
-async def build_argument_graph(
-    db: AsyncSession, *, topic_tag_id: uuid.UUID
-) -> GraphView:
+async def build_argument_graph(db: AsyncSession, *, topic_tag_id: uuid.UUID) -> GraphView:
     """Build the Kialo-style argument graph for a topic.
 
     Reads the topic's argument units (claim / ground / rebuttal / question with

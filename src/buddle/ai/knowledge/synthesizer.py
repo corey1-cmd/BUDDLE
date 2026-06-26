@@ -96,9 +96,7 @@ def _extract(data: dict[str, Any]) -> str:
     return ""
 
 
-def _parse_sections(
-    text: str, plan: SynthesisPlan, units: list[UnitView]
-) -> tuple[str, str]:
+def _parse_sections(text: str, plan: SynthesisPlan, units: list[UnitView]) -> tuple[str, str]:
     """Split a 'SUMMARY:/REASONING:' response; fall back to deterministic on miss."""
     if not text:
         return fallback_summary(plan, units)

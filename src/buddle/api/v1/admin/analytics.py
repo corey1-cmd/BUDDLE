@@ -10,7 +10,9 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 from fastapi import APIRouter, Query
 from sqlalchemy import cast, func, select
@@ -76,12 +78,8 @@ async def tag_trends(
     ).all()
 
     # 날짜 레이블 생성
-    date_labels = [
-        (since + timedelta(days=i)).strftime("%m-%d") for i in range(days + 1)
-    ]
-    date_keys = [
-        (since + timedelta(days=i)).strftime("%Y-%m-%d") for i in range(days + 1)
-    ]
+    date_labels = [(since + timedelta(days=i)).strftime("%m-%d") for i in range(days + 1)]
+    date_keys = [(since + timedelta(days=i)).strftime("%Y-%m-%d") for i in range(days + 1)]
 
     # 태그별 카운트 맵
     count_map: dict[str, dict[str, int]] = {t: {d: 0 for d in date_keys} for t in top_tags}
@@ -90,10 +88,7 @@ async def tag_trends(
         if dk in count_map.get(row.tag, {}):
             count_map[row.tag][dk] = int(row.c)
 
-    datasets = [
-        {"tag": tag, "counts": [count_map[tag][d] for d in date_keys]}
-        for tag in top_tags
-    ]
+    datasets = [{"tag": tag, "counts": [count_map[tag][d] for d in date_keys]} for tag in top_tags]
 
     return {"labels": date_labels, "datasets": datasets}
 
@@ -116,12 +111,14 @@ async def caution_summary(
     if settings.caution_lexicon_path:
         try:
             import pathlib
+
             raw = pathlib.Path(settings.caution_lexicon_path).read_text(encoding="utf-8")
             lexicon_data = json.loads(raw)
         except (OSError, json.JSONDecodeError):
             lexicon_data = {}
 
-    entries: list[dict[str, str]] = list(lexicon_data.get("entries", []))  # type: ignore[arg-type]
+    raw_entries = lexicon_data.get("entries", [])
+    entries: list[dict[str, str]] = raw_entries if isinstance(raw_entries, list) else []
     version: str = str(lexicon_data.get("version", "미설정"))
 
     # 카테고리별 집계
@@ -195,9 +192,7 @@ async def knowledge_flow(
     # 시간 버킷 생성 (최대 48개)
     slot_count = min(hours, 48)
     slot_hours = hours // slot_count
-    slots: list[datetime] = [
-        since + timedelta(hours=i * slot_hours) for i in range(slot_count + 1)
-    ]
+    slots: list[datetime] = [since + timedelta(hours=i * slot_hours) for i in range(slot_count + 1)]
     labels = [s.strftime("%m-%d %H시") for s in slots[:-1]]
 
     fetched = [0] * slot_count
@@ -293,7 +288,7 @@ async def author_ratio(
 
     ai_kinds = {AuthorKind.PERSONA_AI.value, AuthorKind.EXTERNAL_AI.value, AuthorKind.BOT.value}
 
-    def _split_daily(rows: list) -> tuple[list[int], list[int]]:
+    def _split_daily(rows: Sequence[Any]) -> tuple[list[int], list[int]]:
         human_map: dict[str, int] = {d: 0 for d in date_keys}
         ai_map: dict[str, int] = {d: 0 for d in date_keys}
         for r in rows:

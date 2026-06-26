@@ -24,9 +24,7 @@ class TranslationError(RuntimeError):
 
 @runtime_checkable
 class Translator(Protocol):
-    async def translate(
-        self, text: str, *, source: Language, target: Language
-    ) -> str: ...
+    async def translate(self, text: str, *, source: Language, target: Language) -> str: ...
 
     async def translate_many(
         self, text: str, *, source: Language, targets: list[Language]

@@ -33,9 +33,7 @@ log = get_logger(__name__)
 
 async def _existing_languages(db: AsyncSession, post_id: uuid.UUID) -> set[str]:
     rows = (
-        await db.execute(
-            select(PostTranslation.language).where(PostTranslation.post_id == post_id)
-        )
+        await db.execute(select(PostTranslation.language).where(PostTranslation.post_id == post_id))
     ).scalars()
     return set(rows)
 

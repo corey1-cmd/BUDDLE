@@ -110,9 +110,13 @@ jobs:
         run: uv run ruff check src --select S
 
       # Dependency vulnerability gate. --strict fails the build on any known
-      # advisory in the project's resolved dependencies (caught pyjwt before).
+      # advisory in the resolved dependencies (caught pyjwt before). We audit the
+      # exported lockfile with --no-emit-project so the local `buddle` package
+      # itself (not on PyPI) doesn't fail the audit.
       - name: Dependency audit (pip-audit)
-        run: uv run pip-audit --strict --progress-spinner off
+        run: |
+          uv export --no-emit-project --no-hashes --format requirements-txt -o /tmp/audit-reqs.txt
+          uv run pip-audit --strict --progress-spinner off -r /tmp/audit-reqs.txt
 
       # Secret scanning — server-side backstop in case a commit skipped the
       # local pre-commit hook. Uses .gitleaks.toml (default rules + allowlist).

@@ -479,9 +479,7 @@ async def dialogue_ws(
                 # and degrades to no facts on failure. Never breaks the dialogue.
                 session_key = str(client_msg.session_id) if client_msg.session_id else "_nosession"
                 try:
-                    new_facts = await extract_facts_llm(
-                        client_msg.content, settings=get_settings()
-                    )
+                    new_facts = await extract_facts_llm(client_msg.content, settings=get_settings())
                 except Exception as e:
                     log.warning("user_context.extract_failed", error=str(e))
                     new_facts = UserContextFact()

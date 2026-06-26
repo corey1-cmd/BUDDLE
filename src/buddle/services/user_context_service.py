@@ -136,9 +136,9 @@ def _parse(text: str) -> UserContextFact:
 
     raw_interests = data.get("interests") or []
     if isinstance(raw_interests, list):
-        interests = tuple(
-            dict.fromkeys(str(i).strip() for i in raw_interests if str(i).strip())
-        )[:10]
+        interests = tuple(dict.fromkeys(str(i).strip() for i in raw_interests if str(i).strip()))[
+            :10
+        ]
     else:
         interests = ()
 

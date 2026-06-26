@@ -129,9 +129,7 @@ class OppositionRead(BaseModel):
     summary: str = ""
 
     @classmethod
-    def from_view(
-        cls, view: object, *, topic_tag_id: uuid.UUID, topic_name: str
-    ) -> OppositionRead:
+    def from_view(cls, view: object, *, topic_tag_id: uuid.UUID, topic_name: str) -> OppositionRead:
         return cls(
             topic_tag_id=topic_tag_id,
             topic_name=topic_name,
@@ -218,6 +216,7 @@ class StanceContribution(BaseModel):
     stance: Literal["pro", "con", "neutral"] = Field(description="택한 편")
     claim: str = Field(min_length=2, max_length=500, description="주장")
     grounds: list[str] = Field(default_factory=list, max_length=5, description="근거 (최대 5개)")
+
 
 class StanceContributionByName(BaseModel):
     """Same as StanceContribution, but for callers that only have a topic

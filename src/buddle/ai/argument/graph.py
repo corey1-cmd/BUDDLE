@@ -43,37 +43,83 @@ __all__ = [
 class GraphDimension(StrEnum):
     """주장이 다루는 차원 — 문제→원인→해결책 흐름 (첨부 '구조 1')."""
 
-    PROBLEM = "problem"      # 무엇이 문제인가
-    CAUSE = "cause"          # 무엇이 원인인가
-    SOLUTION = "solution"    # 어떻게 해결할 것인가
-    CLAIM = "claim"          # 차원 미상 — 일반 주장
+    PROBLEM = "problem"  # 무엇이 문제인가
+    CAUSE = "cause"  # 무엇이 원인인가
+    SOLUTION = "solution"  # 어떻게 해결할 것인가
+    CLAIM = "claim"  # 차원 미상 — 일반 주장
 
 
 class GraphNodeKind(StrEnum):
     """그래프 노드의 역할."""
 
-    CLAIM = "claim"          # 루트 주장 (사람이 먼저 떠올리는 것)
+    CLAIM = "claim"  # 루트 주장 (사람이 먼저 떠올리는 것)
     DIMENSION = "dimension"  # 문제/원인/해결책 묶음 헤더
-    GROUND = "ground"        # 근거 (주장을 떠받침)
-    EVIDENCE = "evidence"    # 증거 (근거를 떠받침 — 근거의 자식)
-    REBUTTAL = "rebuttal"    # 반박 (주장/근거를 공격)
-    QUESTION = "question"    # 열린 질문
+    GROUND = "ground"  # 근거 (주장을 떠받침)
+    EVIDENCE = "evidence"  # 증거 (근거를 떠받침 — 근거의 자식)
+    REBUTTAL = "rebuttal"  # 반박 (주장/근거를 공격)
+    QUESTION = "question"  # 열린 질문
 
 
 # ── 차원 분류 키워드 (가벼운 휴리스틱; 묶음 생성용) ──────────────────────────
 _PROBLEM_KW = (
-    "문제", "위험", "위협", "우려", "심각", "부족", "결핍", "악화", "피해",
-    "problem", "risk", "threat", "concern", "harm", "crisis", "issue",
+    "문제",
+    "위험",
+    "위협",
+    "우려",
+    "심각",
+    "부족",
+    "결핍",
+    "악화",
+    "피해",
+    "problem",
+    "risk",
+    "threat",
+    "concern",
+    "harm",
+    "crisis",
+    "issue",
 )
 _CAUSE_KW = (
-    "때문", "원인", "탓", "기인", "비롯", "유발", "이유", "배경",
-    "because", "cause", "due to", "reason", "root", "driven by",
+    "때문",
+    "원인",
+    "탓",
+    "기인",
+    "비롯",
+    "유발",
+    "이유",
+    "배경",
+    "because",
+    "cause",
+    "due to",
+    "reason",
+    "root",
+    "driven by",
 )
 _SOLUTION_KW = (
-    "해결", "방안", "대책", "도입", "확대", "강화", "개선", "지원",
-    "해야", "필요", "제안", "추진", "정책",
-    "solution", "should", "must", "propose", "introduce", "expand",
-    "strengthen", "improve", "support", "fix", "policy",
+    "해결",
+    "방안",
+    "대책",
+    "도입",
+    "확대",
+    "강화",
+    "개선",
+    "지원",
+    "해야",
+    "필요",
+    "제안",
+    "추진",
+    "정책",
+    "solution",
+    "should",
+    "must",
+    "propose",
+    "introduce",
+    "expand",
+    "strengthen",
+    "improve",
+    "support",
+    "fix",
+    "policy",
 )
 
 
@@ -97,14 +143,14 @@ def classify_dimension(text: str) -> GraphDimension:
 class GraphNode:
     """논증 그래프의 한 노드 (계층 — parent_id로 부모를 가리킴)."""
 
-    id: str                       # 안정적 식별자 (unit id 또는 합성 id)
+    id: str  # 안정적 식별자 (unit id 또는 합성 id)
     kind: GraphNodeKind
     text: str
-    stance: str = "neutral"       # pro | con | neutral
+    stance: str = "neutral"  # pro | con | neutral
     parent_id: str | None = None  # None이면 루트(주장)
     dimension: GraphDimension = GraphDimension.CLAIM
-    depth: int = 0                # 0=주장, 1=차원/근거, 2=증거/반박 …
-    weight: int = 1              # 자식 수 등 — 화면이 크기에 활용
+    depth: int = 0  # 0=주장, 1=차원/근거, 2=증거/반박 …
+    weight: int = 1  # 자식 수 등 — 화면이 크기에 활용
 
 
 @dataclass(frozen=True, slots=True)
@@ -128,8 +174,8 @@ class FlatUnit:
     """build_graph_view 입력 — DB ArgumentUnit의 순수-함수용 투영."""
 
     id: uuid.UUID
-    kind: str                     # "claim" | "ground" | "rebuttal" | "question"
-    stance: str                   # "pro" | "con" | "neutral"
+    kind: str  # "claim" | "ground" | "rebuttal" | "question"
+    stance: str  # "pro" | "con" | "neutral"
     text: str
     parent_unit_id: uuid.UUID | None
 
@@ -186,11 +232,7 @@ def build_graph_view(
     child_count: dict[str, int] = {}
     ground_ids: dict[uuid.UUID, str] = {}
     for g in sorted(grounds, key=lambda u: str(u.id)):
-        parent = (
-            str(g.parent_unit_id)
-            if g.parent_unit_id in claim_ids
-            else fallback_claim_id
-        )
+        parent = str(g.parent_unit_id) if g.parent_unit_id in claim_ids else fallback_claim_id
         if parent is None:
             continue
         nid = str(g.id)
@@ -248,8 +290,13 @@ def build_graph_view(
     # weight 반영 (자식 수) — 불변 dataclass라 새로 만든다.
     nodes = [
         GraphNode(
-            id=n.id, kind=n.kind, text=n.text, stance=n.stance,
-            parent_id=n.parent_id, dimension=n.dimension, depth=n.depth,
+            id=n.id,
+            kind=n.kind,
+            text=n.text,
+            stance=n.stance,
+            parent_id=n.parent_id,
+            dimension=n.dimension,
+            depth=n.depth,
             weight=1 + child_count.get(n.id, 0),
         )
         for n in nodes

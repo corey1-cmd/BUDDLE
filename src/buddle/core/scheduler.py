@@ -111,9 +111,7 @@ class Scheduler:
     async def _acquire(self, job: PeriodicJob) -> bool:
         ttl = max(_MIN_LOCK_TTL_S, int(job.interval_s * _LOCK_TTL_RATIO))
         try:
-            ok = await self._redis.set(
-                _LOCK_PREFIX + job.name, self._instance_id, nx=True, ex=ttl
-            )
+            ok = await self._redis.set(_LOCK_PREFIX + job.name, self._instance_id, nx=True, ex=ttl)
             return bool(ok)
         except Exception as e:  # Redis hiccup → skip this cycle, never crash
             log.warning("scheduler.lock_error", job=job.name, error=str(e))

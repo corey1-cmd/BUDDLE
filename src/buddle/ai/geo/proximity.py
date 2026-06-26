@@ -66,10 +66,7 @@ def haversine_km(a: GeoPoint, b: GeoPoint) -> float:
     lat2 = math.radians(b.lat)
     dlat = lat2 - lat1
     dlon = math.radians(b.lon - a.lon)
-    h = (
-        math.sin(dlat / 2) ** 2
-        + math.cos(lat1) * math.cos(lat2) * math.sin(dlon / 2) ** 2
-    )
+    h = math.sin(dlat / 2) ** 2 + math.cos(lat1) * math.cos(lat2) * math.sin(dlon / 2) ** 2
     return 2 * _EARTH_RADIUS_KM * math.asin(min(1.0, math.sqrt(h)))
 
 
@@ -83,9 +80,7 @@ def ring_points(distance_km: float, rings: tuple[float, ...] = RADIUS_RINGS_KM) 
     return sum(1 for r in rings if distance_km <= r)
 
 
-def proximity_score(
-    a: GeoPoint, b: GeoPoint, rings: tuple[float, ...] = RADIUS_RINGS_KM
-) -> int:
+def proximity_score(a: GeoPoint, b: GeoPoint, rings: tuple[float, ...] = RADIUS_RINGS_KM) -> int:
     """Raw nested-ring proximity points between two points (0..len(rings))."""
     return ring_points(haversine_km(a, b), rings)
 
@@ -103,7 +98,9 @@ def proximity_affinity(
     return proximity_score(a, b, rings) / n
 
 
-def within_match_range(a: GeoPoint, b: GeoPoint, rings: tuple[float, ...] = RADIUS_RINGS_KM) -> bool:
+def within_match_range(
+    a: GeoPoint, b: GeoPoint, rings: tuple[float, ...] = RADIUS_RINGS_KM
+) -> bool:
     """Whether two points are close enough to match at all (within largest ring)."""
     if not rings:
         return False

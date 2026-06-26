@@ -14,9 +14,9 @@ the service layer supplies the actual co-occurrence facts and embeddings.
 
 from __future__ import annotations
 
-CO_OCCUR_WEIGHT = 1.0   # both topics on one post
-EMB_PROX_WEIGHT = 0.5   # representative embeddings close
-DECAY = 0.98            # multiplied per standby tick
+CO_OCCUR_WEIGHT = 1.0  # both topics on one post
+EMB_PROX_WEIGHT = 0.5  # representative embeddings close
+DECAY = 0.98  # multiplied per standby tick
 EDGE_MIN_WEIGHT = 0.05  # below this an edge is considered dead (prunable)
 
 
@@ -39,7 +39,7 @@ def decayed(weight: float, ticks: int = 1, *, decay: float = DECAY) -> float:
     """Apply time decay over `ticks` standby cycles."""
     if ticks <= 0:
         return weight
-    return weight * (decay ** ticks)
+    return weight * (decay**ticks)
 
 
 def is_dead(weight: float, *, floor: float = EDGE_MIN_WEIGHT) -> bool:

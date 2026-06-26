@@ -51,7 +51,9 @@ _UNKNOWN = "unknown"
 
 
 @lru_cache(maxsize=8)
-def _parse_networks(cidrs: tuple[str, ...]) -> tuple[ipaddress.IPv4Network | ipaddress.IPv6Network, ...]:
+def _parse_networks(
+    cidrs: tuple[str, ...],
+) -> tuple[ipaddress.IPv4Network | ipaddress.IPv6Network, ...]:
     """Parse CIDR strings to network objects once (cached). Invalid entries are
     skipped with a warning so one typo can't crash request handling."""
     nets: list[ipaddress.IPv4Network | ipaddress.IPv6Network] = []
@@ -92,8 +94,10 @@ def _is_ip(token: str) -> ipaddress.IPv4Address | ipaddress.IPv6Address | None:
         return None
 
 
-def _trusted(addr: ipaddress.IPv4Address | ipaddress.IPv6Address,
-             nets: Sequence[ipaddress.IPv4Network | ipaddress.IPv6Network]) -> bool:
+def _trusted(
+    addr: ipaddress.IPv4Address | ipaddress.IPv6Address,
+    nets: Sequence[ipaddress.IPv4Network | ipaddress.IPv6Network],
+) -> bool:
     return any(addr in n for n in nets)
 
 

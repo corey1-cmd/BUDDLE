@@ -23,7 +23,9 @@ class KnowledgeAudit(Base):
     id: Mapped[uuid.UUID] = mapped_column(
         PGUUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid()
     )
-    actor_ai: Mapped[str] = mapped_column(String(16), nullable=False)  # central|technician|leukocyte
+    actor_ai: Mapped[str] = mapped_column(
+        String(16), nullable=False
+    )  # central|technician|leukocyte
     action: Mapped[str] = mapped_column(String(48), nullable=False)
     target_type: Mapped[str] = mapped_column(String(24), nullable=False)
     target_id: Mapped[str | None] = mapped_column(String(64), nullable=True)

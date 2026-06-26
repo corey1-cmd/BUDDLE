@@ -99,13 +99,15 @@ async def fetch_devto(*, limit: int = 10) -> list[RawArticle]:
                 title = item.get("title", "").strip()
                 if not url or not title:
                     continue
-                articles.append(RawArticle(
-                    url=url,
-                    title=title,
-                    source="devto",
-                    score=item.get("public_reactions_count", 0),
-                    comments=item.get("comments_count", 0),
-                ))
+                articles.append(
+                    RawArticle(
+                        url=url,
+                        title=title,
+                        source="devto",
+                        score=item.get("public_reactions_count", 0),
+                        comments=item.get("comments_count", 0),
+                    )
+                )
     except Exception as e:
         log.warning("devto.fetch_error", error=str(e))
     return articles
@@ -126,8 +128,14 @@ async def fetch_rss(url: str, *, source_name: str, limit: int = 10) -> list[RawA
             # Extract <item> or <entry> blocks
             items = re.findall(r"<(?:item|entry)[^>]*>(.*?)</(?:item|entry)>", text, re.DOTALL)
             for raw in items[:limit]:
-                title_m = re.search(r"<title[^>]*>(?:<!\[CDATA\[)?(.*?)(?:\]\]>)?</title>", raw, re.DOTALL)
-                link_m = re.search(r"<link[^>]*>(?:<!\[CDATA\[)?(https?://[^\s<]+?)(?:\]\]>)?</link>", raw, re.DOTALL)
+                title_m = re.search(
+                    r"<title[^>]*>(?:<!\[CDATA\[)?(.*?)(?:\]\]>)?</title>", raw, re.DOTALL
+                )
+                link_m = re.search(
+                    r"<link[^>]*>(?:<!\[CDATA\[)?(https?://[^\s<]+?)(?:\]\]>)?</link>",
+                    raw,
+                    re.DOTALL,
+                )
                 if not link_m:
                     link_m = re.search(r'<link[^>]+href="(https?://[^"]+)"', raw)
                 if not title_m or not link_m:
@@ -153,7 +161,7 @@ def _dedup(articles: list[RawArticle]) -> list[RawArticle]:
     return unique
 
 
-async def fetch_source(source: dict) -> list[RawArticle]:
+async def fetch_source(source: dict[str, object]) -> list[RawArticle]:
     """Fetch one configured source. Dispatches by `kind`:
       - 'hackernews' / 'devto': fixed open APIs (url ignored)
       - 'rss': arbitrary feed `url` (SSRF-validated before the request)
@@ -164,7 +172,8 @@ async def fetch_source(source: dict) -> list[RawArticle]:
     if not source.get("enabled", True):
         return []
     kind = str(source.get("kind", "")).lower()
-    limit = int(source.get("limit", 10) or 10)
+    limit_raw = source.get("limit", 10)
+    limit = limit_raw if isinstance(limit_raw, int) else 10
     name = str(source.get("id") or source.get("name") or kind)
     try:
         if kind == "hackernews":
@@ -192,7 +201,7 @@ async def fetch_source(source: dict) -> list[RawArticle]:
         return []
 
 
-async def fetch_configured(sources: list[dict]) -> list[RawArticle]:
+async def fetch_configured(sources: list[dict[str, object]]) -> list[RawArticle]:
     """Fetch every enabled configured source concurrently. Dedup by URL."""
     enabled = [s for s in sources if s.get("enabled", True)]
     results = await asyncio.gather(*(fetch_source(s) for s in enabled), return_exceptions=True)
