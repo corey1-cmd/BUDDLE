@@ -78,19 +78,35 @@ def _to_asyncpg_url(raw: str) -> str:
 
 
 def _bind_db_to(async_url: str) -> None:
-    """Point DATABASE_URL at `async_url` and force buddle.db.session to rebuild
-    its lazy engine against it — discarding any engine an early top-level import
-    may have bound to the .env (prod Supabase) URL at collection time."""
+    """Point the app's DB engine at `async_url`, replacing any engine an early
+    top-level import may have bound to the .env (prod Supabase) URL.
+
+    Builds it with NullPool: every connection is opened fresh on the *current*
+    event loop and closed after use, so the process-global engine is safe under
+    pytest-asyncio's per-test loops without disposing/rebuilding it each test
+    (the previous approach; ~3x slower)."""
     os.environ["DATABASE_URL"] = async_url
 
     from buddle.config import get_settings
 
     get_settings.cache_clear()
+    settings = get_settings()
 
     import buddle.db.session as _dbs
+    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+    from sqlalchemy.pool import NullPool
 
-    _dbs._engine = None
-    _dbs._sessionmaker = None
+    _dbs._engine = create_async_engine(
+        async_url,
+        poolclass=NullPool,
+        connect_args={"statement_cache_size": settings.db_statement_cache_size},
+    )
+    _dbs._sessionmaker = async_sessionmaker(
+        bind=_dbs._engine,
+        class_=AsyncSession,
+        expire_on_commit=False,
+        autoflush=False,
+    )
 
 
 @pytest.fixture(scope="session")
