@@ -57,6 +57,9 @@ def _configure_env() -> Iterator[None]:
     # fail unrelated tests. Disable that backup layer; tests exercise the Redis
     # layer (reset per test) and the limiter logic directly.
     os.environ.setdefault("RATELIMIT_LOCAL_BACKUP_ENABLED", "false")
+    # Tests register persona/ethics backends at loopback URLs to exercise the
+    # backend path; allow private hosts so the SSRF guard doesn't reject them.
+    os.environ.setdefault("ALLOW_PRIVATE_BACKEND_HOSTS", "true")
 
     from buddle.config import get_settings
 

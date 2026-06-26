@@ -78,7 +78,7 @@ async def _make_post(db, persona_id, content, public=True):  # type: ignore[no-u
 
     post = Post(
         source_persona_id=persona_id,
-        author_kind=AuthorKind.PERSONA,
+        author_kind=AuthorKind.PERSONA_AI,
         content_raw=content,
         content_transformed=content,
         visibility=PostVisibility.PUBLIC if public else PostVisibility.PRIVATE,

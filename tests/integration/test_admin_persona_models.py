@@ -87,7 +87,8 @@ async def test_register_new_persona_model_then_user_can_adopt(  # type: ignore[n
         "version": "0.2.0",
         "backend_kind": "vllm_endpoint",
         "backend_config": {
-            "endpoint_url": "https://internal.vllm.test/v1",
+            "endpoint_url": "https://10.0.0.1/v1",
+            "model": "qwen3-7b-instruct",
             "lora_adapter": "hf://buddle/poet-v2",
         },
         "system_prompt": "당신은 시인 v2 페르소나입니다.",
@@ -188,4 +189,5 @@ async def test_mediator_policy_get_and_patch(  # type: ignore[no-untyped-def]
         headers=ah,
     )
     assert r.status_code == 200
-    assert r.json()["alpha"] == 0.6
+    # alpha is stored in a 32-bit float column, so it round-trips as ~0.6.
+    assert r.json()["alpha"] == pytest.approx(0.6, abs=1e-6)

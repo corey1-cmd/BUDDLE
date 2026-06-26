@@ -234,7 +234,11 @@ async def test_persona_service_falls_back_to_stub_on_backend_error(  # type: ign
             "display_name": "고장난 시인",
             "backend_kind": "vllm_endpoint",
             "backend_config": {
-                "endpoint_url": "http://127.0.0.1:1/v1",  # nothing listening
+                # private (allowed in tests) but unreachable -> backend call
+                # fails -> factory falls back to stub. (loopback 127.0.0.1 is
+                # ALWAYS SSRF-blocked regardless of allow_private, so we can't
+                # use it here.)
+                "endpoint_url": "http://10.255.255.1:1/v1",
                 "model": "x",
                 "timeout_s": 1,
             },

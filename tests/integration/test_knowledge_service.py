@@ -109,12 +109,13 @@ def test_knowledge_context_injected_as_reference_not_instruction():
         user_message="동네 산책 얘기하자",
         knowledge_context=["강가 코스가 좋더라", "아침이 한적해"],
     )
-    # a system block carrying the reference material is present
-    ref = [m for m in msgs if m["role"] == "system" and "참고 자료" in m["content"]]
+    # a system block carrying the reference material is present (the knowledge
+    # space is labelled '당신의 지식 공간' — the internal-reference channel)
+    ref = [m for m in msgs if m["role"] == "system" and "지식 공간" in m["content"]]
     assert len(ref) == 1
     assert "강가 코스" in ref[0]["content"]
     # framed as optional reference, not a directive
-    assert "그대로 따를 필요는 없" in ref[0]["content"]
+    assert "자연스럽게만 참고" in ref[0]["content"]
     # user message still last
     assert msgs[-1]["role"] == "user"
 
@@ -128,7 +129,7 @@ def test_no_knowledge_context_no_reference_block():
         history=[],
         user_message="안녕",
     )
-    assert not any("참고 자료" in m["content"] for m in msgs)
+    assert not any("지식 공간" in m["content"] for m in msgs)
 
 
 # ── technician signing helper (pure) ───────────────────────────────────────
