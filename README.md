@@ -2,7 +2,16 @@
 
 AI-mediated human-to-human social ecosystem. 5종의 AI (페르소나·매개자·백혈구·기술자·중앙관리자) 가 권한 분리된 계층으로 협력하는 소셜 플랫폼.
 
-본 리포는 백엔드 API 서비스. 자세한 설계는 별도 시스템 설계 문서 참조.
+본 리포는 백엔드 API 서비스. 자세한 설계는 아래 문서 참조.
+
+## 문서 (docs/)
+
+목적별로 정리되어 있습니다 (변경기록·검증 보고서 등 완료된 작업 문서는 git 이력에 보존하고 제거).
+
+- **설계·아키텍처** — [docs/design/](docs/design/): AI 통합 설계, 설계 원리, 레이어 B(정보 재조직 공간) v1~v3, InsightBundle, 논증 AI(ARGUMENT_AI), 대립구조 기하학, 글→토론, 대화 심리·원칙
+- **프론트엔드** — [docs/frontend/](docs/frontend/): 블루프린트, 페이지 구조, 남은 페이지 설계, 디자인 시스템
+- **보안** — [docs/security/](docs/security/): 프론트엔드 보안, 양자내성(PQ) 검토
+- **가이드** — [docs/guides/](docs/guides/): Docker DB 통합 테스트, Supabase로 테스트 실행
 
 ## 진행 상태
 
@@ -650,7 +659,7 @@ retention = 0.20·읽힘 + 0.25·중요도(+) + 0.30·novelty + 0.15·topic_fit 
 
 ## 원리 응용 최적화 (기능 불변 / 정확도 향상)
 
-설계 원리(DESIGN_PRINCIPLES.md)를 발전시켜 동작을 바꾸지 않거나 정확도를 올리는 응용:
+설계 원리([docs/design/DESIGN_PRINCIPLES.md](docs/design/DESIGN_PRINCIPLES.md))를 발전시켜 동작을 바꾸지 않거나 정확도를 올리는 응용:
 
 ### 코사인 유사도 numpy 벡터화 (원리 #12·#13 발전)
 선별 게이트의 `_sim_stats`를 순수 파이썬 이중루프 → numpy 행렬 연산으로. (N,d) 행렬에서 모든 코사인을 한 번에 계산. **동작 수학적 동일**(무작위 2000회 비교 불일치 0건), 768차원·recent 50에서 **3.2배 빠름**. 제로벡터·빈 입력 경계 보존.

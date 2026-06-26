@@ -206,7 +206,7 @@
 /* === security.js (inlined: no external dependency) === */
 /* buddle frontend security utilities.
  *
- * Threat model & mitigations (see SECURITY_FRONTEND.md):
+ * Threat model & mitigations (see docs/security/SECURITY_FRONTEND.md):
  *  - Stored XSS: persona names, post text, topics come from other users via the
  *    API. NEVER inject them as HTML. Use esc() for text or el()/text() for DOM.
  *  - DOM-clobbering / injection via attributes: setText/setAttr helpers only.
