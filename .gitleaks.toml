@@ -33,4 +33,7 @@ regexes = [
   '''_DEV_JWT_SECRET''',
   '''_DEV_INTEGRITY_KEY''',
   '''bdl_agent_''',
+  # CI-only dummy JWT secret in .github/workflows/ci.yml (not a real key; the
+  # test job needs a >=32-byte value, and config rejects this one in production).
+  '''ci_secret_key_at_least_32_bytes_long_xx''',
 ]
