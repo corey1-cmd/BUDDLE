@@ -8,7 +8,8 @@ AI-mediated human-to-human social ecosystem. 5종의 AI (페르소나·매개자
 
 목적별로 정리되어 있습니다 (변경기록·검증 보고서 등 완료된 작업 문서는 git 이력에 보존하고 제거).
 
-- **설계·아키텍처** — [docs/design/](docs/design/): AI 통합 설계, 설계 원리, 레이어 B(정보 재조직 공간) v1~v3, InsightBundle, 논증 AI(ARGUMENT_AI), 대립구조 기하학, 글→토론, 대화 심리·원칙
+- **아키텍처 맵(코드 작업 전 필독)** — [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): 디렉터리·계층·호출 관계·불변식
+- **설계·아키텍처** — [docs/design/](docs/design/): AI 통합 설계, 설계 원리, 레이어 B(정보 재조직 공간, LAYER_B_DESIGN_v3), InsightBundle, 논증 AI(ARGUMENT_AI), 대립구조 기하학, 글→토론, 대화 심리·원칙
 - **프론트엔드** — [docs/frontend/](docs/frontend/): 블루프린트, 페이지 구조, 남은 페이지 설계, 디자인 시스템
 - **보안** — [docs/security/](docs/security/): 프론트엔드 보안, 양자내성(PQ) 검토
 - **가이드** — [docs/guides/](docs/guides/): Docker DB 통합 테스트, Supabase로 테스트 실행
