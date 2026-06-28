@@ -1,8 +1,6 @@
 # buddle
 
-AI-mediated human-to-human social ecosystem. 5종의 AI (페르소나·매개자·백혈구·기술자·중앙관리자) 가 권한 분리된 계층으로 협력하는 소셜 플랫폼.
-
-본 리포는 백엔드 API 서비스. 자세한 설계는 아래 문서 참조.
+AI-mediated human-to-human social ecosystem. 
 
 ## 문서 (docs/)
 
