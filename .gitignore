@@ -64,3 +64,11 @@ logs/
 
 # Docker
 docker-volumes/
+
+# --- SECURITY hardening (keys/secrets never committed) ---
+*.pem
+*.key
+.oci/
+id_ed25519*
+id_rsa*
+*.env

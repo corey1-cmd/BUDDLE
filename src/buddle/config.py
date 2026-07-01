@@ -122,7 +122,7 @@ class Settings(BaseSettings):
     # Shared with the seed_persona_models script. Set via env vars.
     persona_endpoint_url: str = ""
     persona_endpoint_api_key: str = ""
-    persona_model: str = "gemini-2.0-flash"
+    persona_model: str = "gemini-2.5-flash"  # 2.0-flash 무료 티어 폐지(limit 0); 2.5-flash는 무료 작동
 
     # ── Embeddings (mediator content similarity)
     # BGE-M3 (1024-dim, multilingual SOTA) is the matching model; EMBED_DIM=1024

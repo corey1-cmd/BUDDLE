@@ -453,9 +453,9 @@ body { background: var(--paper-sunken); }
     (r.components || []).forEach(c => {
       const row = document.createElement("div");
       row.className = "comp-row";
-      row.innerHTML = '<div class="comp-dot ' + (c.state || "ok") + '"></div>'
-        + '<span class="comp-name">' + c.name + '</span>'
-        + '<span class="comp-detail">' + c.detail + '</span>';
+      row.innerHTML = '<div class="comp-dot ' + esc(c.state || "ok") + '"></div>'
+        + '<span class="comp-name">' + esc(c.name) + '</span>'
+        + '<span class="comp-detail">' + esc(c.detail) + '</span>';
       compList.appendChild(row);
     });
 
@@ -494,6 +494,9 @@ body { background: var(--paper-sunken); }
     document.getElementById("mainContent").style.display = "block";
   }
 
+  /* ── HTML 이스케이프 (innerHTML XSS 방어; 외부 RSS·사용자 콘텐츠용) ── */
+  function esc(s){return String(s==null?"":s).replace(/[&<>"']/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c];});}
+
   /* ── 윤리 알림 렌더 ── */
   function renderEthics(alerts) {
     const tbody = document.getElementById("ethicsBody");
@@ -507,7 +510,7 @@ body { background: var(--paper-sunken); }
         : '<span class="badge-resolved">해결됨</span>';
       const ts = a.created_at ? new Date(a.created_at).toLocaleString("ko-KR") : "—";
       const content = (a.content || "").slice(0, 60) + ((a.content || "").length > 60 ? "…" : "");
-      return '<tr><td>' + badge + '</td><td>' + content + '</td><td>' + (a.severity || "—") + '</td><td>' + ts + '</td></tr>';
+      return '<tr><td>' + badge + '</td><td>' + esc(content) + '</td><td>' + esc(a.severity || "—") + '</td><td>' + ts + '</td></tr>';
     }).join("");
   }
 
@@ -783,9 +786,9 @@ body { background: var(--paper-sunken); }
         row.style.cssText = "display:flex;align-items:center;gap:10px;padding:8px 12px;background:var(--panel-bg);border:1px solid var(--border);border-radius:10px";
         const off = s.enabled ? "" : "opacity:.5;";
         row.innerHTML =
-          `<span style="${off}font-size:11px;font-weight:700;color:#3a5af0;background:#e8edff;padding:2px 8px;border-radius:99px">${_kindLabel[s.kind] || s.kind}</span>
-           <span style="${off}font-weight:600;font-size:13.5px">${s.name}</span>
-           <span style="${off}font-size:12px;color:var(--muted);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${s.url || "(고정 API)"}</span>
+          `<span style="${off}font-size:11px;font-weight:700;color:#3a5af0;background:#e8edff;padding:2px 8px;border-radius:99px">${esc(_kindLabel[s.kind] || s.kind)}</span>
+           <span style="${off}font-weight:600;font-size:13.5px">${esc(s.name)}</span>
+           <span style="${off}font-size:12px;color:var(--muted);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(s.url || "(고정 API)")}</span>
            <span style="font-size:11px;color:var(--muted)">${s.limit}건</span>
            <label style="font-size:12px;display:flex;align-items:center;gap:4px;cursor:pointer"><input type="checkbox" ${s.enabled ? "checked" : ""} data-id="${s.id}" class="srcToggle"> 활성</label>
            <button class="srcDel" data-id="${s.id}" title="삭제" style="border:0;background:none;color:#c0392b;cursor:pointer;font-size:15px">✕</button>`;
@@ -862,16 +865,16 @@ body { background: var(--paper-sunken); }
       items.forEach(item => {
         const div = document.createElement("div");
         div.style.cssText = "padding:10px 14px;background:var(--panel-bg);border:1px solid var(--border);border-radius:10px";
-        const tags = (item.tags || []).map(t => `<span style="background:#e8edff;color:#3a5af0;font-size:11px;padding:2px 7px;border-radius:99px;margin-right:4px">${t}</span>`).join("");
+        const tags = (item.tags || []).map(t => `<span style="background:#e8edff;color:#3a5af0;font-size:11px;padding:2px 7px;border-radius:99px;margin-right:4px">${esc(t)}</span>`).join("");
         const src = item.source || "";
         div.innerHTML =
           `<div style="display:flex;gap:8px;align-items:center;margin-bottom:5px">
-            <span style="font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase">${src}</span>
+            <span style="font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase">${esc(src)}</span>
             ${item.stub ? '<span style="font-size:10px;color:#e07b00;background:#fff3cd;padding:1px 6px;border-radius:99px">스텁</span>' : ""}
             <span style="font-size:11px;color:var(--muted);margin-left:auto">${((item.relevance||0)*100).toFixed(0)}% 관련도</span>
           </div>
-          <div style="font-size:13.5px;font-weight:600;margin-bottom:4px">${item.gist_ko || item.title || ""}</div>
-          <div style="font-size:12px;color:var(--muted);margin-bottom:6px">${item.ekb_briefing || ""}</div>
+          <div style="font-size:13.5px;font-weight:600;margin-bottom:4px">${esc(item.gist_ko || item.title || "")}</div>
+          <div style="font-size:12px;color:var(--muted);margin-bottom:6px">${esc(item.ekb_briefing || "")}</div>
           <div>${tags}</div>`;
         el.appendChild(div);
       });
