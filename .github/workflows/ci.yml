@@ -123,4 +123,8 @@ jobs:
       - name: Secret scan (gitleaks)
         uses: gitleaks/gitleaks-action@v2
         env:
+          # gitleaks-action requires the workflow token on pull_request events
+          # (it reads the PR's commit range via the API). Latent until the
+          # repo's first PR — push-triggered runs never needed it.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITLEAKS_CONFIG: .gitleaks.toml
