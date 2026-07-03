@@ -287,7 +287,12 @@ async def _post_tags(db: AsyncSession, post_id: uuid.UUID) -> list[TagName]:
 
 
 async def get_feed(
-    db: AsyncSession, *, cursor: str | None, limit: int, tag: str | None = None
+    db: AsyncSession,
+    *,
+    cursor: str | None,
+    limit: int,
+    tag: str | None = None,
+    q: str | None = None,
 ) -> FeedPage:
     """Public feed paginated by (created_at, id) descending.
 
@@ -300,6 +305,10 @@ async def get_feed(
     must live in the query — not the client — because client-side filtering of
     a cursor page silently drops matches that fall on later pages, breaking
     both pagination and the "더 보기" button.
+
+    ``q`` is a case-insensitive substring search over the published text
+    (content_transformed only — content_raw stays private to the author).
+    Same server-side rationale as ``tag``; composes with cursor and tag.
     """
     limit = max(1, min(limit, 50))
 
@@ -322,6 +331,12 @@ async def get_feed(
                 and_(Post.created_at == ts, Post.id < last_id),
             )
         )
+
+    if q:
+        # ILIKE with escaped wildcards so a user-supplied % or _ can't change
+        # match semantics (same escaping as the tags router).
+        escaped = q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        where_clauses.append(Post.content_transformed.ilike(f"%{escaped}%", escape="\\"))
 
     stmt = select(Post).where(*where_clauses)
 

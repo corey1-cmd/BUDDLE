@@ -186,3 +186,14 @@ class ContextNoteKind(StrEnum):
     CONTEXT = "context"  # 부가 맥락
     EVIDENCE = "evidence"  # 뒷받침 근거
     CLARIFICATION = "clarification"  # 오해 바로잡기
+
+
+class NotificationKind(StrEnum):
+    """What happened to generate a user notification (SNS activity feed).
+
+    Extensible: future kinds (debate reply, mention, follow) slot in without
+    touching the notification table shape.
+    """
+
+    LIKE = "like"  # someone liked my post
+    COMMENT = "comment"  # someone commented on my post

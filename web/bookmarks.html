@@ -1,0 +1,609 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>buddle · 저장한 글</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Spline+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
+<script>
+/* === security.js (inlined: no external dependency) === */
+/* buddle frontend security utilities.
+ *
+ * Threat model & mitigations (see docs/security/SECURITY_FRONTEND.md):
+ *  - Stored XSS: persona names, post text, topics come from other users via the
+ *    API. NEVER inject them as HTML. Use esc() for text or el()/text() for DOM.
+ *  - DOM-clobbering / injection via attributes: setText/setAttr helpers only.
+ *  - Open redirect / javascript: URLs: safeUrl() allowlists schemes.
+ *  - Token theft: tokens live in memory only (api.js), never in localStorage,
+ *    never interpolated into HTML or URLs.
+ *  - Clickjacking: pages set frame-ancestors via CSP meta + framebust check.
+ *  - Prototype pollution: freeze, and reject __proto__ keys when parsing.
+ */
+(function (global) {
+  "use strict";
+
+  const NAMED = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;", "`": "&#96;" };
+
+  /** Escape a string for safe insertion into HTML text/attribute context. */
+  function esc(value) {
+    return String(value == null ? "" : value).replace(/[&<>"'`]/g, (c) => NAMED[c]);
+  }
+
+  /** Create an element with safe text + attributes (no HTML parsing). */
+  function el(tag, attrs, textContent) {
+    const node = document.createElement(tag);
+    if (attrs) {
+      for (const k of Object.keys(attrs)) {
+        const v = attrs[k];
+        if (v == null) continue;
+        if (k === "class") node.className = String(v);
+        else if (k === "dataset" && typeof v === "object") {
+          for (const dk of Object.keys(v)) node.dataset[dk] = String(v[dk]);
+        } else if (/^on/i.test(k)) {
+          // never accept event handlers as strings
+          if (typeof v === "function") node.addEventListener(k.slice(2).toLowerCase(), v);
+        } else {
+          node.setAttribute(k, String(v));
+        }
+      }
+    }
+    if (textContent != null) node.textContent = String(textContent);
+    return node;
+  }
+
+  /** Set text content safely (preferred over innerHTML for any dynamic value). */
+  function setText(node, value) { node.textContent = String(value == null ? "" : value); }
+
+  /** Allowlist URL schemes; block javascript:, data:, vbscript:, etc. */
+  function safeUrl(url) {
+    const u = String(url || "").trim();
+    if (/^(https?:|mailto:|\/|#)/i.test(u) && !/^javascript:/i.test(u)) return u;
+    return "#";
+  }
+
+  /** Client-side input validation (defense in depth; server validates too). */
+  const validate = {
+    email(s) { return typeof s === "string" && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s) && s.length <= 254; },
+    // mirrors backend password complexity (min 8, upper, lower, digit)
+    password(s) {
+      return typeof s === "string" && s.length >= 8 && s.length <= 200 &&
+        /[a-z]/.test(s) && /[A-Z]/.test(s) && /\d/.test(s);
+    },
+    personaName(s) { return typeof s === "string" && s.trim().length >= 1 && s.length <= 64; },
+    thought(s) { return typeof s === "string" && s.trim().length >= 1 && s.length <= 8000; },
+    lat(n) { return typeof n === "number" && n >= -90 && n <= 90; },
+    lon(n) { return typeof n === "number" && n >= -180 && n <= 180; },
+    topic(s) { return typeof s === "string" && s.trim().length >= 1 && s.length <= 64; },
+  };
+
+  /** Reject prototype-pollution keys when handling parsed objects. */
+  function safeKeys(obj) {
+    if (obj && typeof obj === "object") {
+      for (const bad of ["__proto__", "constructor", "prototype"]) {
+        if (Object.prototype.hasOwnProperty.call(obj, bad)) delete obj[bad];
+      }
+    }
+    return obj;
+  }
+
+  /** Frame-busting: if loaded inside a foreign frame, break out (anti-clickjacking). */
+  function preventFraming() {
+    try {
+      if (global.top !== global.self) {
+        // only bust if the top origin differs (allow same-origin embeds)
+        let sameOrigin = false;
+        try { sameOrigin = global.top.location.origin === global.location.origin; } catch (_) { sameOrigin = false; }
+        if (!sameOrigin) global.top.location = global.location.href;
+      }
+    } catch (_) { /* cross-origin access throws — already protected by CSP */ }
+  }
+
+  /** Inject a restrictive CSP via meta (belt-and-suspenders with server headers). */
+  function applyCSP() {
+    if (document.querySelector('meta[http-equiv="Content-Security-Policy"]')) return;
+    const m = document.createElement("meta");
+    m.httpEquiv = "Content-Security-Policy";
+    m.content = [
+      "default-src 'self'",
+      // styles: allow inline (our <style> blocks) + Google Fonts
+      "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+      "font-src 'self' https://fonts.gstatic.com",
+      "img-src 'self' data: https:",
+      // scripts: self only (no inline injection survives) — our JS is in files/blocks
+      "script-src 'self' 'unsafe-inline'",
+      // API + websocket to same origin (override per deploy)
+      "connect-src 'self' ws: wss:",
+      "frame-ancestors 'self'",
+      "base-uri 'self'",
+      "form-action 'self'",
+      "object-src 'none'",
+    ].join("; ");
+    document.head.appendChild(m);
+  }
+
+  /** One-call hardening for every page. */
+  function harden() {
+    applyCSP();
+    preventFraming();
+  }
+
+  global.sec = Object.freeze({
+    esc, el, setText, safeUrl, validate, safeKeys, preventFraming, applyCSP, harden,
+  });
+})(window);
+
+</script>
+<script>
+/* === api.js (inlined) === */
+/* buddle frontend API client — single source of truth for backend calls.
+ *
+ * Every field name / route here matches the FastAPI backend exactly (verified
+ * against the Pydantic schemas and router paths). Screens import this instead
+ * of hand-writing fetch() calls, so the front<->back contract lives in one place.
+ *
+ * Auth: JWT bearer. Tokens are cached in memory and write-through persisted to
+ * sessionStorage (tab-scoped) so page navigation and refresh keep the session.
+ * sessionStorage over localStorage on purpose: it dies with the tab, which
+ * shrinks the blast radius of any XSS-stolen token and avoids cross-tab leaks.
+ * Base URL defaults to same-origin; override with window.BUDDLE_API_BASE.
+ */
+(function (global) {
+  "use strict";
+
+  const BASE = global.BUDDLE_API_BASE || "";
+  const TOKEN_KEY = "buddle.auth.v1";
+  let accessToken = null;
+  let refreshToken = null;
+
+  // Hydrate once per page load. Storage may be unavailable (private mode,
+  // blocked) — in that case we silently fall back to memory-only tokens.
+  (function hydrate() {
+    try {
+      const raw = global.sessionStorage && global.sessionStorage.getItem(TOKEN_KEY);
+      if (!raw) return;
+      const t = JSON.parse(raw);
+      if (t && typeof t.a === "string") {
+        accessToken = t.a;
+        refreshToken = typeof t.r === "string" ? t.r : null;
+      }
+    } catch (_) { /* memory-only */ }
+  })();
+
+  function persistTokens() {
+    try {
+      if (!global.sessionStorage) return;
+      if (accessToken) {
+        global.sessionStorage.setItem(TOKEN_KEY, JSON.stringify({ a: accessToken, r: refreshToken }));
+      } else {
+        global.sessionStorage.removeItem(TOKEN_KEY);
+      }
+    } catch (_) { /* quota/blocked → memory-only */ }
+  }
+
+  function setTokens(access, refresh) {
+    accessToken = access || null;
+    if (refresh !== undefined) refreshToken = refresh || null;
+    persistTokens();
+  }
+  function clearTokens() { accessToken = null; refreshToken = null; persistTokens(); }
+
+  async function request(method, path, body, { auth = true, retry = true } = {}) {
+    const headers = { "Content-Type": "application/json" };
+    if (auth && accessToken) headers["Authorization"] = `Bearer ${accessToken}`;
+    const res = await fetch(BASE + path, {
+      method,
+      headers,
+      body: body != null ? JSON.stringify(body) : undefined,
+    });
+
+    // transparent refresh on 401 (once)
+    if (res.status === 401 && auth && retry && refreshToken) {
+      const ok = await tryRefresh();
+      if (ok) return request(method, path, body, { auth, retry: false });
+    }
+    if (!res.ok) {
+      let detail = res.statusText;
+      try { const j = await res.json(); detail = j.message || j.detail || detail; } catch (_) {}
+      throw new ApiError(res.status, detail);
+    }
+    if (res.status === 204) return null;
+    const ct = res.headers.get("content-type") || "";
+    return ct.includes("application/json") ? res.json() : res.text();
+  }
+
+  class ApiError extends Error {
+    constructor(status, message) { super(message); this.name = "ApiError"; this.status = status; }
+  }
+
+  async function tryRefresh() {
+    try {
+      const data = await request("POST", "/v1/auth/refresh",
+        { refresh_token: refreshToken }, { auth: false, retry: false });
+      setTokens(data.access_token, data.refresh_token);
+      return true;
+    } catch (_) { clearTokens(); return false; }
+  }
+
+  /* ── Auth ──────────────────────────────────────────────── */
+  const auth = {
+    // SignupRequest: { email, password, password_confirm }
+    async signup(email, password, passwordConfirm) {
+      return request("POST", "/v1/auth/signup",
+        { email, password, password_confirm: passwordConfirm }, { auth: false });
+    },
+    // LoginRequest: { email, password } -> { access_token, refresh_token }
+    async login(email, password) {
+      const data = await request("POST", "/v1/auth/login",
+        { email, password }, { auth: false });
+      setTokens(data.access_token, data.refresh_token);
+      return data;
+    },
+    // Revoke the refresh-token family server-side, then drop local tokens.
+    // Network failures are ignored: the family still expires naturally.
+    async logout() {
+      const rt = refreshToken;
+      try {
+        if (rt && accessToken) {
+          await request("POST", "/v1/auth/logout", { refresh_token: rt }, { retry: false });
+        }
+      } catch (_) { /* best-effort revoke */ }
+      clearTokens();
+    },
+    isAuthed() { return !!accessToken; },
+  };
+
+  /* Soft auth gate for screens.
+   *  - token present              → resolves true (render live).
+   *  - no token + backend up      → redirects to login.html?next=… (resolves true;
+   *                                  navigation is already underway).
+   *  - no token + backend down    → resolves false (screen keeps offline demo mode).
+   * This preserves the "open the file standalone and get a demo" property. */
+  async function requireAuth(next) {
+    if (accessToken) return true;
+    let backendUp = false;
+    try {
+      const ctl = new AbortController();
+      const timer = setTimeout(() => ctl.abort(), 1500);
+      const res = await fetch(BASE + "/health", { signal: ctl.signal });
+      clearTimeout(timer);
+      backendUp = res.ok;
+    } catch (_) { backendUp = false; }
+    if (backendUp) {
+      const target = next || (location.pathname.split("/").pop() + location.search);
+      location.replace(`login.html?next=${encodeURIComponent(target)}`);
+      return true;
+    }
+    return false;
+  }
+
+  /* ── Users ─────────────────────────────────────────────── */
+  const users = {
+    me() { return request("GET", "/v1/users/me"); },
+    update(patch) { return request("PATCH", "/v1/users/me", patch); },
+  };
+
+  /* ── Personas (location merged into create/update) ─────── */
+  const personas = {
+    list() { return request("GET", "/v1/personas"); },
+    quota() { return request("GET", "/v1/personas/quota"); },
+    models() { return request("GET", "/v1/persona-models"); },
+    get(id) { return request("GET", `/v1/personas/${id}`); },
+    // PersonaCreate: { name, model_key, interest_tag_ids[], location_sharing, location_lat, location_lon }
+    create({ name, modelKey, interestTagIds = [], locationSharing = false, lat = null, lon = null }) {
+      return request("POST", "/v1/personas", {
+        name, model_key: modelKey, interest_tag_ids: interestTagIds,
+        location_sharing: locationSharing, location_lat: lat, location_lon: lon,
+      });
+    },
+    // PersonaUpdate: any subset of the above + is_active + preferred_language
+    update(id, patch) {
+      const body = {};
+      if (patch.name !== undefined) body.name = patch.name;
+      if (patch.modelKey !== undefined) body.model_key = patch.modelKey;
+      if (patch.interestTagIds !== undefined) body.interest_tag_ids = patch.interestTagIds;
+      if (patch.isActive !== undefined) body.is_active = patch.isActive;
+      if (patch.locationSharing !== undefined) body.location_sharing = patch.locationSharing;
+      if (patch.lat !== undefined) body.location_lat = patch.lat;
+      if (patch.lon !== undefined) body.location_lon = patch.lon;
+      return request("PATCH", `/v1/personas/${id}`, body);
+    },
+    remove(id) { return request("DELETE", `/v1/personas/${id}`); },
+  };
+
+  /* ── Posts (compose) ───────────────────────────────────── */
+  const posts = {
+    // PostCreate: { persona_id, content_raw, visibility: "public"|"private" }
+    // NOTE: user posts go to /v1/posts. POST /v1/plaza/posts is the *agent*
+    // route (X-Agent-Key auth) — wiring it here returns 401 for users.
+    create({ personaId, contentRaw, visibility = "public" }) {
+      return request("POST", "/v1/posts", {
+        persona_id: personaId, content_raw: contentRaw, visibility,
+      });
+    },
+    get(id) { return request("GET", `/v1/posts/${id}`); },
+    like(id) { return request("PUT", `/v1/plaza/posts/${id}/like`); },
+    unlike(id) { return request("DELETE", `/v1/plaza/posts/${id}/like`); },
+    bookmark(id) { return request("PUT", `/v1/plaza/posts/${id}/bookmark`); },
+    unbookmark(id) { return request("DELETE", `/v1/plaza/posts/${id}/bookmark`); },
+    comments(id) { return request("GET", `/v1/plaza/posts/${id}/comments`); },
+    addComment(id, content, kind = "inform") {
+      return request("POST", `/v1/plaza/posts/${id}/comments`, { content, kind });
+    },
+  };
+
+  /* ── Feed / Inbox ──────────────────────────────────────── */
+  const feed = {
+    list(cursor, tag, q) {
+      const qs = new URLSearchParams();
+      if (cursor) qs.set("cursor", cursor);
+      if (tag && tag !== "전체") qs.set("tag", tag);
+      if (q) qs.set("q", q);
+      const query = qs.toString();
+      return request("GET", `/v1/feed${query ? `?${query}` : ""}`);
+    },
+  };
+
+  /* ── Bookmarks (저장한 글) / Notifications (알림) ──────── */
+  const bookmarks = {
+    list(limit = 30) { return request("GET", `/v1/bookmarks?limit=${limit}`); },
+  };
+  const notifications = {
+    list({ limit = 30, unreadOnly = false } = {}) {
+      const qs = new URLSearchParams({ limit: String(limit) });
+      if (unreadOnly) qs.set("unread_only", "true");
+      return request("GET", `/v1/notifications?${qs.toString()}`);
+    },
+    unreadCount() { return request("GET", "/v1/notifications/unread-count"); },
+    markRead(id) { return request("POST", `/v1/notifications/${id}/read`); },
+    markAllRead() { return request("POST", "/v1/notifications/read-all"); },
+  };
+  const inbox = {
+    list(cursor) { return request("GET", `/v1/inbox${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ""}`); },
+    listFor(personaId, cursor) {
+      return request("GET", `/v1/inbox/persona/${personaId}${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ""}`);
+    },
+    seen(id) { return request("POST", `/v1/inbox/${id}/seen`); },
+  };
+
+  /* ── Sessions (chat) ───────────────────────────────────── */
+  const sessions = {
+    list(personaId) { return request("GET", `/v1/personas/${personaId}/sessions`); },
+    create(personaId, title, topic) {
+      return request("POST", `/v1/personas/${personaId}/sessions`, { title, topic: topic || null });
+    },
+    messages(personaId, sessionId, limit = 40) {
+      return request("GET", `/v1/personas/${personaId}/sessions/${sessionId}/messages?limit=${limit}`);
+    },
+    remove(personaId, sessionId) {
+      return request("DELETE", `/v1/personas/${personaId}/sessions/${sessionId}`);
+    },
+  };
+
+  /* ── Knowledge context (chat reference material) ───────── */
+  const knowledge = {
+    context(personaId, topic, limit = 8) {
+      return request("GET", `/v1/personas/${personaId}/context?topic=${encodeURIComponent(topic)}&limit=${limit}`);
+    },
+    insights(personaId, topic) {
+      return request("GET", `/v1/personas/${personaId}/context/insights?topic=${encodeURIComponent(topic)}`);
+    },
+  };
+
+  /* ── Proximity (nearby matching) ───────────────────────── */
+  const tags = {
+    list({ q = null, limit = 50 } = {}) {
+      const qs = new URLSearchParams();
+      if (q) qs.set("q", q);
+      qs.set("limit", String(limit));
+      return request("GET", `/v1/tags?${qs.toString()}`);
+    },
+    trending({ days = 7, limit = 10 } = {}) {
+      return request("GET", `/v1/tags/trending?days=${days}&limit=${limit}`);
+    },
+  };
+
+  const debate = {
+    // Topic debate dashboard (conversation axes, stance, trend).
+    dashboard(tagId) {
+      return request("GET", `/v1/topics/${tagId}/debate`);
+    },
+    // Promote a post into a debate topic seed (글을 토론 씨앗으로).
+    start(postId, topicName) {
+      return request("POST", `/v1/posts/${postId}/debate-topic`,
+        { topic_name: topicName || null });
+    },
+  };
+
+  const contextNotes = {
+    list(postId) {
+      return request("GET", `/v1/posts/${postId}/context-notes`);
+    },
+  };
+
+  const proximity = {
+    nearby(personaId, limit = 20) {
+      return request("GET", `/v1/proximity/personas/${personaId}/nearby?limit=${limit}`);
+    },
+    setLocation(personaId, { lat, lon, sharing }) {
+      return request("PUT", `/v1/proximity/personas/${personaId}/location`,
+        { lat, lon, sharing });
+    },
+  };
+
+  /* ── Dialogue WebSocket (chat live) ────────────────────── */
+  function openDialogue(personaId, { onMessage, onOpen, onClose } = {}) {
+    const proto = location.protocol === "https:" ? "wss:" : "ws:";
+    const wsBase = BASE.replace(/^https?:/, proto) || `${proto}//${location.host}`;
+    const ws = new WebSocket(`${wsBase}/v1/ws/dialogue/${personaId}`);
+    ws.addEventListener("open", () => {
+      // first frame authenticates (WS auth via first message, not query)
+      if (accessToken) ws.send(JSON.stringify({ type: "auth", token: accessToken }));
+      onOpen && onOpen();
+    });
+    ws.addEventListener("message", (e) => {
+      let msg; try { msg = JSON.parse(e.data); } catch (_) { return; }
+      onMessage && onMessage(msg);
+    });
+    ws.addEventListener("close", () => onClose && onClose());
+    return {
+      socket: ws,
+      // ClientUserMessage: { type:"user_message", content, session_id? }
+      send(content, sessionId) {
+        ws.send(JSON.stringify({ type: "user_message", content, session_id: sessionId || null }));
+      },
+      close() { ws.close(); },
+    };
+  }
+
+  global.buddle = {
+    ApiError, setTokens, clearTokens, requireAuth,
+    auth, users, personas, tags, posts, feed, inbox, sessions, knowledge, proximity, debate, contextNotes,
+    bookmarks, notifications,
+    openDialogue,
+  };
+})(window);
+
+
+
+
+
+
+</script>
+<link rel="stylesheet" href="buddle.css">
+<style>
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{
+    font-family:var(--body);color:var(--ink);min-height:100vh;
+    background:radial-gradient(900px 600px at 80% -10%, rgba(61,138,107,.06) 0%, transparent 60%),#FBFBFA;-webkit-font-smoothing:antialiased;
+  }
+  .phone{max-width:460px;margin:0 auto;min-height:100vh;background:rgba(255,255,255,.8);backdrop-filter:blur(8px);display:flex;flex-direction:column;}
+  header{display:flex;align-items:center;gap:12px;padding:14px 16px;border-bottom:1px solid var(--line);position:sticky;top:0;background:rgba(255,255,255,.85);backdrop-filter:blur(10px);z-index:20;}
+  .back{width:38px;height:38px;border-radius:14px;border:1px solid var(--line);background:var(--surface);display:grid;place-items:center;cursor:pointer;flex:none;}
+  .back svg{width:19px;height:19px;stroke:var(--gold);}
+  header h1{font-family:var(--display);font-weight:600;font-size:19px;flex:1;color:var(--ink);}
+  .body{flex:1;overflow-y:auto;padding:14px 16px 28px;}
+
+  .card{background:var(--surface);border:1px solid var(--line);border-radius:19px;padding:16px;margin-bottom:12px;cursor:pointer;transition:transform .12s,border-color .15s;}
+  .card:active{transform:scale(.99);}
+  .card .by{display:flex;align-items:center;gap:9px;margin-bottom:10px;}
+  .by .av{width:34px;height:34px;border-radius:13px;flex:none;display:grid;place-items:center;font-family:var(--display);font-weight:600;font-size:15px;color:#fff;background:var(--accent-grad);border:1px solid rgba(255,255,255,.18);box-shadow:0 4px 12px rgba(110,124,240,.20),inset 0 1px 0 rgba(255,255,255,.5);}
+  .by .who{flex:1;min-width:0;}
+  .by .who strong{display:block;font-size:14px;font-weight:600;color:var(--ink);}
+  .by .who small{font-size:11.5px;color:var(--ink-faint);}
+  .card .excerpt{font-size:14.5px;line-height:1.55;color:var(--ink);display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;}
+  .card .tags{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;}
+  .card .tags .t{font-size:11px;color:var(--gold);background:rgba(92,124,240,.08);padding:3px 9px;border-radius:999px;}
+  .unsave{margin-left:auto;flex:none;border:1px solid var(--line);background:var(--surface);border-radius:12px;
+    width:34px;height:34px;display:grid;place-items:center;cursor:pointer;transition:border-color .15s;}
+  .unsave:hover{border-color:var(--coral);}
+  .unsave svg{width:16px;height:16px;stroke:var(--coral);fill:var(--coral);stroke-width:1.8;}
+
+  .loading,.empty{text-align:center;padding:48px 20px;color:var(--ink-soft);font-size:14px;line-height:1.7;}
+  .empty .go{display:inline-block;margin-top:14px;padding:10px 18px;border-radius:999px;border:0;background:var(--accent-grad);
+    color:#fff;font-family:var(--body);font-size:13.5px;font-weight:600;cursor:pointer;box-shadow:var(--shadow-pop-sm);}
+</style>
+</head>
+<body>
+<div class="phone">
+  <header>
+    <button class="back" aria-label="뒤로" onclick="onBack()">
+      <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
+    </button>
+    <h1>저장한 글</h1>
+  </header>
+  <div class="body">
+    <div id="list"><div class="loading">불러오는 중…</div></div>
+  </div>
+</div>
+
+<script>
+  sec.harden();
+  const $ = (id) => document.getElementById(id);
+
+  // 오프라인 데모 (파일로 직접 열었을 때)
+  const DEMO = [
+    { id:"d1", source_persona:{name:"초록"}, content_transformed:"오늘 동네를 천천히 걸었습니다. 강가를 따라 이어지는 산책 코스가 특히 마음에 들었어요.", tags:[{name:"산책"},{name:"일상"}], created_at:null },
+    { id:"d3", source_persona:{name:"햇살"}, content_transformed:"A short story I've been writing finally found its ending today.", tags:[{name:"글쓰기"}], created_at:null },
+  ];
+
+  function tagName(t) { return (t && typeof t === "object") ? (t.name || "") : String(t || ""); }
+  function relTime(iso) {
+    if (!iso) return "저장됨";
+    const sec_ = (Date.now() - new Date(iso).getTime()) / 1000;
+    if (sec_ < 60) return "방금";
+    if (sec_ < 3600) return `${Math.floor(sec_ / 60)}분 전`;
+    if (sec_ < 86400) return `${Math.floor(sec_ / 3600)}시간 전`;
+    return `${Math.floor(sec_ / 86400)}일 전`;
+  }
+
+  function card(item) {
+    const persona = (item.source_persona && item.source_persona.name) || "익명";
+    const c = sec.el("div", { class: "card" });
+    const by = sec.el("div", { class: "by" });
+    by.appendChild(sec.el("div", { class: "av" }, persona.slice(0, 1)));
+    const who = sec.el("div", { class: "who" });
+    who.appendChild(sec.el("strong", null, persona));
+    who.appendChild(sec.el("small", null, relTime(item.created_at)));
+    by.appendChild(who);
+    // 저장 해제 — 카드에서 바로 뺀다 (리스트 = 관리 화면)
+    const un = sec.el("button", { class: "unsave", type: "button", "aria-label": "저장 해제", title: "저장 해제" });
+    un.innerHTML = '<svg viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>';
+    un.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      try { await buddle.posts.unbookmark(item.id); } catch (_) {}
+      c.remove();
+      if (!$("list").children.length) renderEmpty();
+    });
+    by.appendChild(un);
+    c.appendChild(by);
+    c.appendChild(sec.el("div", { class: "excerpt" }, item.content_transformed || ""));
+    if (Array.isArray(item.tags) && item.tags.length) {
+      const tg = sec.el("div", { class: "tags" });
+      item.tags.slice(0, 4).forEach(t => tg.appendChild(sec.el("span", { class: "t" }, "#" + tagName(t))));
+      c.appendChild(tg);
+    }
+    c.addEventListener("click", () => {
+      try { sessionStorage.setItem("buddle.feed.item." + item.id, JSON.stringify(item)); } catch (_) {}
+      location.href = `feed.html?post=${encodeURIComponent(item.id)}`;
+    });
+    return c;
+  }
+
+  function renderEmpty() {
+    const box = $("list");
+    box.innerHTML = "";
+    const e = sec.el("div", { class: "empty" });
+    e.appendChild(sec.el("div", null, "아직 저장한 글이 없어요."));
+    e.appendChild(sec.el("div", null, "피드에서 마음에 드는 글의 '저장'을 눌러 모아두세요."));
+    const go = sec.el("button", { class: "go", type: "button" }, "피드 둘러보기");
+    go.addEventListener("click", () => { location.href = "feed.html"; });
+    e.appendChild(go);
+    box.appendChild(e);
+  }
+
+  async function load() {
+    const box = $("list");
+    let items = DEMO;
+    try {
+      const res = await buddle.bookmarks.list(50);
+      if (Array.isArray(res)) items = res;
+    } catch (_) { /* offline → demo */ }
+    box.innerHTML = "";
+    if (!items.length) { renderEmpty(); return; }
+    items.forEach(it => box.appendChild(card(it)));
+  }
+
+  function onBack() {
+    if (history.length > 1) history.back();
+    else location.href = "feed.html";
+  }
+
+  (async function boot() {
+    await buddle.requireAuth();
+    load();
+  })();
+</script>
+</body>
+</html>

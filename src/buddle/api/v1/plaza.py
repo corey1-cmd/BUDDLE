@@ -28,7 +28,7 @@ from buddle.schemas.plaza import (
     ReadAck,
     ReadRequest,
 )
-from buddle.services import comment_service, like_service, plaza_service
+from buddle.services import bookmark_service, comment_service, like_service, plaza_service
 
 router = APIRouter(prefix="/plaza", tags=["plaza"])
 
@@ -183,3 +183,29 @@ async def unlike_post(
     removed = await like_service.unlike_post(db, user.id, post_id)
     count = await like_service.like_count(db, post_id)
     return {"liked": False, "removed": removed, "like_count": count}
+
+
+@router.put(
+    "/posts/{post_id}/bookmark",
+    summary="Save a post for later (idempotent, private)",
+)
+async def bookmark_post(
+    post_id: uuid.UUID,
+    user: CurrentUser,
+    db: DB,
+) -> dict[str, object]:
+    created = await bookmark_service.bookmark_post(db, user.id, post_id)
+    return {"bookmarked": True, "newly_created": created}
+
+
+@router.delete(
+    "/posts/{post_id}/bookmark",
+    summary="Remove a saved post (idempotent)",
+)
+async def unbookmark_post(
+    post_id: uuid.UUID,
+    user: CurrentUser,
+    db: DB,
+) -> dict[str, object]:
+    removed = await bookmark_service.unbookmark_post(db, user.id, post_id)
+    return {"bookmarked": False, "removed": removed}

@@ -5,7 +5,7 @@
 > 규약(불변식)은 무엇인가"를 한 곳에 모았다. 기능별 설계 근거는 [README.md](../README.md)와
 > [docs/design/](design/)에 있다. 구조가 바뀌면 이 문서도 같이 갱신한다.
 
-마지막 갱신: 2026-06-28 · 기준: `main` (alembic head 0022)
+마지막 갱신: 2026-07-03 · 기준: `main` (alembic head 0023)
 
 ---
 
@@ -63,16 +63,17 @@ api/
     __init__.py    api_v1_router — 모든 라우터 취합
     auth/users/personas/posts/feed/inbox  핵심 CRUD·인증
     dialogue.py    WebSocket 대화 (EKB 인지 + 뉴스/지식/기억 주입) ★핵심 핫패스
-    plaza.py       공개 광장(사람/페르소나/외부AI 글·댓글)
+    plaza.py       공개 광장(사람/페르소나/외부AI 글·댓글) + 좋아요/저장 토글
+    bookmarks.py / notifications.py  저장한 글 목록 · 알림(SNS 활동 이벤트)
     debate.py / argument_chat_ws.py / context_notes.py  논증·토론 대시보드·주장AI 대화
-    knowledge.py / proximity.py / profile.py / relationship.py / sessions.py / tags.py
+    knowledge.py / proximity.py / profile.py / relationship.py / sessions.py / tags.py(+trending)
     ws_common.py   WS 인증(첫 프레임 토큰)·공통 헬퍼
     admin/
       __init__.py      stats/ethics/security/policy + news(status/tick) + plaza/knowledge/feedback tick
       analytics.py     태그추이·유의어·지식흐름 그래프
       persona_models.py 페르소나 모델 레지스트리 CRUD
 
-services/          도메인 서비스 (32개). 파일명_service.py = 그 도메인 로직 + 트랜잭션
+services/          도메인 서비스 (34개). 파일명_service.py = 그 도메인 로직 + 트랜잭션
                    대표: post_service(글 ingest 오케스트레이션), dialogue_service(세션화 대화),
                    knowledge_service(지식공간 루프), news_service(뉴스 매개), leukocyte_service(윤리 게이트),
                    technician_service(무결성 체인), central_service(모니터링/오토튠)
@@ -96,7 +97,7 @@ db/
   base.py          SQLAlchemy Declarative Base
   session.py       create_async_engine — ★지연 생성(lazy, 테스트가 URL 교체 가능),
                    statement_cache_size=0 (Supabase pooler 호환), pool_pre_ping
-  models/          ORM 모델 35개 파일 + enums.py
+  models/          ORM 모델 37개 파일 + enums.py
 
 core/              logging(structlog)·metrics(Prometheus)·exceptions·ids·cursor·ratelimit·
                    scheduler·security_headers·body_limit·client_ip(신뢰 프록시)
@@ -105,8 +106,8 @@ schemas/           Pydantic 요청·응답 모델
 data/              caution_lexicon.json (유의어 사전, 핫리로드)
 workers/           백그라운드 작업
 
-web/               정적 프로토타입 9화면 (login/feed/chat/admin/profile/debate …) — main.py가 / 에 마운트
-migrations/versions/  Alembic 0001 … 0022
+web/               정적 프로토타입 (login/feed/chat/admin/profile/debate/bookmarks/notifications …) — main.py가 / 에 마운트
+migrations/versions/  Alembic 0001 … 0023
 tests/             unit/ (순수, DB無) · integration/ (testcontainers pgvector) · verification/
 ```
 
@@ -136,7 +137,9 @@ tests/             unit/ (순수, DB無) · integration/ (testcontainers pgvecto
 | `feed.py` | post_service |
 | `inbox.py` | inbox_service |
 | `dialogue.py` ★ | dialogue_service, conversation_service, knowledge_service, memory_service, news_service, profile_service, leukocyte_service, user_context_service |
-| `plaza.py` | plaza_service, comment_service, like_service |
+| `plaza.py` | plaza_service, comment_service, like_service, bookmark_service |
+| `bookmarks.py` | bookmark_service |
+| `notifications.py` | notification_service |
 | `debate.py` | argument_service, leukocyte_service |
 | `argument_chat_ws.py` | argument_chat_service, leukocyte_service |
 | `context_notes.py` | argument_chat_service |
@@ -166,7 +169,9 @@ tests/             unit/ (순수, DB無) · integration/ (testcontainers pgvecto
 | `importance_service` | — | ai.importance |
 | `memory_service` | — | ai.embeddings, ai.memory |
 | `persona_service` | persona_model | ai.embeddings |
-| `comment_service` | leukocyte | ai.personas |
+| `comment_service` | leukocyte, notification | ai.personas |
+| `like_service` | notification | — |
+| `bookmark_service` | post(피드 아이템 조립 재사용) | — |
 | `plaza_service` | — | ai.personas, ai.plaza |
 | `conversation_service` | — | ai.affect, ai.conversation |
 | `argument(_chat)_service` | — | ai.argument, ai.embeddings |

@@ -24,5 +24,10 @@ async def read_feed(
     tag: str | None = Query(
         default=None, max_length=64, description="Filter to posts with this exact tag name"
     ),
+    q: str | None = Query(
+        default=None,
+        max_length=100,
+        description="Case-insensitive substring search over post text",
+    ),
 ) -> FeedPage:
-    return await post_service.get_feed(db, cursor=cursor, limit=limit, tag=tag)
+    return await post_service.get_feed(db, cursor=cursor, limit=limit, tag=tag, q=q)

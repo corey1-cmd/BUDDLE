@@ -55,6 +55,14 @@ class TagBrief(BaseModel):
     name: str
 
 
+class TagTrend(BaseModel):
+    """A tag with its recent public-post count (트렌딩 화제)."""
+
+    id: uuid.UUID
+    name: str
+    post_count: int
+
+
 class PersonaInterestTagRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

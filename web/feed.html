@@ -325,6 +325,8 @@
     get(id) { return request("GET", `/v1/posts/${id}`); },
     like(id) { return request("PUT", `/v1/plaza/posts/${id}/like`); },
     unlike(id) { return request("DELETE", `/v1/plaza/posts/${id}/like`); },
+    bookmark(id) { return request("PUT", `/v1/plaza/posts/${id}/bookmark`); },
+    unbookmark(id) { return request("DELETE", `/v1/plaza/posts/${id}/bookmark`); },
     comments(id) { return request("GET", `/v1/plaza/posts/${id}/comments`); },
     addComment(id, content, kind = "inform") {
       return request("POST", `/v1/plaza/posts/${id}/comments`, { content, kind });
@@ -333,13 +335,29 @@
 
   /* ── Feed / Inbox ──────────────────────────────────────── */
   const feed = {
-    list(cursor, tag) {
+    list(cursor, tag, q) {
       const qs = new URLSearchParams();
       if (cursor) qs.set("cursor", cursor);
       if (tag && tag !== "전체") qs.set("tag", tag);
-      const q = qs.toString();
-      return request("GET", `/v1/feed${q ? `?${q}` : ""}`);
+      if (q) qs.set("q", q);
+      const query = qs.toString();
+      return request("GET", `/v1/feed${query ? `?${query}` : ""}`);
     },
+  };
+
+  /* ── Bookmarks (저장한 글) / Notifications (알림) ──────── */
+  const bookmarks = {
+    list(limit = 30) { return request("GET", `/v1/bookmarks?limit=${limit}`); },
+  };
+  const notifications = {
+    list({ limit = 30, unreadOnly = false } = {}) {
+      const qs = new URLSearchParams({ limit: String(limit) });
+      if (unreadOnly) qs.set("unread_only", "true");
+      return request("GET", `/v1/notifications?${qs.toString()}`);
+    },
+    unreadCount() { return request("GET", "/v1/notifications/unread-count"); },
+    markRead(id) { return request("POST", `/v1/notifications/${id}/read`); },
+    markAllRead() { return request("POST", "/v1/notifications/read-all"); },
   };
   const inbox = {
     list(cursor) { return request("GET", `/v1/inbox${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ""}`); },
@@ -380,6 +398,9 @@
       if (q) qs.set("q", q);
       qs.set("limit", String(limit));
       return request("GET", `/v1/tags?${qs.toString()}`);
+    },
+    trending({ days = 7, limit = 10 } = {}) {
+      return request("GET", `/v1/tags/trending?days=${days}&limit=${limit}`);
     },
   };
 
@@ -439,6 +460,7 @@
   global.buddle = {
     ApiError, setTokens, clearTokens, requireAuth,
     auth, users, personas, tags, posts, feed, inbox, sessions, knowledge, proximity, debate, contextNotes,
+    bookmarks, notifications,
     openDialogue,
   };
 })(window);
@@ -465,6 +487,29 @@
   .debate-btn{display:flex;align-items:center;gap:6px;flex:none;font-family:var(--body);font-size:13px;font-weight:600;color:var(--willow-press);background:var(--willow-wash);border:1px solid transparent;border-radius:var(--r-pill);padding:7px 13px;cursor:pointer;transition:background var(--dur,.2s) var(--ease,ease);}
   .debate-btn:hover{background:#E4E9FE;}
   .debate-btn svg{width:16px;height:16px;}
+  /* 헤더 아이콘 버튼 (저장함·알림) — X/인스타식 상단 진입점 */
+  .hicon{position:relative;width:38px;height:38px;border-radius:14px;border:1px solid var(--line);background:var(--surface);display:grid;place-items:center;cursor:pointer;flex:none;transition:border-color .15s;}
+  .hicon:hover{border-color:var(--line-strong);}
+  .hicon svg{width:18px;height:18px;stroke:var(--ink-soft);fill:none;stroke-width:1.9;}
+  .hicon .badge{position:absolute;top:-5px;right:-5px;min-width:17px;height:17px;padding:0 4px;border-radius:999px;
+    background:linear-gradient(135deg,#F0716C,#F09A6C);color:#fff;font-size:10px;font-weight:700;line-height:17px;text-align:center;
+    box-shadow:0 2px 6px rgba(240,113,108,.4);display:none;}
+  .hicon .badge.on{display:block;}
+
+  /* 검색 — 피드 안 내용/화제 서버사이드 검색 */
+  .search-row{display:flex;align-items:center;gap:8px;margin-bottom:12px;}
+  .search-box{flex:1;display:flex;align-items:center;gap:8px;height:42px;border-radius:21px;border:1px solid var(--line);
+    background:var(--paper-sunken);padding:0 14px;transition:border-color .15s;}
+  .search-box:focus-within{border-color:var(--gold);background:var(--surface);}
+  .search-box svg{width:16px;height:16px;stroke:var(--ink-faint);fill:none;stroke-width:2;flex:none;}
+  .search-box input{flex:1;border:0;background:transparent;font-family:var(--body);font-size:14px;color:var(--ink);min-width:0;}
+  .search-box input:focus{outline:none;}
+  .search-clear{border:0;background:transparent;color:var(--ink-faint);font-size:16px;cursor:pointer;padding:2px;display:none;line-height:1;}
+  .search-clear.on{display:block;}
+  .search-hint{font-size:12.5px;color:var(--ink-faint);margin:-4px 0 10px 4px;}
+
+  /* 트렌딩 화제 카운트 뱃지 (칩 안 작은 숫자) */
+  .tchip .cnt{font-size:10.5px;font-weight:700;opacity:.75;margin-left:4px;}
 
   .body{flex:1;overflow-y:auto;padding:14px 16px 28px;}
 
@@ -594,11 +639,26 @@
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg>
       <span>토론</span>
     </button>
+    <button class="hicon" id="savedBtn" aria-label="저장한 글" title="저장한 글">
+      <svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
+    </button>
+    <button class="hicon" id="notifBtn" aria-label="알림" title="알림">
+      <svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+      <span class="badge" id="notifBadge"></span>
+    </button>
   </header>
 
   <div class="body">
     <!-- ===== LIST VIEW ===== -->
     <div id="listView">
+      <div class="search-row">
+        <div class="search-box">
+          <svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+          <input id="searchInput" type="search" placeholder="화제·글 내용 검색" maxlength="100" autocomplete="off" />
+          <button class="search-clear" id="searchClear" aria-label="검색 지우기">✕</button>
+        </div>
+      </div>
+      <div class="search-hint" id="searchHint" style="display:none"></div>
       <div class="topics" id="topics"></div>
       <div id="feedList"><div class="loading">불러오는 중…</div></div>
     </div>
@@ -663,6 +723,57 @@
 
   /* ── LIST ── */
   let currentTopic = "전체";
+  let currentQuery = "";
+
+  /* ── 검색 (서버사이드 q=) ── */
+  // 입력 350ms 디바운스 → 커서 리셋 후 재조회. 클라이언트 필터가 아니라
+  // 서버 검색이므로 뒷페이지 매칭도 정확히 찾는다(태그 필터와 같은 원리).
+  let searchTimer = null;
+  function bindSearch() {
+    const input = $("searchInput"), clearBtn = $("searchClear");
+    if (!input) return;
+    input.addEventListener("input", () => {
+      clearBtn.classList.toggle("on", input.value.length > 0);
+      clearTimeout(searchTimer);
+      searchTimer = setTimeout(() => {
+        const v = input.value.trim();
+        if (v === currentQuery) return;
+        currentQuery = v;
+        nextCursor = null;
+        updateSearchHint();
+        loadFeed();
+      }, 350);
+    });
+    clearBtn.addEventListener("click", () => {
+      input.value = ""; clearBtn.classList.remove("on");
+      if (!currentQuery) return;
+      currentQuery = ""; nextCursor = null;
+      updateSearchHint();
+      loadFeed();
+    });
+  }
+  function updateSearchHint() {
+    const hint = $("searchHint");
+    if (!hint) return;
+    if (currentQuery) {
+      hint.style.display = "";
+      hint.textContent = `"${currentQuery}" 검색 결과`;
+    } else { hint.style.display = "none"; }
+  }
+
+  /* ── 알림 뱃지 ── */
+  async function refreshNotifBadge() {
+    const badge = $("notifBadge");
+    if (!badge) return;
+    try {
+      const authed = buddle.auth && buddle.auth.isAuthed && buddle.auth.isAuthed();
+      if (!authed) return;
+      const res = await buddle.notifications.unreadCount();
+      const n = (res && res.count) || 0;
+      badge.textContent = n > 99 ? "99+" : String(n);
+      badge.classList.toggle("on", n > 0);
+    } catch (_) { /* offline → no badge */ }
+  }
 
   // Show the "토론" button only when a specific topic is active, and make it
   // open that topic's debate dashboard (resolving the tag name → id).
@@ -747,12 +858,16 @@
     location.href = "debate-dashboard.html?" + qs.toString();
   }
 
+  // topics: 문자열 또는 {name, count} — count가 있으면 트렌딩 칩(＃화제 12)으로.
   function renderTopics(topics) {
     const box = $("topics"); box.innerHTML = "";
-    topics.forEach((t, i) => {
-      const chip = sec.el("div", { class: "tchip" + (t === currentTopic ? " on" : "") }, t);
+    topics.forEach((t) => {
+      const name = (t && typeof t === "object") ? t.name : t;
+      const count = (t && typeof t === "object") ? t.count : null;
+      const chip = sec.el("div", { class: "tchip" + (name === currentTopic ? " on" : "") }, name);
+      if (count != null && name !== "전체") chip.appendChild(sec.el("span", { class: "cnt" }, String(count)));
       chip.addEventListener("click", () => {
-        currentTopic = t;
+        currentTopic = name;
         [...box.children].forEach(c => c.classList.remove("on"));
         chip.classList.add("on");
         updateDebateButton();
@@ -761,6 +876,24 @@
       });
       box.appendChild(chip);
     });
+  }
+
+  // 트렌딩 화제 칩: 최근 7일 공개글 수 기준 서버 집계. 실패(오프라인/구버전
+  // 서버) 시 첫 페이지 아이템에서 태그를 추출하는 기존 방식으로 폴백.
+  async function loadTrendingTopics(fallbackItems) {
+    try {
+      const trend = await buddle.tags.trending({ days: 7, limit: 8 });
+      if (Array.isArray(trend) && trend.length) {
+        renderTopics(["전체", ...trend.map(t => ({ name: t.name, count: t.post_count }))]);
+        return true;
+      }
+    } catch (_) { /* fall back below */ }
+    const names = [];
+    (fallbackItems || []).forEach(it => (it.tags || []).forEach(t => {
+      const n = tagName(t); if (n && !names.includes(n)) names.push(n);
+    }));
+    renderTopics(["전체", ...(names.length ? names.slice(0, 8) : DEMO_TOPICS.slice(1))]);
+    return false;
   }
 
   function postCard(item) {
@@ -848,10 +981,10 @@
     const tagParam = currentTopic === "전체" ? null : currentTopic;
     let items = DEMO_FEED, fromApi = false;
     try {
-      // 서버사이드 태그 필터: 필터를 쿼리에 위임한다. 클라이언트에서 커서
-      // 페이지를 거르면 뒷페이지의 매칭이 조용히 누락돼 페이지네이션과
+      // 서버사이드 태그 필터 + 검색: 필터를 쿼리에 위임한다. 클라이언트에서
+      // 커서 페이지를 거르면 뒷페이지의 매칭이 조용히 누락돼 페이지네이션과
       // "더 보기"가 깨지기 때문(백엔드 get_feed 주석과 동일한 이유).
-      const page = await buddle.feed.list(cursor, tagParam);
+      const page = await buddle.feed.list(cursor, tagParam, currentQuery || null);
       if (page && Array.isArray(page.items)) {
         items = page.items; fromApi = true;
         nextCursor = page.next_cursor || null;        // FeedPage.next_cursor
@@ -859,23 +992,27 @@
     } catch (_) { nextCursor = null; /* offline → demo */ }
 
     // 토픽 칩은 '전체' 첫 페이지에서 1회만 구성한다(필터된 페이지로 만들면
-    // 칩 목록이 그 태그만 남는 문제가 생긴다). 데모면 데모 태그로.
-    if (!topicsRendered && currentTopic === "전체" && !cursor) {
-      const names = [];
-      items.forEach(it => (it.tags || []).forEach(t => {
-        const n = tagName(t); if (n && !names.includes(n)) names.push(n);
-      }));
-      renderTopics(["전체", ...(names.length ? names.slice(0, 8) : DEMO_TOPICS.slice(1))]);
+    // 칩 목록이 그 태그만 남는 문제가 생긴다). 트렌딩 집계 우선, 데모 폴백.
+    if (!topicsRendered && currentTopic === "전체" && !cursor && !currentQuery) {
+      loadTrendingTopics(items);
       topicsRendered = true;
     }
 
     // 데모(offline) 폴백일 때만 클라이언트에서 거른다(서버 필터를 못 쓰므로).
-    const list = (!fromApi && tagParam)
+    let list = (!fromApi && tagParam)
       ? items.filter(it => Array.isArray(it.tags) && it.tags.map(tagName).includes(tagParam))
       : items;
+    if (!fromApi && currentQuery) {
+      const q = currentQuery.toLowerCase();
+      list = list.filter(it => (it.content_transformed || "").toLowerCase().includes(q));
+    }
     if (!cursor) box.innerHTML = "";
     const oldMore = $("feedMore"); if (oldMore) oldMore.remove();
-    if (!cursor && !list.length) { box.appendChild(sec.el("div", { class: "empty" }, "아직 글이 없어요.")); return; }
+    if (!cursor && !list.length) {
+      box.appendChild(sec.el("div", { class: "empty" },
+        currentQuery ? `"${currentQuery}"에 대한 글을 찾지 못했어요.` : "아직 글이 없어요."));
+      return;
+    }
     list.forEach(it => box.appendChild(postCard(it)));
     if (fromApi && nextCursor) {
       const more = sec.el("button", { class: "act", id: "feedMore" }, "더 보기");
@@ -984,11 +1121,15 @@
     likeBtn.innerHTML = '<svg viewBox="0 0 24 24"><path stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M19 14c1.5-1.5 3-3.3 3-5.5A4.5 4.5 0 0 0 12 5 4.5 4.5 0 0 0 2 8.5C2 10.7 3.5 12.5 5 14l7 7z"/></svg>';
     likeBtn.appendChild(sec.el("span", null, "좋아요" + (post.like_count != null ? ` ${post.like_count}` : "")));
     likeBtn.addEventListener("click", () => toggleLike(post, likeBtn));
+    const saveBtn = sec.el("button", { class: "act", id: "saveBtn" });
+    saveBtn.innerHTML = '<svg viewBox="0 0 24 24"><path stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>';
+    saveBtn.appendChild(sec.el("span", null, "저장"));
+    saveBtn.addEventListener("click", () => toggleBookmark(post, saveBtn));
     const reportBtn = sec.el("button", { class: "act" });
     reportBtn.innerHTML = '<svg viewBox="0 0 24 24"><path stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><path stroke-width="1.8" stroke-linecap="round" d="M4 22v-7"/></svg>';
     reportBtn.appendChild(sec.el("span", null, "신고"));
     reportBtn.addEventListener("click", () => alert("신고가 접수되었습니다. 검토 후 조치됩니다."));
-    actions.appendChild(likeBtn); actions.appendChild(reportBtn);
+    actions.appendChild(likeBtn); actions.appendChild(saveBtn); actions.appendChild(reportBtn);
     view.appendChild(actions);
 
     // argument-AI entry points: talk to this post's claim, or its author's AI.
@@ -1127,6 +1268,18 @@
     } catch (_) { /* offline preview no-op */ }
   }
 
+  let saved = false;
+  async function toggleBookmark(post, btn) {
+    saved = !saved;
+    btn.classList.toggle("liked", saved);   // 동일한 활성 스타일 재사용
+    const span = btn.querySelector("span");
+    if (span) span.textContent = saved ? "저장됨" : "저장";
+    try {
+      if (saved) await buddle.posts.bookmark(post.id);
+      else await buddle.posts.unbookmark(post.id);
+    } catch (_) { /* offline preview no-op */ }
+  }
+
   function onBack() {
     if (postId) { location.href = "feed.html"; }
     else if (history.length > 1) history.back();
@@ -1167,8 +1320,12 @@
   (async function boot() {
     const db = $("debateBtn");
     if (db) db.addEventListener("click", openDebate);
+    $("savedBtn").addEventListener("click", () => { location.href = "bookmarks.html"; });
+    $("notifBtn").addEventListener("click", () => { location.href = "notifications.html"; });
+    bindSearch();
     renderResume();
     await buddle.requireAuth();
+    refreshNotifBadge();
     if (postId) loadDetail(postId);
     else loadFeed();
   })();
