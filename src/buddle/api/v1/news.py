@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Query
 
+from buddle.ai.news.rights import rights_of
 from buddle.api.deps import CurrentUser, Redis
 from buddle.schemas.news import NewsBriefingOut, NewsDigestOut
 from buddle.services import news_service
@@ -32,6 +33,7 @@ def _to_public(b: dict[str, object]) -> NewsBriefingOut:
         source=str(b.get("source") or ""),
         gist_ko=str(b.get("gist_ko") or ""),
         tags=_tags_of(b.get("tags")),
+        rights=rights_of(str(b.get("source") or "")),
         stored_at=int(b.get("stored_at") or 0),  # type: ignore[call-overload]
     )
 

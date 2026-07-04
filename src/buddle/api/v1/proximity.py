@@ -33,6 +33,10 @@ class NearbyPersona(BaseModel):
     distance_km: float
     ring_points: int
     affinity: float
+    # 10-tier graded matching (1=이웃 … 10=나라간): the client shows the tier
+    # label; graded_affinity is the ranking weight (logistic 1–6 + C¹ exp tail).
+    tier: int
+    graded_affinity: float
     approx_lat: float
     approx_lon: float
 

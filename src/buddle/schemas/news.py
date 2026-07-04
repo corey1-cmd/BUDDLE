@@ -21,6 +21,9 @@ class NewsBriefingOut(BaseModel):
     source: str  # outlet name (attribution)
     gist_ko: str  # our own factual summary (not the outlet's wording)
     tags: list[str]
+    # 출처 권리 등급: "kogl_type1"(공공누리 1유형 — 출처표시 시 인용·2차창작
+    # 가능, 앱이 인용 추천 배지 표시) | "default_deny"(제목+링크+요약만).
+    rights: str
     stored_at: int  # unix seconds — client renders relative time
 
 

@@ -17,7 +17,7 @@ pytestmark = pytest.mark.asyncio
 _BRIEFINGS_KEY = "buddle:news:briefings"
 _DIGEST_KEY = "buddle:news:digest"
 
-_PUBLIC_FIELDS = {"title", "url", "source", "gist_ko", "tags", "stored_at"}
+_PUBLIC_FIELDS = {"title", "url", "source", "gist_ko", "tags", "rights", "stored_at"}
 
 
 async def _seed_briefings(app, items):  # type: ignore[no-untyped-def]
@@ -62,6 +62,7 @@ async def test_briefings_are_rights_filtered(app, client, signup_and_login):  # 
     assert set(item) == _PUBLIC_FIELDS
     assert item["url"].startswith("https://example.com/")
     assert item["gist_ko"] == "한 줄 요약"
+    assert item["rights"] == "default_deny"  # 미등록 출처 = 기본 차단 등급
     assert "INTERNAL" not in json.dumps(items)
 
 
@@ -122,3 +123,31 @@ def test_default_sources_include_public_rss():
     for s in DEFAULT_SOURCES:
         if s["kind"] == "rss":
             assert str(s["url"]).startswith("https://")
+
+
+def test_government_sources_are_kogl_open():
+    """정부·공공 소스는 공공누리 1유형으로 등록되어 인용 추천 대상이 된다."""
+    from buddle.ai.news.rights import KOGL_TYPE1, is_open_license, rights_of
+    from buddle.services.news_service import DEFAULT_SOURCES
+
+    gov = [s for s in DEFAULT_SOURCES if s.get("rights") == KOGL_TYPE1]
+    assert {"korea-kr-policy", "korea-kr-dept", "korea-kr-fact"} <= {s["id"] for s in gov}
+    for s in gov:
+        assert rights_of(str(s["name"])) == KOGL_TYPE1
+        assert is_open_license(str(s["name"]))
+    # 언론사는 default_deny 유지 (권리 엔진 기본 정책)
+    assert rights_of("BBC") == "default_deny"
+    assert not is_open_license("The Guardian")
+
+
+async def test_briefings_expose_kogl_rights(app, client, signup_and_login):  # type: ignore[no-untyped-def]
+    """정부 출처 브리핑은 rights=kogl_type1로 내려가 앱이 인용 배지를 달 수 있다."""
+    info = await signup_and_login()
+    h = {"Authorization": f"Bearer {info['access_token']}"}
+    gov = _briefing("청년 주거 지원 대책 발표", tags=["주거", "정책"])
+    gov["source"] = "대한민국 정책브리핑"
+    await _seed_briefings(app, [gov])
+
+    r = await client.get("/v1/news/briefings", headers=h)
+    item = next(i for i in r.json() if i["title"] == "청년 주거 지원 대책 발표")
+    assert item["rights"] == "kogl_type1"

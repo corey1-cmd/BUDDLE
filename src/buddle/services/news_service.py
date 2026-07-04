@@ -100,6 +100,37 @@ DEFAULT_SOURCES: list[dict[str, object]] = [
         "enabled": True,
         "limit": 10,
     },
+    # ── 정부·공공(공공누리 제1유형 = 출처표시 시 상업적 이용·2차 창작 허용) ──
+    # 정책브리핑(korea.kr)의 표준 RSS. 개방 등급이라 인용 추천에 우선 노출된다
+    # (ai/news/rights.py). korea.kr는 국외 IP를 차단하는 경우가 있으나 소스별
+    # fetch 실패는 파이프라인이 무중단 처리한다(국내 리전 서버에선 정상 수집).
+    {
+        "id": "korea-kr-policy",
+        "name": "대한민국 정책브리핑",
+        "kind": "rss",
+        "url": "https://www.korea.kr/rss/policy.xml",
+        "enabled": True,
+        "limit": 10,
+        "rights": "kogl_type1",
+    },
+    {
+        "id": "korea-kr-dept",
+        "name": "정부 부처 보도자료",
+        "kind": "rss",
+        "url": "https://www.korea.kr/rss/dept_all.xml",
+        "enabled": True,
+        "limit": 10,
+        "rights": "kogl_type1",
+    },
+    {
+        "id": "korea-kr-fact",
+        "name": "정부 팩트체크(사실은 이렇습니다)",
+        "kind": "rss",
+        "url": "https://www.korea.kr/rss/fact.xml",
+        "enabled": True,
+        "limit": 5,
+        "rights": "kogl_type1",
+    },
 ]
 
 

@@ -29,9 +29,11 @@ from buddle.ai.geo import (
     RADIUS_RINGS_KM,
     GeoPoint,
     coarsen,
+    graded_affinity,
     haversine_km,
     proximity_affinity,
     ring_points,
+    tier_of,
 )
 from buddle.core.exceptions import NotFound
 from buddle.db.models.persona import Persona
@@ -44,6 +46,9 @@ class ProximityMatch:
     distance_km: float
     ring_points: int
     affinity: float
+    # 10-tier graded weight (logistic 1–6 + C¹ exp tail 7–10) — the ranking key.
+    tier: int
+    graded_affinity: float
     # Coarsened location for safe display (never the exact stored coordinate).
     approx_lat: float
     approx_lon: float
@@ -119,12 +124,15 @@ async def find_nearby(
                 distance_km=round(d, 2),
                 ring_points=pts,
                 affinity=proximity_affinity(center, other),
+                tier=tier_of(d),
+                graded_affinity=round(graded_affinity(center, other), 4),
                 approx_lat=approx.lat,
                 approx_lon=approx.lon,
             )
         )
 
-    matches.sort(key=lambda m: (-m.affinity, m.distance_km))
+    # Graded weight first (near-flat tiers 1–3 tie often), then raw distance.
+    matches.sort(key=lambda m: (-m.graded_affinity, m.distance_km))
     return matches[: max(1, min(limit, 100))]
 
 

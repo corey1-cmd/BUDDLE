@@ -107,6 +107,74 @@ def within_match_range(
     return haversine_km(a, b) <= max(rings)
 
 
+# ── Graded tier weights: logistic head (1–6) + C¹ exponential tail (7–10) ──
+#
+# "지역 → 도시 → 나라 → 세계"의 10단계에서, 매칭 가중은 두 요구를 동시에
+# 만족해야 한다: ① 아주 가까운 사람만 독식하지 않을 것(1~3단계는 거의 동급),
+# ② 멀수록 대화 방식·주제가 갈리므로 완만히, 그러나 0이 되지는 않게 감쇠할 것
+# (나라 간 매칭도 '가능하되 희귀'해야 세계 확장 서사가 산다).
+#
+#   1–6단계  f(k) = σ(a·(k0 − k))        하강 로지스틱 — 근거리 평탄부 + 중간 변곡
+#   7–10단계 g(k) = f(6)·e^(−λ(k−6))     지수 꼬리 — 0에 닿지 않는 장거리 감쇠
+#
+# 두 조각은 k=6에서 값과 기울기가 모두 일치한다(C¹). 로지스틱의 도함수가
+# f' = −a·f·(1−f) 이므로 λ = a·(1 − f(6)) 로 잡으면 닫힌형으로 정확히 이어진다
+# — 수치 맞춤 없이 파라미터(a, k0)만으로 연속성이 보장된다.
+
+_TIER_SPLIT = 6  # 1..6 = 로지스틱(지역~광역), 7..10 = 지수 꼬리(도시간~나라간)
+_TIER_STEEPNESS = 0.9  # a — 클수록 변곡이 가파름
+_TIER_MIDPOINT = 4.5  # k0 — 변곡 위치(4~5단계 사이)
+
+
+def tier_of(distance_km: float, rings: tuple[float, ...] = RADIUS_RINGS_KM) -> int:
+    """Distance -> tier 1(가장 근접)..len(rings)(가장 원거리); 범위 밖 = 0.
+
+    Tier k = the k-th smallest ring that still contains the distance, so the
+    innermost containing ring decides the tier (boundary counts as inside).
+    """
+    if distance_km < 0:
+        return 0
+    for idx, r in enumerate(sorted(rings)):
+        if distance_km <= r:
+            return idx + 1
+    return 0  # outside the largest ring — not matchable
+
+
+def tier_weight(
+    k: float,
+    *,
+    steepness: float = _TIER_STEEPNESS,
+    midpoint: float = _TIER_MIDPOINT,
+    split: int = _TIER_SPLIT,
+) -> float:
+    """Match weight for tier k (real-valued OK) in (0, 1).
+
+    k <= split: falling logistic. k > split: exponential tail joined with C¹
+    continuity at the split (value AND slope match — see module comment).
+    k < 1 clamps to tier 1; k <= 0 -> 0 (out of range).
+    """
+    if k <= 0:
+        return 0.0
+    k = max(1.0, k)
+    if k <= split:
+        return 1.0 / (1.0 + math.exp(steepness * (k - midpoint)))
+    f_split = 1.0 / (1.0 + math.exp(steepness * (split - midpoint)))
+    lam = steepness * (1.0 - f_split)  # C¹: g'(split) = f'(split)
+    return f_split * math.exp(-lam * (k - split))
+
+
+def graded_affinity(a: GeoPoint, b: GeoPoint, rings: tuple[float, ...] = RADIUS_RINGS_KM) -> float:
+    """Tier-weighted proximity in [0, 1] — 1.0 at tier 1, 0.0 out of range.
+
+    Normalized by the tier-1 weight so the closest tier anchors the scale;
+    ordering across tiers follows tier_weight's logistic+tail shape.
+    """
+    k = tier_of(haversine_km(a, b), rings)
+    if k == 0:
+        return 0.0
+    return tier_weight(float(k)) / tier_weight(1.0)
+
+
 # Privacy helper: even though exact coordinates are STORED (precision choice),
 # what we EXPOSE to other users/clients is generalized — a coarse grid cell —
 # so a peer can never read someone's exact location. Storing precise + exposing
