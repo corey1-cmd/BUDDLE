@@ -108,6 +108,7 @@ data/              caution_lexicon.json (유의어 사전, 핫리로드)
 workers/           백그라운드 작업
 
 web/               정적 프로토타입 (login/feed/chat/admin/profile/debate/bookmarks/notifications …) — main.py가 / 에 마운트
+app/               Flutter 안드로이드 앱 (베타 7화면 + 위치 매칭) — app/README.md 참고
 migrations/versions/  Alembic 0001 … 0023
 tests/             unit/ (순수, DB無) · integration/ (testcontainers pgvector) · verification/
 ```
