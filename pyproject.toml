@@ -133,6 +133,15 @@ ignore_missing_imports = true
 module = ["torch.*", "transformers.*", "peft.*", "sentence_transformers.*", "pgvector.*"]
 ignore_missing_imports = true
 
+# transformers/peft are untyped at runtime: when the [embeddings] extra is
+# installed (CI runs --all-extras) their real modules surface and strict
+# no-untyped-call fires on calls like model.eval(); without the extra the
+# modules are missing and the call is Any. Relax just the adapter module so
+# the verdict doesn't depend on which extras happen to be installed.
+[[tool.mypy.overrides]]
+module = ["buddle.ai.personas.local_hf"]
+disallow_untyped_calls = false
+
 # SQLAlchemy 2.0 Core expression language (select().join().where(), func.*,
 # session.get()) is highly dynamic; mypy stubs produce false positives on
 # valid chained expressions. We relax those specific codes in the data-access
