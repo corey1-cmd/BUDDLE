@@ -583,6 +583,14 @@ Intro 스펙의 피드 상호작용(좋아요, 댓글, 토론장 입장, **저�
 
 테스트 `test_bookmarks_notifications.py`(13개: 멱등성, 알림 생성/스코프/자기행동 제외, 검색 이스케이프, 트렌딩 집계).
 
+## 뉴스 사용자 읽기 API + 프로덕션 배포 (베타 Phase 1·2)
+
+안드로이드 베타 스펙([specs/2026-06-28-buddle-android-beta-design.md](docs/superpowers/specs/2026-06-28-buddle-android-beta-design.md)) §5의 백엔드 변경:
+
+- **뉴스 읽기 API(사용자)**: `GET /v1/news/briefings[?tag=]`, `GET /v1/news/digest` — 파이프라인은 관리자/스케줄러 전용 유지, 캐시 결과만 노출. **권리엔진 필드 필터**를 응답 모델로 강제: 제목+링크+매체명+우리 요약(gist)+태그만 나가고 내부 필드(ekb_briefing/relevance/stub)는 구조적으로 누출 불가. 테스트 `test_news_user_read.py`(6개).
+- **공개 RSS 기본 소스 확장**: Guardian·BBC·The Verge·Ars Technica 공식 피드 추가(본문 미수집, 스니펫→우리 말 요약).
+- **프로덕션 배포 구성**: `docker-compose.prod.yml`(api+redis+**Caddy 자동 TLS**, DB=Supabase 외부, api 비노출) + `ops/deploy/Caddyfile` + `.env.production.example`(★ 항목 채우기) + **런북 [docs/guides/DEPLOY_ORACLE.md](docs/guides/DEPLOY_ORACLE.md)** — Oracle VM에 SSH 되는 순간부터 `/health` 200까지. Dockerfile `INSTALL_EXTRAS` 빌드 인자로 BGE-M3 임베딩(extras `embeddings`) 선택 설치.
+
 ## 위치 기반 근접 매칭 (LBS 변형)
 
 지리적으로 가까운 사람끼리 문화·관심사·대화 주제가 겹친다는 통찰(토블러 제1법칙: "가까운 것이 더 관련 있다")을 매칭에 반영. 클라우드 인프라 지원사업(위치기반서비스 대상)에 부합하는 변형. `ai/geo/` + `services/proximity_service.py`.

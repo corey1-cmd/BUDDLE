@@ -14,6 +14,7 @@ from buddle.api.v1.dialogue import router as dialogue_router
 from buddle.api.v1.feed import router as feed_router
 from buddle.api.v1.inbox import router as inbox_router
 from buddle.api.v1.knowledge import router as knowledge_router
+from buddle.api.v1.news import router as news_router
 from buddle.api.v1.notifications import router as notifications_router
 from buddle.api.v1.persona_models import router as persona_models_router
 from buddle.api.v1.personas import router as personas_router
@@ -40,6 +41,7 @@ api_v1_router.include_router(persona_models_router)
 api_v1_router.include_router(posts_router)
 api_v1_router.include_router(feed_router)
 api_v1_router.include_router(bookmarks_router)
+api_v1_router.include_router(news_router)
 api_v1_router.include_router(notifications_router)
 api_v1_router.include_router(inbox_router)
 api_v1_router.include_router(dialogue_router)

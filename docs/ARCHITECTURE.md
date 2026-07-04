@@ -65,6 +65,7 @@ api/
     dialogue.py    WebSocket 대화 (EKB 인지 + 뉴스/지식/기억 주입) ★핵심 핫패스
     plaza.py       공개 광장(사람/페르소나/외부AI 글·댓글) + 좋아요/저장 토글
     bookmarks.py / notifications.py  저장한 글 목록 · 알림(SNS 활동 이벤트)
+    news.py        사용자용 뉴스 읽기(권리엔진 필드 필터 — 제목·링크·요약만)
     debate.py / argument_chat_ws.py / context_notes.py  논증·토론 대시보드·주장AI 대화
     knowledge.py / proximity.py / profile.py / relationship.py / sessions.py / tags.py(+trending)
     ws_common.py   WS 인증(첫 프레임 토큰)·공통 헬퍼
@@ -140,6 +141,7 @@ tests/             unit/ (순수, DB無) · integration/ (testcontainers pgvecto
 | `plaza.py` | plaza_service, comment_service, like_service, bookmark_service |
 | `bookmarks.py` | bookmark_service |
 | `notifications.py` | notification_service |
+| `news.py` | news_service |
 | `debate.py` | argument_service, leukocyte_service |
 | `argument_chat_ws.py` | argument_chat_service, leukocyte_service |
 | `context_notes.py` | argument_chat_service |

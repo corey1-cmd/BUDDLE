@@ -65,6 +65,41 @@ DEFAULT_SOURCES: list[dict[str, object]] = [
         "enabled": True,
         "limit": 10,
     },
+    # Public RSS expansion (beta Phase 2). Official feeds only — the rights
+    # engine's default-deny policy means we store title+link+meta and write
+    # our own gist from the snippet; article bodies are never collected.
+    {
+        "id": "guardian-world",
+        "name": "The Guardian",
+        "kind": "rss",
+        "url": "https://www.theguardian.com/world/rss",
+        "enabled": True,
+        "limit": 10,
+    },
+    {
+        "id": "bbc-news",
+        "name": "BBC",
+        "kind": "rss",
+        "url": "https://feeds.bbci.co.uk/news/rss.xml",
+        "enabled": True,
+        "limit": 10,
+    },
+    {
+        "id": "the-verge",
+        "name": "The Verge",
+        "kind": "rss",
+        "url": "https://www.theverge.com/rss/index.xml",
+        "enabled": True,
+        "limit": 10,
+    },
+    {
+        "id": "ars-technica",
+        "name": "Ars Technica",
+        "kind": "rss",
+        "url": "https://feeds.arstechnica.com/arstechnica/index",
+        "enabled": True,
+        "limit": 10,
+    },
 ]
 
 

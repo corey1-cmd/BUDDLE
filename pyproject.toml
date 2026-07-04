@@ -39,6 +39,11 @@ observability = [
 korean = [
     "kiwipiepy>=0.18",
 ]
+# 프로덕션 임베딩(BGE-M3, CPU 자체 구동): EMBEDDING_PROVIDER=sentence_transformers 배포에서만.
+# 미설치 시 stub 폴백으로 동작한다(품질만 하락, 기능 무중단).
+embeddings = [
+    "sentence-transformers>=3.0",
+]
 
 [dependency-groups]
 dev = [

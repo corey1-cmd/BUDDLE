@@ -1,0 +1,94 @@
+# 프로덕션 compose — Oracle Cloud A1 ARM VM (베타 아키텍처, 스펙 §2)
+#
+#   [인터넷] → Caddy(80/443, 자동 TLS) → FastAPI(내부 8000) → Redis(내부)
+#                                              └→ Supabase Postgres (외부, DATABASE_URL)
+#
+# dev용 docker-compose.yml과 분리된 독립 파일이다:
+#   - postgres 서비스 없음 (DB = Supabase)
+#   - api를 호스트에 직접 노출하지 않음 (Caddy만 80/443 개방)
+#   - 소스 볼륨 마운트/--reload 없음 (이미지 = 불변 아티팩트)
+#
+# 사용:
+#   cp .env.production.example .env.production   # 값 채우기 (배포 가이드 참고)
+#   docker compose --env-file .env.production -f docker-compose.prod.yml up -d --build
+#   (--env-file은 ${BUDDLE_DOMAIN} 같은 이 파일 안의 변수 치환에도 쓰인다)
+#
+# 가이드: docs/guides/DEPLOY_ORACLE.md
+
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: buddle-redis
+    restart: unless-stopped
+    # 호스트 포트 미개방 — 내부 네트워크 전용
+    volumes:
+      - redisdata:/data
+    command: ["redis-server", "--appendonly", "yes"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        # BGE-M3 임베딩(sentence_transformers) + 한국어 형태소(kiwipiepy).
+        # 첫 빌드는 torch 때문에 오래 걸린다(ARM에서 수십 분 가능).
+        INSTALL_EXTRAS: "embeddings korean"
+    container_name: buddle-api
+    restart: unless-stopped
+    env_file:
+      - .env.production
+    environment:
+      SCHEDULER_ENABLED: ${SCHEDULER_ENABLED:-true}
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4
+    # 호스트 포트 미개방 — Caddy가 유일한 진입점
+    expose:
+      - "8000"
+    depends_on:
+      redis:
+        condition: service_healthy
+    volumes:
+      # HF 모델 캐시(BGE-M3 ~2GB): 재시작/재배포 때 재다운로드 방지
+      - hfcache:/root/.cache/huggingface
+    command: >
+      sh -c "
+        alembic upgrade head &&
+        uvicorn buddle.main:app --host 0.0.0.0 --port 8000
+      "
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://127.0.0.1:8000/health')"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: buddle-caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp" # HTTP/3
+    environment:
+      # 예: 123.45.67.89.sslip.io (VM 공인 IP 기반 무료 도메인) 또는 커스텀 도메인
+      BUDDLE_DOMAIN: ${BUDDLE_DOMAIN:?set BUDDLE_DOMAIN, e.g. 1.2.3.4.sslip.io}
+    volumes:
+      - ./ops/deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddydata:/data
+      - caddyconfig:/config
+    depends_on:
+      api:
+        condition: service_healthy
+
+volumes:
+  redisdata:
+  hfcache:
+  caddydata:
+  caddyconfig:

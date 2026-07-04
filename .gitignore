@@ -72,3 +72,6 @@ docker-volumes/
 id_ed25519*
 id_rsa*
 *.env
+
+# 프로덕션 시크릿 (커밋 금지 — 예제는 .env.production.example)
+.env.production
