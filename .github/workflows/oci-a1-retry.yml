@@ -1,0 +1,105 @@
+name: OCI A1 capacity retry
+
+# Oracle 도쿄 AD-1의 A1.Flex(무료) 용량이 열리는 순간 인스턴스를 자동 생성한다.
+# 24/7(스케줄) 시도 → 잡히면 ops/oci-instance.txt 에 Public IP 기록(어느 세션이든 pull로 확인).
+# 이미 buddle-api 인스턴스가 있으면 새로 만들지 않는다(중복 방지).
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"   # 15분마다 (GitHub 스케줄은 지연될 수 있음)
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+concurrency:
+  group: oci-a1-retry
+  cancel-in-progress: false
+
+jobs:
+  launch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup OCI CLI
+        env:
+          OCI_PRIVATE_KEY: ${{ secrets.OCI_PRIVATE_KEY }}
+          OCI_USER_OCID: ${{ secrets.OCI_USER_OCID }}
+          OCI_FINGERPRINT: ${{ secrets.OCI_FINGERPRINT }}
+          OCI_TENANCY_OCID: ${{ secrets.OCI_TENANCY_OCID }}
+          OCI_REGION: ${{ secrets.OCI_REGION }}
+        run: |
+          pip install --quiet oci-cli
+          mkdir -p ~/.oci
+          printf '%s' "$OCI_PRIVATE_KEY" > ~/.oci/key.pem
+          chmod 600 ~/.oci/key.pem
+          {
+            echo "[DEFAULT]"
+            echo "user=$OCI_USER_OCID"
+            echo "fingerprint=$OCI_FINGERPRINT"
+            echo "tenancy=$OCI_TENANCY_OCID"
+            echo "region=$OCI_REGION"
+            echo "key_file=$HOME/.oci/key.pem"
+          } > ~/.oci/config
+
+      - name: Launch A1 (or report existing)
+        env:
+          COMP: ${{ secrets.OCI_COMPARTMENT_OCID }}
+          AD: ${{ secrets.OCI_AD }}
+          IMAGE: ${{ secrets.OCI_IMAGE_OCID }}
+          SUBNET: ${{ secrets.OCI_SUBNET_OCID }}
+          SSH_PUBKEY: ${{ secrets.SSH_PUBKEY }}
+          SUPPRESS_LABEL_WARNING: "True"
+        run: |
+          set +e
+          # 이미 인스턴스가 있나? (TERMINATED 제외)
+          EXIST=$(oci compute instance list --compartment-id "$COMP" --display-name buddle-api \
+                    --query "data[?\"lifecycle-state\"!='TERMINATED'].id | [0]" --raw-output 2>/dev/null)
+          if [ -n "$EXIST" ] && [ "$EXIST" != "null" ]; then
+            echo "instance already exists: $EXIST"
+            INST="$EXIST"
+          else
+            OUT=$(oci compute instance launch \
+              --availability-domain "$AD" --compartment-id "$COMP" \
+              --shape VM.Standard.A1.Flex --shape-config '{"ocpus":1,"memoryInGBs":6}' \
+              --image-id "$IMAGE" --subnet-id "$SUBNET" --assign-public-ip true \
+              --display-name buddle-api \
+              --metadata "{\"ssh_authorized_keys\":\"$SSH_PUBKEY\"}" \
+              --query 'data.id' --raw-output 2>&1)
+            RC=$?
+            if [ $RC -ne 0 ]; then
+              if echo "$OUT" | grep -qiE 'out of (host )?capacity|capacity|too ?many|429|throttl|InternalError'; then
+                echo "::notice::still no A1 capacity — will retry next scheduled run"
+                exit 0
+              fi
+              echo "::warning::unexpected launch error:"; echo "$OUT" | tail -c 600
+              exit 0
+            fi
+            INST="$OUT"
+            echo "::notice::LAUNCHED instance $INST"
+          fi
+
+          # Public IP 획득 (VNIC 붙을 때까지 대기)
+          IP=""
+          for i in $(seq 1 20); do
+            IP=$(oci compute instance list-vnics --instance-id "$INST" --query 'data[0]."public-ip"' --raw-output 2>/dev/null)
+            case "$IP" in
+              [0-9]*.[0-9]*.[0-9]*.[0-9]*) break ;;
+            esac
+            sleep 15
+          done
+          echo "PUBLIC_IP=$IP"
+
+          # repo에 마커 기록 (어느 세션이든 확인 가능)
+          mkdir -p ops
+          printf 'instance=%s\npublic_ip=%s\nacquired_at=%s\n' "$INST" "$IP" "$(date -u +%FT%TZ)" > ops/oci-instance.txt
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git fetch origin main -q && git rebase origin/main -q 2>/dev/null || true
+          if ! git diff --quiet -- ops/oci-instance.txt 2>/dev/null || [ -n "$(git status --porcelain ops/oci-instance.txt)" ]; then
+            git add ops/oci-instance.txt
+            git commit -m "ops: OCI A1 instance acquired ($IP) [skip ci]" || true
+            git push origin HEAD:main || true
+          fi
+          echo "::notice::DONE — instance $INST, IP $IP recorded to ops/oci-instance.txt"
