@@ -30,3 +30,9 @@ class UserUpdate(BaseModel):
     email: EmailStr | None = None
     current_password: str | None = Field(default=None, min_length=1, max_length=128)
     new_password: str | None = Field(default=None, min_length=8, max_length=128)
+
+
+class AccountDeleteRequest(BaseModel):
+    """Confirm account deletion with the current password (deliberate action)."""
+
+    password: str = Field(min_length=1, max_length=128)

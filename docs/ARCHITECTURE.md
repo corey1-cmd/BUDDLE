@@ -133,7 +133,7 @@ tests/             unit/ (순수, DB無) · integration/ (testcontainers pgvecto
 | 라우트 (`api/v1/`) | 호출 서비스 |
 |---|---|
 | `auth.py` | auth_service |
-| `users.py` | user_service |
+| `users.py` | user_service (조회·수정·**계정 삭제**) |
 | `personas.py` | persona_service |
 | `posts.py` | post_service, argument_service, importance_service, leukocyte_service |
 | `feed.py` | post_service |

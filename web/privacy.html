@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>buddle 개인정보처리방침</title>
+<style>
+  body{font-family:system-ui,-apple-system,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;
+    max-width:760px;margin:0 auto;padding:32px 20px 80px;line-height:1.7;color:#1a1a1a;background:#fff;}
+  h1{font-size:26px;margin-bottom:4px;}
+  h2{font-size:18px;margin-top:32px;border-bottom:1px solid #eee;padding-bottom:6px;}
+  .updated{color:#888;font-size:13px;margin-bottom:24px;}
+  table{border-collapse:collapse;width:100%;margin:12px 0;font-size:14px;}
+  th,td{border:1px solid #ddd;padding:8px 10px;text-align:left;vertical-align:top;}
+  th{background:#f7f7f7;}
+  code{background:#f2f2f2;padding:1px 5px;border-radius:4px;font-size:13px;}
+  ul{padding-left:20px;}
+  @media (prefers-color-scheme:dark){
+    body{background:#141414;color:#e6e6e6;}
+    h2{border-color:#333;} th{background:#1f1f1f;} th,td{border-color:#333;}
+    code{background:#222;}
+  }
+</style>
+</head>
+<body>
+<h1>buddle 개인정보처리방침</h1>
+<p class="updated">시행일: 2026-07-05 · 클로즈드 베타</p>
+
+<p>buddle(이하 "서비스")은 사람과 사람 사이의 대화를 AI가 매개하는 소셜 서비스입니다.
+본 방침은 서비스가 수집하는 개인정보와 그 이용·보관·파기, 이용자의 권리를 설명합니다.
+현재 서비스는 <strong>비공개 베타</strong> 단계입니다.</p>
+
+<h2>1. 수집하는 항목</h2>
+<table>
+  <tr><th>구분</th><th>항목</th><th>목적</th></tr>
+  <tr><td>계정</td><td>이메일, 비밀번호(단방향 해시로만 저장)</td><td>회원 식별·인증</td></tr>
+  <tr><td>활동</td><td>작성한 글·댓글, 좋아요·저장, 대화 내용</td><td>서비스 핵심 기능(피드·토론·글쓰기)</td></tr>
+  <tr><td>위치(선택)</td><td>위도·경도 (사용자가 명시적으로 켠 경우에만)</td><td>근처 사용자 매칭. 타인에게는 대략적 위치(약 1km 격자)만 노출</td></tr>
+  <tr><td>기술</td><td>접속 IP, 요청 로그, 기기·브라우저 정보</td><td>보안(부정 로그인·남용 차단), 오류 대응</td></tr>
+</table>
+<p>비밀번호는 argon2로 해시하여 저장하며 평문을 보관하지 않습니다. 서비스는 주민등록번호 등
+고유식별정보를 수집하지 않습니다.</p>
+
+<h2>2. AI 처리 및 제3자(생성형 AI) 전송</h2>
+<p>대화형 글쓰기·게시글 이해·요약 기능을 위해, 이용자가 입력한 대화·글 텍스트가
+생성형 AI 제공자(예: Google Gemini API)로 전송되어 처리될 수 있습니다. 이 전송은 해당 기능을
+사용할 때만 발생하며, 국외 서버에서 처리될 수 있습니다. 서비스는 응답 생성에 필요한 범위의
+텍스트만 전송하고, 이메일·비밀번호 등 계정 식별정보는 전송하지 않습니다. 뉴스 화제는 공식 RSS의
+제목·링크·메타데이터만 사용하며 언론사 본문을 저장·재배포하지 않습니다.</p>
+
+<h2>3. 보관 및 파기</h2>
+<ul>
+  <li>개인정보는 회원 탈퇴 시 지체 없이 파기합니다.</li>
+  <li>계정을 삭제하면 계정·페르소나·저장·알림·위치 정보가 삭제됩니다. 공개 게시글·댓글은
+      공적 담론 보존을 위해 남을 수 있으나 <strong>작성자 식별정보는 제거(비식별화)</strong>됩니다.</li>
+  <li>보안 이벤트 로그는 부정 이용 대응을 위해 관련 법령이 정한 기간 내에서 보관 후 파기합니다.</li>
+</ul>
+
+<h2>4. 이용자의 권리 — 열람·정정·삭제</h2>
+<p>이용자는 언제든 자신의 정보를 열람·수정하거나 계정을 삭제할 수 있습니다.</p>
+<ul>
+  <li><strong>앱 내 삭제:</strong> 앱 → 계정 → "계정 삭제" (비밀번호 확인 후 즉시 처리)</li>
+  <li><strong>웹/문의를 통한 삭제 요청:</strong> 아래 연락처로 요청 시 처리해 드립니다.</li>
+</ul>
+
+<h2>5. 안전성 확보 조치</h2>
+<ul>
+  <li>비밀번호 argon2 해싱, 전송구간 TLS 암호화(HTTPS/WSS)</li>
+  <li>접근 통제, 로그인 실패 잠금·레이트리밋, 시크릿 분리 저장</li>
+  <li>유해·위법 콘텐츠 자동 탐지 게이트 운영</li>
+</ul>
+
+<h2>6. 만 14세 미만 아동</h2>
+<p>서비스는 만 14세 미만 아동을 대상으로 하지 않으며, 해당 아동의 개인정보를 알면서
+수집하지 않습니다.</p>
+
+<h2>7. 연락처</h2>
+<p>개인정보 관련 문의·열람·삭제 요청: <code>corey426912@gmail.com</code></p>
+<p>본 방침은 법령·서비스 변경에 따라 개정될 수 있으며, 개정 시 본 페이지에 공지합니다.</p>
+</body>
+</html>

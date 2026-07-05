@@ -591,6 +591,14 @@ Intro 스펙의 피드 상호작용(좋아요, 댓글, 토론장 입장, **저�
 - **공개 RSS 기본 소스 확장**: Guardian·BBC·The Verge·Ars Technica 공식 피드 추가(본문 미수집, 스니펫→우리 말 요약).
 - **프로덕션 배포 구성**: `docker-compose.prod.yml`(api+redis+**Caddy 자동 TLS**, DB=Supabase 외부, api 비노출) + `ops/deploy/Caddyfile` + `.env.production.example`(★ 항목 채우기) + **런북 [docs/guides/DEPLOY_ORACLE.md](docs/guides/DEPLOY_ORACLE.md)** — Oracle VM에 SSH 되는 순간부터 `/health` 200까지. Dockerfile `INSTALL_EXTRAS` 빌드 인자로 BGE-M3 임베딩(extras `embeddings`) 선택 설치.
 
+
+
+## 출시 준비 — 계정 삭제 · 개인정보처리방침 (Play Phase 4)
+
+Google Play는 계정 생성 앱에 **인앱 계정 삭제**와 **개인정보처리방침 URL**을 의무화한다.
+- **계정 삭제** `DELETE /v1/users/me`: 비밀번호 확인 후 계정·개인데이터 파기, 리프레시 토큰 폐기. 페르소나/세션/좋아요/저장/알림은 CASCADE 삭제, 공개 글·댓글은 작성자 링크만 제거(비식별화)해 담론 보존. 앱은 계정 화면에서 인앱 삭제 제공. 테스트 `test_account_deletion.py`(4개).
+- **개인정보처리방침** `web/privacy.html`(백엔드 정적 서빙 → `https://<도메인>/privacy.html`): 수집 항목·생성형 AI 국외 전송 고지·삭제권.
+- **출시 체크리스트** [docs/guides/PLAY_LAUNCH_CHECKLIST.md](docs/guides/PLAY_LAUNCH_CHECKLIST.md): AAB 서명·데이터 안전 양식·콘텐츠 등급까지.
 ## 위치 기반 근접 매칭 (LBS 변형)
 
 지리적으로 가까운 사람끼리 문화·관심사·대화 주제가 겹친다는 통찰(토블러 제1법칙: "가까운 것이 더 관련 있다")을 매칭에 반영. 클라우드 인프라 지원사업(위치기반서비스 대상)에 부합하는 변형. `ai/geo/` + `services/proximity_service.py`.
