@@ -30,7 +30,9 @@ Oracle VM 없이 **완전 무료로 공개 HTTPS 링크**를 만드는 경로. �
 1. https://supabase.com → 로그인 → **New project** (리전은 가까운 곳, 예: Northeast Asia).
 2. 생성 시 정한 **Database Password**를 저장해 둔다.
 3. **Database → Extensions**에서 `vector` 를 검색해 **Enable**. (`pgcrypto`, `citext`는 기본 활성)
-4. **Project Settings → Database → Connection string → "Session pooler"** 를 복사.
+4. 프로젝트 대시보드 **맨 위의 `Connect` 버튼** 클릭 → 열리는 창에서
+   **연결문자열(Connection String / Direct) 탭** 선택 — Frameworks/ORMs/MCP 탭 아님.
+   아래로 내려 **"Session pooler"** 항목(호스트에 `pooler.supabase.com`, 포트 5432)을 복사.
    대략 이런 모양:
    ```
    postgresql://postgres.abcdefgh:PASSWORD@aws-1-ap-northeast-2.pooler.supabase.com:5432/postgres
