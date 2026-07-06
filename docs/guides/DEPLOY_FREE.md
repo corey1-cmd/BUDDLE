@@ -22,6 +22,11 @@ Oracle VM 없이 **완전 무료로 공개 HTTPS 링크**를 만드는 경로. �
 
 ## 1. Supabase — Postgres(pgvector)
 
+> **이미 `buddle` 프로젝트가 있으면 그걸 그대로 쓴다** (새로 만들지 말 것).
+> 이 프로젝트는 vector/pgcrypto/citext 확장과 스키마가 이미 올라가 있고, 모자란
+> 마이그레이션은 배포 시 `alembic upgrade head`가 자동 적용한다. 아래 1~3은
+> 프로젝트가 없는 경우에만 필요. **4번(연결문자열)부터 진행.**
+
 1. https://supabase.com → 로그인 → **New project** (리전은 가까운 곳, 예: Northeast Asia).
 2. 생성 시 정한 **Database Password**를 저장해 둔다.
 3. **Database → Extensions**에서 `vector` 를 검색해 **Enable**. (`pgcrypto`, `citext`는 기본 활성)
