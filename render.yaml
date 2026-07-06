@@ -14,9 +14,8 @@ services:
     plan: free
     dockerfilePath: ./Dockerfile
     dockerContext: .
-    # Dockerfile 기본 CMD엔 마이그레이션이 없다 → 여기서 alembic 먼저 돌린다.
-    # Render가 주입하는 $PORT 로 리슨해야 라우팅됨.
-    dockerCommand: sh -c "alembic upgrade head && uvicorn buddle.main:app --host 0.0.0.0 --port $PORT"
+    # 기동(마이그레이션→uvicorn, $PORT 존중)은 이미지의 CMD=start.sh 가 담당한다.
+    # dockerCommand 인라인 "sh -c" 는 Render가 통째로 한 명령으로 오해해 깨졌다.
     healthCheckPath: /health
     autoDeploy: false
     envVars:

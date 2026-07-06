@@ -29,7 +29,10 @@ COPY src ./src
 COPY migrations ./migrations
 COPY alembic.ini ./alembic.ini
 COPY web ./web
+COPY start.sh ./start.sh
 
 EXPOSE 8000
 
-CMD ["uvicorn", "buddle.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# start.sh: 마이그레이션 후 uvicorn 기동 ($PORT 존중 → Render/로컬 모두 동작).
+# dev compose 는 자체 command 로 이 CMD 를 덮어쓴다(--reload).
+CMD ["sh", "/app/start.sh"]
