@@ -4,56 +4,57 @@
    One stylesheet, linked by every page, so tokens never drift (they used to
    live in 10 inline :root blocks with 3 different font stacks).
 
-   Direction: an "aurora" gradient — blue → lavender → soft pink — as the
-   single signature brand device, carried on filled surfaces (buttons, avatars,
-   active pills, the wordmark) with a soft colored shadow underneath for a
-   tactile, dimensional pop. Background stays a calm warm white so the
-   gradient reads as a deliberate accent, not noise — full-bleed, minimal
-   dead space, no boxed-off hero panels.
+   Direction: fintech-dark ("terminal calm") — a near-black blue-cast ground,
+   raised graphite cards, bold tight-tracked sans headlines, and ONE signature
+   accent: a slightly shadowed navy (남색), carried on filled surfaces
+   (buttons, avatars, active pills, the wordmark) as a navy→deep-navy gradient
+   so the accent itself reads dimensional, like it sits in shadow.
 
    60-30-10:
-     60%  paper        near-white ground
-     30%  ink          text + structure (cool dark, near-black)
-     10%  accent grad   the one signature gradient — CTAs, avatars, active state
+     60%  paper        near-black blue-cast ground
+     30%  ink          text + structure (near-white on dark)
+     10%  accent grad   shadowed navy — CTAs, avatars, active state
    ========================================================================= */
 
 :root{
   /* ── 60 / 30 / 10 ─────────────────────────────────────────────────────── */
-  --paper:#FBFAF9;          /* base ground (60) */
-  --paper-raised:#FFFFFF;   /* cards / sheets lifted off the ground */
-  --paper-sunken:#F4F3FA;   /* wells, track backgrounds */
+  --paper:#0A0C12;          /* base ground (60) — near-black, blue cast */
+  --paper-raised:#12151E;   /* cards / sheets lifted off the ground */
+  --paper-sunken:#171B27;   /* wells, track backgrounds */
 
-  --ink:#272636;            /* primary text — cool near-black */
-  --ink-soft:#5C5A70;       /* secondary text */
-  --ink-faint:#908DA0;      /* tertiary / captions */
-  --line:#ECEAF3;           /* hairline dividers & borders */
-  --line-strong:#DDD9EC;
+  --ink:#EDEFF6;            /* primary text — near-white */
+  --ink-soft:#9BA3B8;       /* secondary text */
+  --ink-faint:#666E85;      /* tertiary / captions */
+  --line:#1E2230;           /* hairline dividers & borders */
+  --line-strong:#2B3044;
 
-  /* THE accent (10) — solid form, for text/icon/border contexts where a
-     gradient can't render (color:, border-color:, currentColor strokes). */
-  --willow:#5C7CF0;
-  --willow-press:#4863D6;   /* pressed/hover-darken */
-  --willow-wash:#EEF0FE;    /* faint accent fill (selected rows, chips) */
-  --willow-ring:rgba(92,124,240,.28); /* focus ring */
+  /* THE accent (10) — shadowed navy. Solid form, for text/icon/border
+     contexts where a gradient can't render (color:, border-color:, strokes).
+     Light enough to read on the dark ground, muted enough to feel shadowed. */
+  --willow:#5B72CC;
+  --willow-press:#4A5FB4;   /* pressed/hover-darken (fills only) */
+  --willow-text:#8FA2E8;    /* text/icon accent — lighter tint for dark ground */
+  --willow-wash:rgba(91,114,204,.14); /* faint accent fill (selected rows, chips) */
+  --willow-ring:rgba(91,114,204,.35); /* focus ring */
 
   /* THE signature gradient — filled surfaces only (buttons, avatars, active
-     pills, wordmark via background-clip:text). Blue → lavender → soft pink. */
-  --accent-grad:linear-gradient(135deg,#6F8FF5 0%,#A98DEE 55%,#F0AFDA 100%);
-  --accent-grad-2:linear-gradient(135deg,#7C9CF5 0%,#C2A0EE 100%);
-  --accent-grad-press:linear-gradient(135deg,#5A78E0 0%,#9078D6 55%,#E294C0 100%);
-  --shadow-pop:0 10px 22px rgba(108,100,225,.30),0 2px 8px rgba(108,100,225,.16),inset 0 1px 0 rgba(255,255,255,.45);
-  --shadow-pop-sm:0 5px 14px rgba(108,100,225,.26),inset 0 1px 0 rgba(255,255,255,.45);
+     pills, wordmark via background-clip:text). Navy sinking into shadow. */
+  --accent-grad:linear-gradient(135deg,#5B72CC 0%,#3D4C96 55%,#242E5C 100%);
+  --accent-grad-2:linear-gradient(135deg,#5B72CC 0%,#333F7D 100%);
+  --accent-grad-press:linear-gradient(135deg,#4A5FB4 0%,#333F7D 55%,#1D2549 100%);
+  --shadow-pop:0 10px 24px rgba(9,14,38,.6),0 2px 8px rgba(0,0,0,.45),inset 0 1px 0 rgba(255,255,255,.08);
+  --shadow-pop-sm:0 5px 14px rgba(9,14,38,.55),inset 0 1px 0 rgba(255,255,255,.08);
 
   /* Semantic data pair — used ONLY for debate stance (찬성/반대), deliberately
-     DECOUPLED from the brand gradient so position-taking reads as data, not
+     DECOUPLED from the brand accent so position-taking reads as data, not
      brand chrome. Desaturated, never the old red/blue trading dichotomy. */
-  --pos:#3D8A6B;            /* 찬성 — growth green */
-  --pos-wash:#EAF3EF;
-  --caution:#B4734A;        /* 반대 — muted clay, never alarm-red */
-  --caution-wash:#F6EDE6;
+  --pos:#4FC98F;            /* 찬성 — growth green (dark-ground tuned) */
+  --pos-wash:rgba(79,201,143,.12);
+  --caution:#D98E63;        /* 반대 — muted clay, never alarm-red */
+  --caution-wash:rgba(217,142,99,.12);
 
-  /* ── type ─────────────────────────────────────────────────────────────── */
-  --display:"Fraunces",Georgia,serif;          /* warm serif — humanity */
+  /* ── type — one grotesk everywhere, headlines by weight not by face ────── */
+  --display:"Spline Sans",system-ui,-apple-system,sans-serif;
   --body:"Spline Sans",system-ui,-apple-system,sans-serif;
   --mono:"Spline Sans",system-ui,sans-serif;   /* data: same face, tabular */
 
@@ -70,9 +71,9 @@
 
   /* ── form ─────────────────────────────────────────────────────────────── */
   --r-sm:10px; --r:14px; --r-lg:20px; --r-pill:999px;
-  --shadow-sm:0 1px 2px rgba(40,38,60,.05), 0 1px 3px rgba(40,38,60,.07);
-  --shadow:0 2px 8px rgba(40,38,60,.06), 0 8px 24px rgba(40,38,60,.07);
-  --shadow-lg:0 12px 40px rgba(40,38,60,.12);
+  --shadow-sm:0 1px 2px rgba(0,0,0,.35), 0 1px 3px rgba(0,0,0,.28);
+  --shadow:0 2px 8px rgba(0,0,0,.35), 0 8px 24px rgba(0,0,0,.3);
+  --shadow-lg:0 12px 40px rgba(0,0,0,.5);
 
   /* ── motion — calm, never bouncy ──────────────────────────────────────── */
   --ease:cubic-bezier(.22,.61,.36,1);
@@ -89,6 +90,7 @@ body{
   font-family:var(--body);
   font-size:var(--t-body);
   line-height:1.55;
+  letter-spacing:-.01em;    /* tight tracking, everywhere */
   color:var(--ink);
   background:var(--paper);
   -webkit-font-smoothing:antialiased;
@@ -122,10 +124,10 @@ body{
 }
 
 /* ── Typography primitives ──────────────────────────────────────────────── */
-.bd-eyebrow{font-size:var(--t-xs);font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-faint);}
-.bd-display{font-family:var(--display);font-weight:600;font-size:var(--t-display);line-height:1.12;letter-spacing:-.01em;color:var(--ink);}
-h1,.bd-h1{font-family:var(--display);font-weight:600;font-size:var(--t-h1);line-height:1.2;letter-spacing:-.01em;color:var(--ink);}
-h2,.bd-h2{font-size:var(--t-h2);font-weight:600;color:var(--ink);}
+.bd-eyebrow{font-size:var(--t-xs);font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-faint);}
+.bd-display{font-family:var(--display);font-weight:700;font-size:var(--t-display);line-height:1.12;letter-spacing:-.035em;color:var(--ink);}
+h1,.bd-h1{font-family:var(--display);font-weight:700;font-size:var(--t-h1);line-height:1.2;letter-spacing:-.03em;color:var(--ink);}
+h2,.bd-h2{font-size:var(--t-h2);font-weight:600;letter-spacing:-.02em;color:var(--ink);}
 .bd-muted{color:var(--ink-soft);}
 .bd-faint{color:var(--ink-faint);}
 .bd-num{font-variant-numeric:tabular-nums;}
@@ -145,7 +147,7 @@ h2,.bd-h2{font-size:var(--t-h2);font-weight:600;color:var(--ink);}
 .bd-btn--primary:hover{background:var(--accent-grad-press);}
 .bd-btn--ghost{background:transparent;border-color:transparent;color:var(--ink-soft);}
 .bd-btn--ghost:hover{background:var(--paper-sunken);color:var(--ink);}
-.bd-btn--danger{background:var(--caution-wash);border-color:transparent;color:#8C4A28;}
+.bd-btn--danger{background:var(--caution-wash);border-color:transparent;color:#E8A87E;}
 .bd-btn--block{width:100%;}
 .bd-btn:disabled{opacity:.45;cursor:default;transform:none;}
 
@@ -156,7 +158,7 @@ h2,.bd-h2{font-size:var(--t-h2);font-weight:600;color:var(--ink);}
 
 /* ── Chips / tags ───────────────────────────────────────────────────────── */
 .bd-chip{display:inline-flex;align-items:center;gap:6px;font-size:var(--t-sm);font-weight:500;color:var(--ink-soft);background:var(--paper-sunken);border:1px solid var(--line);border-radius:var(--r-pill);padding:6px 12px;transition:background var(--dur) var(--ease),color var(--dur) var(--ease),border-color var(--dur) var(--ease);}
-.bd-chip--on{background:var(--willow-wash);border-color:transparent;color:var(--willow-press);}
+.bd-chip--on{background:var(--willow-wash);border-color:transparent;color:var(--willow-text);}
 .bd-chip[role=button],a.bd-chip{cursor:pointer;}
 .bd-chip[role=button]:hover,a.bd-chip:hover{border-color:var(--line-strong);}
 
@@ -184,8 +186,8 @@ h2,.bd-h2{font-size:var(--t-h2);font-weight:600;color:var(--ink);}
 
 /* ── Badges ─────────────────────────────────────────────────────────────── */
 .bd-badge{font-size:var(--t-xs);font-weight:600;border-radius:var(--r-pill);padding:5px 10px;background:var(--paper-sunken);color:var(--ink-soft);border:1px solid var(--line);}
-.bd-badge--accent{background:var(--willow-wash);color:var(--willow-press);border-color:transparent;}
-.bd-badge--caution{background:var(--caution-wash);color:#8C4A28;border-color:transparent;}
+.bd-badge--accent{background:var(--willow-wash);color:var(--willow-text);border-color:transparent;}
+.bd-badge--caution{background:var(--caution-wash);color:#E8A87E;border-color:transparent;}
 
 /* ── Persona avatar — one signature gradient mark, everywhere ──────────────
    Every persona reads as the same brand identity; only the initial differs.
@@ -197,7 +199,7 @@ h2,.bd-h2{font-size:var(--t-h2);font-weight:600;color:var(--ink);}
   position:fixed;left:50%;transform:translateX(-50%);bottom:0;z-index:40;
   width:100%;max-width:var(--phone-max);
   display:flex;justify-content:space-around;align-items:center;
-  background:rgba(251,251,250,.86);backdrop-filter:saturate(180%) blur(14px);
+  background:rgba(10,12,18,.85);backdrop-filter:saturate(180%) blur(14px);
   border-top:1px solid var(--line);
   padding:var(--s2) var(--s2) calc(var(--s2) + env(safe-area-inset-bottom));
 }
@@ -221,7 +223,7 @@ h2,.bd-h2{font-size:var(--t-h2);font-weight:600;color:var(--ink);}
 .bd-empty p{color:var(--ink-soft);font-size:var(--t-sm);max-width:32ch;margin:0 auto var(--s4);}
 
 /* ── Section heading ────────────────────────────────────────────────────── */
-.bd-sec-title{font-size:var(--t-sm);font-weight:600;letter-spacing:.02em;color:var(--ink-faint);margin-bottom:var(--s3);}
+.bd-sec-title{font-size:var(--t-sm);font-weight:600;letter-spacing:0;color:var(--ink-faint);margin-bottom:var(--s3);}
 
 /* ── Scroll-reveal (progressive enhancement; no-JS shows everything) ─────────
    Fail-safe: .bd-reveal is visible by default. Only when JS confirms it can
@@ -269,8 +271,8 @@ h2,.bd-h2{font-size:var(--t-h2);font-weight:600;color:var(--ink);}
   --navy:var(--ink);
   --navy-700:var(--ink);
   --dusk:var(--ink-soft);
-  --gold:var(--willow-press);     /* icon/text accent (audited: never "caution") */
-  --coral:var(--willow);          /* selected/active/liked indicator (audited: never "caution") */
+  --gold:var(--willow-text);      /* icon/text accent (audited: never "caution") */
+  --coral:#7D90DE;                /* selected/active/liked indicator (audited: never "caution") */
 
   /* gradients: the signature aurora gradient, everywhere a "rich" gradient
      was requested (heroes, avatars, primary buttons). */

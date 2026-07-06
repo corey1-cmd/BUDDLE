@@ -11,12 +11,12 @@
 <style>
   /* debate dashboard — all tokens from buddle.css */
   .bd-phone{padding:0;}
-  .top{position:sticky;top:0;z-index:20;background:rgba(251,251,250,.92);backdrop-filter:saturate(180%) blur(12px);border-bottom:1px solid var(--line);padding:var(--s4) var(--s4) var(--s3);}
+  .top{position:sticky;top:0;z-index:20;background:rgba(13,16,24,.92);backdrop-filter:saturate(180%) blur(12px);border-bottom:1px solid var(--line);padding:var(--s4) var(--s4) var(--s3);}
   .top .row{display:flex;align-items:center;gap:var(--s3);}
   .top .back{width:38px;height:38px;border-radius:var(--r-sm);border:1px solid var(--line);background:var(--paper-raised);display:grid;place-items:center;cursor:pointer;flex:none;color:var(--ink);text-decoration:none;}
   .top .back svg{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:2;}
   .top .titles{flex:1;min-width:0;}
-  .top .eyebrow{font-size:var(--t-xs);font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--willow);}
+  .top .eyebrow{font-size:var(--t-xs);font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--willow);}
   .top h1{font-family:var(--display);font-weight:600;font-size:var(--t-h1);color:var(--ink);line-height:1.15;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 
   .wrap{padding:var(--s4);}
@@ -62,7 +62,7 @@
   .gr .talk{margin-left:auto;font-size:var(--t-xs);font-weight:600;color:var(--willow);background:none;border:0;cursor:pointer;display:flex;align-items:center;gap:4px;}
   .gr .talk svg{width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:2;}
 
-  .badge-demo{font-size:var(--t-xs);font-weight:600;color:#9a6b00;background:#fff3d6;border:1px solid #f0deae;border-radius:var(--r-pill);padding:4px 10px;}
+  .badge-demo{font-size:var(--t-xs);font-weight:600;color:#E5B85C;background:rgba(229,184,92,.12);border:1px solid rgba(229,184,92,.3);border-radius:var(--r-pill);padding:4px 10px;}
   .note{font-size:var(--t-xs);color:var(--ink-faint);line-height:1.6;margin-top:var(--s4);padding:var(--s3);background:var(--paper-sunken);border-radius:var(--r);}
 
   /* ── 논증 그래프 (Kialo식 들여쓰기 트리) ───────────────────── */
@@ -78,9 +78,9 @@
   .gclaim{display:flex;align-items:flex-start;gap:10px;}
   .gclaim .gc-body{flex:1;min-width:0;}
   .gdim{display:inline-flex;align-items:center;gap:5px;font-size:10.5px;font-weight:700;letter-spacing:.02em;padding:3px 9px;border-radius:var(--r-pill);margin-bottom:6px;}
-  .gdim.problem{background:#FBEEE6;color:#9A5A38;}
-  .gdim.cause{background:#FBF3E0;color:#8A6B2E;}
-  .gdim.solution{background:var(--pos-wash);color:#2A6B51;}
+  .gdim.problem{background:rgba(217,142,99,.14);color:#D9A088;}
+  .gdim.cause{background:rgba(229,184,92,.12);color:#D9B36A;}
+  .gdim.solution{background:var(--pos-wash);color:#6FD9A6;}
   .gdim.claim{background:var(--willow-wash);color:var(--willow-press);}
   .gclaim-text{font-size:15px;line-height:1.45;color:var(--ink);font-weight:600;}
   .gnum{flex:none;width:26px;height:26px;border-radius:9px;display:grid;place-items:center;font-family:var(--display);font-weight:700;font-size:13px;color:#fff;background:var(--accent-grad);box-shadow:var(--shadow-pop-sm);}
@@ -90,10 +90,10 @@
   .gnode{position:relative;border-radius:12px;padding:9px 12px;font-size:13.5px;line-height:1.4;}
   .gnode::before{content:"";position:absolute;left:-15px;top:18px;width:11px;height:2px;background:var(--line);}
   .gnode.ground{background:#EFF3FF;border:1px solid #DCE4FB;color:#2E4374;}
-  .gnode.ground .glabel{color:#5C7CF0;}
-  .gnode.rebuttal{background:#FBEEE8;border:1px solid #F2DACE;color:#7A4A30;}
-  .gnode.rebuttal .glabel{color:#B4734A;}
-  .gnode.evidence{background:var(--pos-wash);border:1px solid #CDE5D9;color:#2A6B51;margin-left:14px;}
+  .gnode.ground .glabel{color:#5B72CC;}
+  .gnode.rebuttal{background:rgba(217,142,99,.12);border:1px solid #F2DACE;color:#7A4A30;}
+  .gnode.rebuttal .glabel{color:#D98E63;}
+  .gnode.evidence{background:var(--pos-wash);border:1px solid rgba(79,201,143,.3);color:#6FD9A6;margin-left:14px;}
   .gnode.evidence::before{background:#CDE5D9;}
   .gnode.question{background:var(--paper-sunken);border:1px dashed var(--line-strong);color:var(--ink-soft);}
   .glabel{font-size:10.5px;font-weight:700;letter-spacing:.03em;display:block;margin-bottom:3px;}
@@ -131,9 +131,9 @@
   .sheet-title{font-family:var(--display);font-weight:600;font-size:var(--t-h2);color:var(--ink);margin-bottom:var(--s4);text-align:center;}
   .stance-pick{display:flex;gap:8px;margin-bottom:var(--s4);}
   .sp{flex:1;padding:11px;border-radius:var(--r);border:1.5px solid var(--line);background:var(--paper-raised);font-family:var(--body);font-size:14px;font-weight:600;color:var(--ink-soft);cursor:pointer;transition:all var(--dur,.2s) var(--ease,ease);}
-  .sp.con.on{border-color:var(--caution);background:#f9ece5;color:#9a5a38;}
+  .sp.con.on{border-color:var(--caution);background:rgba(217,142,99,.12);color:#D9A088;}
   .sp.neu.on{border-color:var(--line-strong);background:var(--paper-sunken);color:var(--ink);}
-  .sp.pro.on{border-color:var(--pos);background:var(--pos-wash);color:#2A6B51;}
+  .sp.pro.on{border-color:var(--pos);background:var(--pos-wash);color:#6FD9A6;}
   .sheet-field{display:block;margin-bottom:var(--s4);}
   .sheet-field span{display:block;font-size:var(--t-sm);font-weight:600;color:var(--ink-soft);margin-bottom:7px;}
   .sheet-field textarea{width:100%;border:1px solid var(--line-strong);border-radius:var(--r);padding:11px 13px;font-family:var(--body);font-size:14.5px;line-height:1.45;color:var(--ink);background:var(--paper-raised);resize:none;}
@@ -825,7 +825,7 @@
   const SVGNS = "http://www.w3.org/2000/svg";
   // willow palette stance colors (no political red/blue).
   const STANCE_COLOR = {
-    strong_con: "#9a4f2c", con: "#b4734a", neutral: "#9aa39c",
+    strong_con: "#CE9070", con: "#D98E63", neutral: "#8B93A6",
     pro: "#3d8a6b", strong_pro: "#2d6049", thesis: "#1f2a24",
   };
   function svgEl(tag, attrs) {
@@ -846,7 +846,7 @@
     (o.edges || []).forEach(e => {
       const line = svgEl("line", {
         x1: sx(e.x1), y1: sy(e.y1), x2: sx(e.x2), y2: sy(e.y2),
-        stroke: e.kind === "rebuttal" ? "#b4734a" : "#c9d3cc",
+        stroke: e.kind === "rebuttal" ? "#D98E63" : "#c9d3cc",
         "stroke-width": e.kind === "hinge" ? 3 : 2.5,
       });
       if (e.kind === "rebuttal") line.setAttribute("stroke-dasharray", "7 6");
@@ -857,7 +857,7 @@
     if (o.opposition_type === "spectrum") {
       const defs = svgEl("defs", {});
       const grad = svgEl("linearGradient", { id: "specGrad", x1: "0", y1: "0", x2: "1", y2: "0" });
-      [["0%", "#b4734a"], ["50%", "#cdd5ce"], ["100%", "#3d8a6b"]].forEach(([off, c]) =>
+      [["0%", "#D98E63"], ["50%", "#cdd5ce"], ["100%", "#3d8a6b"]].forEach(([off, c]) =>
         grad.appendChild(svgEl("stop", { offset: off, "stop-color": c })));
       defs.appendChild(grad); svg.appendChild(defs);
       svg.appendChild(svgEl("rect", {
@@ -869,7 +869,7 @@
     // nodes
     (o.nodes || []).forEach(n => {
       const cx = sx(n.x), cy = sy(n.y), r = Math.max(8, n.radius * (VB - 2 * PAD));
-      const color = STANCE_COLOR[n.stance] || "#9aa39c";
+      const color = STANCE_COLOR[n.stance] || "#8B93A6";
       const hollow = n.kind === "axis" && false; // questions would be hollow; clusters filled
       const circle = svgEl("circle", {
         cx, cy, r,
@@ -914,7 +914,7 @@
 
   function renderOppLegend(o) {
     const items = [
-      ["#3d8a6b", "찬성", false], ["#9aa39c", "중립", false], ["#b4734a", "반대", false],
+      ["#3d8a6b", "찬성", false], ["#8B93A6", "중립", false], ["#D98E63", "반대", false],
     ];
     const box = $("oppLegend");
     box.replaceChildren(...items.map(([c, label]) => {
@@ -1006,7 +1006,7 @@
   function renderGraphFilters() {
     const dims = ["all", "problem", "cause", "solution"];
     const labels = { all: "전체", problem: "문제", cause: "원인", solution: "해결책" };
-    const colors = { all: "var(--willow)", problem: "#9A5A38", cause: "#8A6B2E", solution: "#2A6B51" };
+    const colors = { all: "var(--willow)", problem: "#9A5A38", cause: "#8A6B2E", solution: "#6FD9A6" };
     const box = $("graphFilters");
     box.replaceChildren(...dims.map(d => {
       const b = sec.el("button", { class: "gf" + (d === graphFilter ? " on" : "") });

@@ -29,9 +29,9 @@ body { background: var(--paper-sunken); }
   border-radius:var(--r-lg); margin-bottom:var(--s5);
   background:var(--paper-raised); border:1.5px solid var(--line); box-shadow:var(--shadow-sm); }
 .verdict-dot { width:16px; height:16px; border-radius:50%; flex:none; }
-.verdict-dot.ok     { background:#3D8A6B; box-shadow:0 0 0 4px #EAF3EF; }
-.verdict-dot.warn   { background:#B4734A; box-shadow:0 0 0 4px #F6EDE6; }
-.verdict-dot.critical { background:#C0563B; box-shadow:0 0 0 4px rgba(192,86,59,.15); }
+.verdict-dot.ok     { background:#4FC98F; box-shadow:0 0 0 4px rgba(79,201,143,.12); }
+.verdict-dot.warn   { background:#D98E63; box-shadow:0 0 0 4px rgba(217,142,99,.12); }
+.verdict-dot.critical { background:#E07B6B; box-shadow:0 0 0 4px rgba(192,86,59,.15); }
 .verdict-label { font-family:var(--display); font-size:var(--t-h2); font-weight:700; color:var(--ink); }
 .verdict-sub { font-size:var(--t-sm); color:var(--ink-soft); margin-left:auto; }
 .verdict-time { font-size:var(--t-xs); color:var(--ink-faint); }
@@ -44,7 +44,7 @@ body { background: var(--paper-sunken); }
 .card { background:var(--paper-raised); border:1px solid var(--line); border-radius:var(--r-lg);
   padding:var(--s4) var(--s5); box-shadow:var(--shadow-sm); }
 .card-title { font-size:var(--t-xs); font-weight:700; color:var(--ink-faint);
-  text-transform:uppercase; letter-spacing:.08em; margin-bottom:var(--s3); }
+  text-transform:uppercase; letter-spacing:.04em; margin-bottom:var(--s3); }
 
 /* ── metric row ── */
 .metric-row { display:flex; justify-content:space-between; align-items:baseline;
@@ -57,10 +57,10 @@ body { background: var(--paper-sunken); }
 .comp-list { display:flex; flex-direction:column; gap:var(--s2); }
 .comp-row { display:flex; align-items:center; gap:var(--s3); padding:var(--s2) 0; }
 .comp-dot { width:8px; height:8px; border-radius:50%; flex:none; }
-.comp-dot.ok       { background:#3D8A6B; }
-.comp-dot.warn     { background:#B4734A; }
-.comp-dot.elevated { background:#C0563B; }
-.comp-dot.degraded { background:#908DA0; }
+.comp-dot.ok       { background:#4FC98F; }
+.comp-dot.warn     { background:#D98E63; }
+.comp-dot.elevated { background:#E07B6B; }
+.comp-dot.degraded { background:#666E85; }
 .comp-name { font-size:var(--t-sm); font-weight:600; color:var(--ink); min-width:72px; }
 .comp-detail { font-size:var(--t-xs); color:var(--ink-soft); }
 
@@ -74,8 +74,8 @@ body { background: var(--paper-sunken); }
 .notes-list li { font-size:var(--t-sm); color:var(--ink-soft); padding:5px 0;
   padding-left:var(--s3); border-left:2px solid var(--line-strong);
   margin-bottom:var(--s2); }
-.notes-list li.critical { border-color:#C0563B; color:#C0563B; }
-.notes-list li.warn     { border-color:#B4734A; color:#B4734A; }
+.notes-list li.critical { border-color:#E07B6B; color:#E07B6B; }
+.notes-list li.warn     { border-color:#D98E63; color:#D98E63; }
 
 /* ── ethics table ── */
 .alert-table { width:100%; border-collapse:collapse; }
@@ -84,9 +84,9 @@ body { background: var(--paper-sunken); }
 .alert-table td { font-size:var(--t-sm); color:var(--ink-soft);
   padding:8px 8px; border-bottom:1px solid var(--line); vertical-align:top; }
 .alert-table tr:last-child td { border-bottom:none; }
-.badge-open     { background:#F6EDE6; color:#B4734A; font-size:var(--t-xs); font-weight:700;
+.badge-open     { background:rgba(217,142,99,.12); color:#D98E63; font-size:var(--t-xs); font-weight:700;
   padding:2px 8px; border-radius:var(--r-pill); }
-.badge-resolved { background:#EAF3EF; color:#3D8A6B; font-size:var(--t-xs); font-weight:700;
+.badge-resolved { background:rgba(79,201,143,.12); color:#4FC98F; font-size:var(--t-xs); font-weight:700;
   padding:2px 8px; border-radius:var(--r-pill); }
 
 /* ── buttons ── */
@@ -279,7 +279,7 @@ body { background: var(--paper-sunken); }
       </div>
       <div class="kf-stats">
         <div><span class="kf-stat-val" id="kfTotalFetched" style="color:var(--willow)">—</span><span class="kf-stat-lbl">건 투입 (가져옴)</span></div>
-        <div><span class="kf-stat-val" id="kfTotalProduced" style="color:#B4734A">—</span><span class="kf-stat-lbl">건 산출 (생산)</span></div>
+        <div><span class="kf-stat-val" id="kfTotalProduced" style="color:#D98E63">—</span><span class="kf-stat-lbl">건 산출 (생산)</span></div>
       </div>
       <div class="chart-wrap tall"><canvas id="chartKnowledgeFlow"></canvas></div>
     </div>
@@ -325,7 +325,7 @@ body { background: var(--paper-sunken); }
           <input id="srcLimit" type="number" value="10" min="1" max="50" title="가져올 개수" style="width:64px;padding:7px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px">
           <button id="srcAddBtn" class="btn-sm" style="font-size:13px;padding:7px 14px;border-radius:8px;background:var(--grad-rich);color:#fff;border:0;cursor:pointer">추가</button>
         </div>
-        <div id="srcMsg" style="font-size:12px;color:#c0392b;margin-top:6px"></div>
+        <div id="srcMsg" style="font-size:12px;color:#E07B6B;margin-top:6px"></div>
       </div>
 
       <div class="card" style="grid-column:1/-1">
@@ -335,7 +335,7 @@ body { background: var(--paper-sunken); }
         </div>
         <div id="newsStatusBar" style="font-size:12px;color:var(--muted);margin-bottom:12px">로딩 중…</div>
         <div id="newsDigestCard" style="display:none;padding:12px 16px;margin-bottom:14px;background:var(--grad-soft,#f3f6ff);border:1px solid #d6e0ff;border-radius:12px">
-          <div style="font-size:11px;font-weight:700;color:#3a5af0;text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px">🧩 매개자 종합 브리핑 (조합)</div>
+          <div style="font-size:11px;font-weight:700;color:var(--willow-text);text-transform:uppercase;letter-spacing:.2px;margin-bottom:6px">🧩 매개자 종합 브리핑 (조합)</div>
           <div id="newsDigestText" style="font-size:13.5px;line-height:1.55;color:var(--text,#1a1a2e)"></div>
           <div id="newsDigestMeta" style="font-size:11px;color:var(--muted);margin-top:6px"></div>
         </div>
@@ -461,9 +461,9 @@ body { background: var(--paper-sunken); }
 
     /* security */
     document.getElementById("mIntegrity").textContent = r.integrity_ok ? "✓ 정상" : "✗ 검증 실패 ⚠";
-    document.getElementById("mIntegrity").style.color = r.integrity_ok ? "var(--pos)" : "#C0563B";
+    document.getElementById("mIntegrity").style.color = r.integrity_ok ? "var(--pos)" : "#E07B6B";
     document.getElementById("mAuthority").textContent = r.authority_state === "tech_elevated" ? "TECH_ELEVATED ⚠" : r.authority_state;
-    document.getElementById("mAuthority").style.color = r.authority_state === "tech_elevated" ? "#C0563B" : "inherit";
+    document.getElementById("mAuthority").style.color = r.authority_state === "tech_elevated" ? "#E07B6B" : "inherit";
     document.getElementById("mAlerts").textContent = fmt(r.open_ethics_alerts) + "건";
 
     /* topics */
@@ -551,12 +551,13 @@ body { background: var(--paper-sunken); }
   document.getElementById("refreshBtn").onclick = loadAllWithCharts;
 
   /* ── Chart.js 공통 설정 ── */
-  const PALETTE = ["#3D8A6B","#B4734A","#4A7BB4","#8B5E99","#C0953B","#5B8F8F","#B45A5A","#7A8A4A"];
-  const PALETTE_LIGHT = ["#EAF3EF","#F6EDE6","#E8EEF6","#F0EAF5","#F5EDDF","#E5F0F0","#F5E8E8","#EEF0E5"];
+  const PALETTE = ["#4FC98F","#D98E63","#4A7BB4","#8B5E99","#C0953B","#5B8F8F","#B45A5A","#7A8A4A"];
+  const PALETTE_LIGHT = ["rgba(79,201,143,.12)","rgba(217,142,99,.12)","rgba(74,123,180,.14)","rgba(139,94,153,.14)","rgba(192,149,59,.14)","rgba(91,143,143,.14)","rgba(180,90,90,.14)","rgba(122,138,74,.14)"];
 
   if (window.Chart) {
     Chart.defaults.font.family = "'Spline Sans', system-ui, sans-serif";
-    Chart.defaults.color = "#908DA0";
+    Chart.defaults.color = "#666E85";
+    Chart.defaults.borderColor = "rgba(255,255,255,.08)";
     Chart.defaults.plugins.legend.labels.boxWidth = 12;
     Chart.defaults.plugins.legend.labels.usePointStyle = true;
   }
@@ -642,14 +643,14 @@ body { background: var(--paper-sunken); }
 
       // 심각도 도넛
       const sevMap = { low: "낮음", mid: "중간", high: "높음" };
-      const sevColors = { low: "#3D8A6B", mid: "#B4734A", high: "#C0563B" };
+      const sevColors = { low: "#4FC98F", mid: "#D98E63", high: "#E07B6B" };
       const sevData = d.severity_distribution || {};
       const sevKeys = Object.keys(sevData);
       mkChart("chartSeverity", {
         type: "doughnut",
         data: {
           labels: sevKeys.map(k => sevMap[k] || k),
-          datasets: [{ data: sevKeys.map(k => sevData[k]), backgroundColor: sevKeys.map(k => sevColors[k] || "#908DA0"), borderWidth: 2 }],
+          datasets: [{ data: sevKeys.map(k => sevData[k]), backgroundColor: sevKeys.map(k => sevColors[k] || "#666E85"), borderWidth: 2 }],
         },
         options: {
           responsive: true, maintainAspectRatio: false,
@@ -663,7 +664,7 @@ body { background: var(--paper-sunken); }
         type: "bar",
         data: {
           labels: d.alert_trend_labels,
-          datasets: [{ label: "윤리 알림", data: d.alert_trend_counts, backgroundColor: "#C0563B55", borderColor: "#C0563B", borderWidth: 1.5 }],
+          datasets: [{ label: "윤리 알림", data: d.alert_trend_counts, backgroundColor: "#E07B6B55", borderColor: "#E07B6B", borderWidth: 1.5 }],
         },
         options: {
           responsive: true, maintainAspectRatio: false,
@@ -686,8 +687,8 @@ body { background: var(--paper-sunken); }
         data: {
           labels: d.labels,
           datasets: [
-            { label: "투입 (가져옴)", data: d.fetched, backgroundColor: "#3D8A6B99", borderColor: "#3D8A6B", borderWidth: 1.5 },
-            { label: "산출 (생산)", data: d.produced, backgroundColor: "#B4734A99", borderColor: "#B4734A", borderWidth: 1.5 },
+            { label: "투입 (가져옴)", data: d.fetched, backgroundColor: "#4FC98F99", borderColor: "#4FC98F", borderWidth: 1.5 },
+            { label: "산출 (생산)", data: d.produced, backgroundColor: "#D98E6399", borderColor: "#D98E63", borderWidth: 1.5 },
           ],
         },
         options: {
@@ -713,7 +714,7 @@ body { background: var(--paper-sunken); }
           type: "doughnut",
           data: {
             labels: ["유저", "AI"],
-            datasets: [{ data: [humanN, aiN], backgroundColor: ["#3D8A6B", "#B4734A"], borderWidth: 2 }],
+            datasets: [{ data: [humanN, aiN], backgroundColor: ["#4FC98F", "#D98E63"], borderWidth: 2 }],
           },
           options: {
             responsive: true, maintainAspectRatio: false,
@@ -734,8 +735,8 @@ body { background: var(--paper-sunken); }
         data: {
           labels: d.labels,
           datasets: [
-            { label: "포스트 — 유저", data: d.posts.trend_human, borderColor: "#3D8A6B", backgroundColor: "#3D8A6B22", borderWidth: 2, tension: 0.35 },
-            { label: "포스트 — AI",   data: d.posts.trend_ai,   borderColor: "#B4734A", backgroundColor: "#B4734A22", borderWidth: 2, tension: 0.35 },
+            { label: "포스트 — 유저", data: d.posts.trend_human, borderColor: "#4FC98F", backgroundColor: "#4FC98F22", borderWidth: 2, tension: 0.35 },
+            { label: "포스트 — AI",   data: d.posts.trend_ai,   borderColor: "#D98E63", backgroundColor: "#D98E6322", borderWidth: 2, tension: 0.35 },
             { label: "댓글 — 유저",   data: d.comments.trend_human, borderColor: "#4A7BB4", backgroundColor: "#4A7BB422", borderWidth: 2, tension: 0.35, borderDash: [5,3] },
             { label: "댓글 — AI",     data: d.comments.trend_ai,   borderColor: "#8B5E99", backgroundColor: "#8B5E9922", borderWidth: 2, tension: 0.35, borderDash: [5,3] },
           ],
@@ -786,12 +787,12 @@ body { background: var(--paper-sunken); }
         row.style.cssText = "display:flex;align-items:center;gap:10px;padding:8px 12px;background:var(--panel-bg);border:1px solid var(--border);border-radius:10px";
         const off = s.enabled ? "" : "opacity:.5;";
         row.innerHTML =
-          `<span style="${off}font-size:11px;font-weight:700;color:#3a5af0;background:#e8edff;padding:2px 8px;border-radius:99px">${esc(_kindLabel[s.kind] || s.kind)}</span>
+          `<span style="${off}font-size:11px;font-weight:700;color:#8FA2E8;background:rgba(91,114,204,.15);padding:2px 8px;border-radius:99px">${esc(_kindLabel[s.kind] || s.kind)}</span>
            <span style="${off}font-weight:600;font-size:13.5px">${esc(s.name)}</span>
            <span style="${off}font-size:12px;color:var(--muted);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(s.url || "(고정 API)")}</span>
            <span style="font-size:11px;color:var(--muted)">${s.limit}건</span>
            <label style="font-size:12px;display:flex;align-items:center;gap:4px;cursor:pointer"><input type="checkbox" ${s.enabled ? "checked" : ""} data-id="${s.id}" class="srcToggle"> 활성</label>
-           <button class="srcDel" data-id="${s.id}" title="삭제" style="border:0;background:none;color:#c0392b;cursor:pointer;font-size:15px">✕</button>`;
+           <button class="srcDel" data-id="${s.id}" title="삭제" style="border:0;background:none;color:#E07B6B;cursor:pointer;font-size:15px">✕</button>`;
         el.appendChild(row);
       });
       el.querySelectorAll(".srcToggle").forEach(cb => {
@@ -865,12 +866,12 @@ body { background: var(--paper-sunken); }
       items.forEach(item => {
         const div = document.createElement("div");
         div.style.cssText = "padding:10px 14px;background:var(--panel-bg);border:1px solid var(--border);border-radius:10px";
-        const tags = (item.tags || []).map(t => `<span style="background:#e8edff;color:#3a5af0;font-size:11px;padding:2px 7px;border-radius:99px;margin-right:4px">${esc(t)}</span>`).join("");
+        const tags = (item.tags || []).map(t => `<span style="background:rgba(91,114,204,.15);color:#8FA2E8;font-size:11px;padding:2px 7px;border-radius:99px;margin-right:4px">${esc(t)}</span>`).join("");
         const src = item.source || "";
         div.innerHTML =
           `<div style="display:flex;gap:8px;align-items:center;margin-bottom:5px">
             <span style="font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase">${esc(src)}</span>
-            ${item.stub ? '<span style="font-size:10px;color:#e07b00;background:#fff3cd;padding:1px 6px;border-radius:99px">스텁</span>' : ""}
+            ${item.stub ? '<span style="font-size:10px;color:#E5B85C;background:rgba(229,184,92,.15);padding:1px 6px;border-radius:99px">스텁</span>' : ""}
             <span style="font-size:11px;color:var(--muted);margin-left:auto">${((item.relevance||0)*100).toFixed(0)}% 관련도</span>
           </div>
           <div style="font-size:13.5px;font-weight:600;margin-bottom:4px">${esc(item.gist_ko || item.title || "")}</div>
