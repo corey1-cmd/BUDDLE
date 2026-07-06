@@ -49,11 +49,17 @@ Oracle VM 없이 **완전 무료로 공개 HTTPS 링크**를 만드는 경로. �
 ## 2. Upstash — Redis
 
 1. https://upstash.com → 로그인 → **Create Database** (Type: Redis, 가까운 리전, TLS 켜짐).
-2. 상세 화면에서 **`rediss://` 로 시작하는 연결 URL**을 복사. 대략:
+2. 상세(Details) 화면엔 조각으로 나온다(**Endpoint · Token · Port 6379**). 직접 조합한다:
+   - `Token / Readonly Token`의 가려진(●●●) 값을 클릭해 복사 (일반 Token, Readonly 아님)
+   - 다음 형태로 합친다 — 이 값이 `REDIS_URL`:
    ```
-   rediss://default:Abcd...@apn1-xxxx.upstash.io:6379
+   rediss://default:<복사한TOKEN>@<Endpoint>:6379
+   예) rediss://default:AbCd...@big-seasnail-157701.upstash.io:6379
    ```
-   → 이 값이 `REDIS_URL`. (앱의 redis 클라이언트가 `rediss` TLS를 그대로 지원)
+   > ⚠️ 반드시 **`rediss`(s 두 개)**. 화면 예시 `redis-cli --tls -u redis://…`는
+   > `--tls` 플래그로 TLS를 켠 것이라 `redis://`(s 하나)로 보이지만, 앱은 URL만
+   > 받으므로 TLS 신호를 URL에 담아야 한다. `redis://`로 넣으면 이 서버(TLS Enabled)에
+   > 연결이 실패한다.
 
 ## 3. Render — 백엔드 배포 (블루프린트)
 
