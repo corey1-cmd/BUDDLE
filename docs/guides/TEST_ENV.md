@@ -7,21 +7,38 @@
 
 ## 1. 준비 — 서버 띄우기
 
-```bash
-# A) Docker가 있는 환경
-docker compose up -d          # postgres(pgvector) + redis + api
+### A) Docker (권장 — 이거면 끝)
 
-# B) Docker 없이 (로컬 postgres 16 + redis)
+```bash
+cp .env.example .env          # 최초 1회 (기본값이 compose와 맞춰져 있음)
+docker compose up -d          # postgres(pgvector) + redis + api 를 한 번에
+```
+
+`api` 컨테이너가 시작하며 `alembic upgrade head`를 자동 실행한다. 준비 확인:
+
+```bash
+curl localhost:8000/health    # {"status":"ok"} 면 완료
+```
+
+> `.env`의 기본값(`DATABASE_URL=@postgres`, `REDIS_URL=@redis`)은 compose 서비스
+> 이름과 일치하도록 설계돼 있어 **수정 없이 그대로** 동작한다. 외부 AI 키 없이도
+> (임베딩 stub 기본) 피드·알림·admin·API 테스트가 전부 된다.
+
+### B) Docker 없이 (로컬 postgres 16 + redis 직접 설치 시)
+
+```bash
 sudo service postgresql start && sudo service redis-server start
 uv run alembic upgrade head
 uv run uvicorn buddle.main:app --host 0.0.0.0 --port 8000
 ```
 
-`http://localhost:8000/health` 가 `{"status":"ok"}` 이면 준비 완료.
-
 ## 2. 시드 실행
 
 ```bash
+# Docker(A안): api 컨테이너 안에서 실행 — 호스트에 파이썬 설치 불필요
+docker compose exec api python scripts/seed_test_env.py
+
+# 로컬(B안):
 uv run python scripts/seed_test_env.py     # 또는: make seed-test-env
 ```
 
