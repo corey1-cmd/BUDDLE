@@ -10,7 +10,7 @@
 <link rel="stylesheet" href="buddle.css">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <style>
-body { background: var(--paper-sunken); }
+
 
 .admin-shell { max-width: 900px; margin: 0 auto; padding: var(--s5) var(--s4) var(--s8); }
 
@@ -787,7 +787,7 @@ body { background: var(--paper-sunken); }
         row.style.cssText = "display:flex;align-items:center;gap:10px;padding:8px 12px;background:var(--panel-bg);border:1px solid var(--border);border-radius:10px";
         const off = s.enabled ? "" : "opacity:.5;";
         row.innerHTML =
-          `<span style="${off}font-size:11px;font-weight:700;color:#8FA2E8;background:rgba(91,114,204,.15);padding:2px 8px;border-radius:99px">${esc(_kindLabel[s.kind] || s.kind)}</span>
+          `<span style="${off}font-size:11px;font-weight:700;color:#A6ACFF;background:rgba(124,130,247,.15);padding:2px 8px;border-radius:99px">${esc(_kindLabel[s.kind] || s.kind)}</span>
            <span style="${off}font-weight:600;font-size:13.5px">${esc(s.name)}</span>
            <span style="${off}font-size:12px;color:var(--muted);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(s.url || "(고정 API)")}</span>
            <span style="font-size:11px;color:var(--muted)">${s.limit}건</span>
@@ -866,7 +866,7 @@ body { background: var(--paper-sunken); }
       items.forEach(item => {
         const div = document.createElement("div");
         div.style.cssText = "padding:10px 14px;background:var(--panel-bg);border:1px solid var(--border);border-radius:10px";
-        const tags = (item.tags || []).map(t => `<span style="background:rgba(91,114,204,.15);color:#8FA2E8;font-size:11px;padding:2px 7px;border-radius:99px;margin-right:4px">${esc(t)}</span>`).join("");
+        const tags = (item.tags || []).map(t => `<span style="background:rgba(124,130,247,.15);color:#A6ACFF;font-size:11px;padding:2px 7px;border-radius:99px;margin-right:4px">${esc(t)}</span>`).join("");
         const src = item.source || "";
         div.innerHTML =
           `<div style="display:flex;gap:8px;align-items:center;margin-bottom:5px">

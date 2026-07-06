@@ -18,18 +18,18 @@ class BuddleApp extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final authed = ref.watch(authedProvider);
-    // Fintech-dark: near-black blue-cast ground, shadowed-navy accent,
-    // tight tracking — mirrors web/buddle.css tokens.
+    // Premium-tech "cosmic glass": deep blue-black ground, blue-violet
+    // accent, tight tracking — mirrors web/buddle.css tokens.
     final base = ThemeData(
       useMaterial3: true,
       colorScheme: ColorScheme.fromSeed(
-        seedColor: const Color(0xFF5B72CC),
+        seedColor: const Color(0xFF7C82F7),
         brightness: Brightness.dark,
       ).copyWith(
-        primary: const Color(0xFF8FA2E8),
-        surface: const Color(0xFF0A0C12),
+        primary: const Color(0xFFA6ACFF),
+        surface: const Color(0xFF07080E),
       ),
-      scaffoldBackgroundColor: const Color(0xFF0A0C12),
+      scaffoldBackgroundColor: const Color(0xFF07080E),
       fontFamilyFallback: const ['NotoSansKR', 'sans-serif'],
     );
     final t = base.textTheme;
