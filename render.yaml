@@ -1,0 +1,68 @@
+# buddle — Render 무료 배포 블루프린트 (Supabase + Upstash 조합)
+#
+#   Render 대시보드 → New → Blueprint → 이 저장소 선택 → render.yaml 자동 인식.
+#   sync:false 값(DATABASE_URL·REDIS_URL·도메인 3종)만 대시보드에서 채우면 된다.
+#   전체 절차: docs/guides/DEPLOY_FREE.md
+#
+# 무료 플랜 특성: 유휴 15분 후 sleep → 다음 요청에 콜드스타트(~1분). 512MB RAM이라
+# 임베딩은 stub 고정(BGE-M3는 메모리 초과). DB=Supabase, Redis=Upstash 외부 사용.
+
+services:
+  - type: web
+    name: buddle
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    # Dockerfile 기본 CMD엔 마이그레이션이 없다 → 여기서 alembic 먼저 돌린다.
+    # Render가 주입하는 $PORT 로 리슨해야 라우팅됨.
+    dockerCommand: sh -c "alembic upgrade head && uvicorn buddle.main:app --host 0.0.0.0 --port $PORT"
+    healthCheckPath: /health
+    autoDeploy: false
+    envVars:
+      # ── 고정값 (그대로 둔다) ──────────────────────────────
+      - key: APP_ENV
+        value: production
+      - key: APP_NAME
+        value: buddle
+      - key: LOG_LEVEL
+        value: INFO
+      # 512MB RAM 무료 인스턴스: 임베딩은 stub (2GB 모델 불가). 검색 품질만 하락.
+      - key: EMBEDDING_PROVIDER
+        value: stub
+      - key: SCHEDULER_ENABLED
+        value: "true"
+      - key: WS_ALLOW_MISSING_ORIGIN
+        value: "true"
+      - key: ALLOW_PRIVATE_BACKEND_HOSTS
+        value: "false"
+      # JWT/무결성 키: Render가 서로 다른 난수를 자동 생성(≥32자). 두 키가 달라야
+      # 부팅되는데 각각 독립 생성이라 항상 다르다.
+      - key: JWT_SECRET_KEY
+        generateValue: true
+      - key: INTEGRITY_HMAC_KEY
+        generateValue: true
+
+      # ── 대시보드에서 채운다 (sync:false → 블루프린트에 커밋 안 됨) ──
+      # Supabase → Database → Connection string → "Session pooler"(5432) 를
+      # postgresql+asyncpg://...?ssl=require 형태로 변환해 붙인다.
+      - key: DATABASE_URL
+        sync: false
+      # Upstash Redis → "rediss://default:<PW>@<host>:<port>"
+      - key: REDIS_URL
+        sync: false
+      # 최초 배포 후 발급되는 https://buddle-XXXX.onrender.com 을 아래 두 곳에 채우고
+      # 재배포한다(브라우저에서 WebSocket Origin 검증 통과에 필요). 웹 UI/API는
+      # same-origin으로 서빙되므로 API base 설정은 불필요하다.
+      - key: CORS_ORIGINS
+        sync: false
+      - key: WS_ALLOWED_ORIGINS
+        sync: false
+
+      # ── 선택: Gemini 무료 API (없으면 페르소나가 stub 응답) ──
+      - key: PERSONA_ENDPOINT_URL
+        value: https://generativelanguage.googleapis.com/v1beta/openai
+      - key: PERSONA_MODEL
+        value: gemini-2.5-flash
+      - key: PERSONA_ENDPOINT_API_KEY
+        sync: false
