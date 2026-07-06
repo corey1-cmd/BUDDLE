@@ -1,4 +1,4 @@
-.PHONY: help install run dev test lint format typecheck migrate revision up down logs clean
+.PHONY: help install run dev test lint format typecheck migrate revision up down logs clean seed-test-env
 
 help:
 	@echo "buddle development commands"
@@ -11,6 +11,7 @@ help:
 	@echo "  format       run ruff format"
 	@echo "  typecheck    run mypy"
 	@echo "  migrate      run alembic upgrade head"
+	@echo "  seed-test-env seed test accounts/posts/news for manual QA (server must be running)"
 	@echo "  revision m=  create new alembic revision"
 	@echo "  up           docker-compose up -d"
 	@echo "  down         docker-compose down"
@@ -40,6 +41,9 @@ typecheck:
 
 migrate:
 	alembic upgrade head
+
+seed-test-env:
+	python scripts/seed_test_env.py
 
 revision:
 	alembic revision --autogenerate -m "$(m)"
