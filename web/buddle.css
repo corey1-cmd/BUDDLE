@@ -17,17 +17,30 @@
      10%  accent grad   blue-violet — CTAs, avatars, active state
    ========================================================================= */
 
+/* ── Typeface — Pretendard Variable (Latin + Hangul in ONE face) ────────────
+   Self-hosted (CSP: font-src 'self'). One variable file covers 45–920 weight,
+   so Korean and Latin never fall back to mismatched system fonts (the old
+   Spline Sans had no Hangul glyphs — Korean text rendered in a different,
+   heavier face and looked broken next to Latin). */
+@font-face{
+  font-family:"Pretendard Variable";
+  src:url("fonts/PretendardVariable.woff2") format("woff2-variations");
+  font-weight:45 920;
+  font-style:normal;
+  font-display:swap;
+}
+
 :root{
   /* ── 60 / 30 / 10 ─────────────────────────────────────────────────────── */
   --paper:#07080E;          /* base ground (60) — cosmic blue-black */
-  --paper-raised:rgba(158,172,255,.055); /* frosted card glass (translucent layer) */
-  --paper-sunken:rgba(158,172,255,.085); /* wells, track backgrounds */
+  --paper-raised:rgba(186,197,255,.075); /* frosted card glass (translucent layer) */
+  --paper-sunken:rgba(186,197,255,.11);  /* wells, track backgrounds */
 
   --ink:#EEF0FA;            /* primary text — cool near-white */
   --ink-soft:#A2A9C2;       /* secondary text — desaturated */
   --ink-faint:#6A7190;      /* tertiary / captions */
-  --line:rgba(255,255,255,.08);   /* hairline dividers & borders */
-  --line-strong:rgba(255,255,255,.15);
+  --line:rgba(255,255,255,.11);   /* hairline dividers & glass rims */
+  --line-strong:rgba(255,255,255,.20);
 
   /* THE accent (10) — blue-violet. Solid form, for text/icon/border
      contexts where a gradient can't render (color:, border-color:, strokes).
@@ -55,10 +68,11 @@
   --caution:#D98E63;        /* 반대 — muted clay, never alarm-red */
   --caution-wash:rgba(217,142,99,.12);
 
-  /* ── type — one grotesk everywhere, headlines by weight not by face ────── */
-  --display:"Spline Sans",system-ui,-apple-system,sans-serif;
-  --body:"Spline Sans",system-ui,-apple-system,sans-serif;
-  --mono:"Spline Sans",system-ui,sans-serif;   /* data: same face, tabular */
+  /* ── type — one face everywhere (Latin+Hangul unified), headlines by
+     weight not by face ──────────────────────────────────────────────────── */
+  --display:"Pretendard Variable",Pretendard,"Apple SD Gothic Neo","Malgun Gothic",system-ui,-apple-system,sans-serif;
+  --body:"Pretendard Variable",Pretendard,"Apple SD Gothic Neo","Malgun Gothic",system-ui,-apple-system,sans-serif;
+  --mono:"Pretendard Variable",Pretendard,system-ui,sans-serif;   /* data: same face, tabular */
 
   /* type scale (mobile-first, 1.25 ratio, hand-tuned) */
   --t-display:28px;   /* hero line */
@@ -95,11 +109,14 @@ body{
   line-height:1.55;
   letter-spacing:-.01em;    /* tight tracking, everywhere */
   color:var(--ink);
-  /* volumetric haze — three soft blue-violet glows drifting over the ground */
+  /* volumetric haze — vivid blue-violet glows the frosted layers refract.
+     Strong on purpose: glassmorphism only reads when there is light BEHIND
+     the glass to blur. */
   background:
-    radial-gradient(1000px 640px at 82% -12%, rgba(124,108,255,.14), transparent 62%),
-    radial-gradient(820px 540px at -12% 18%, rgba(84,130,255,.09), transparent 58%),
-    radial-gradient(900px 700px at 55% 115%, rgba(96,88,220,.09), transparent 60%),
+    radial-gradient(1000px 640px at 82% -12%, rgba(129,108,255,.30), transparent 64%),
+    radial-gradient(760px 520px at -10% 16%, rgba(84,140,255,.20), transparent 58%),
+    radial-gradient(520px 420px at 30% 42%, rgba(150,96,255,.12), transparent 60%),
+    radial-gradient(900px 700px at 58% 115%, rgba(96,88,230,.20), transparent 62%),
     var(--paper);
   background-attachment:fixed;
   -webkit-font-smoothing:antialiased;
@@ -135,8 +152,8 @@ body{
 
 /* ── Typography primitives ──────────────────────────────────────────────── */
 .bd-eyebrow{font-size:var(--t-xs);font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-faint);}
-.bd-display{font-family:var(--display);font-weight:700;font-size:var(--t-display);line-height:1.12;letter-spacing:-.035em;color:var(--ink);}
-h1,.bd-h1{font-family:var(--display);font-weight:700;font-size:var(--t-h1);line-height:1.2;letter-spacing:-.03em;color:var(--ink);}
+.bd-display{font-family:var(--display);font-weight:800;font-size:var(--t-display);line-height:1.16;letter-spacing:-.02em;color:var(--ink);}
+h1,.bd-h1{font-family:var(--display);font-weight:700;font-size:var(--t-h1);line-height:1.25;letter-spacing:-.02em;color:var(--ink);}
 h2,.bd-h2{font-size:var(--t-h2);font-weight:600;letter-spacing:-.02em;color:var(--ink);}
 .bd-muted{color:var(--ink-soft);}
 .bd-faint{color:var(--ink-faint);}
@@ -161,13 +178,17 @@ h2,.bd-h2{font-size:var(--t-h2);font-weight:600;letter-spacing:-.02em;color:var(
 .bd-btn--block{width:100%;}
 .bd-btn:disabled{opacity:.45;cursor:default;transform:none;}
 
-/* ── Cards & dividers — frosted glass, metallic top edge ────────────────── */
+/* ── Cards & dividers — frosted glass: translucent fill + specular sweep +
+   heavy blur + bright rim. The diagonal white sweep is what sells "glass". */
 .bd-card{
-  background:var(--paper-raised);border:1px solid var(--line);border-radius:var(--r-lg);padding:var(--s4);
-  box-shadow:var(--shadow-sm), inset 0 1px 0 rgba(255,255,255,.07);
-  backdrop-filter:blur(16px) saturate(150%);-webkit-backdrop-filter:blur(16px) saturate(150%);
+  background:
+    linear-gradient(158deg, rgba(255,255,255,.10) 0%, rgba(255,255,255,.03) 34%, rgba(255,255,255,0) 55%),
+    var(--paper-raised);
+  border:1px solid var(--line);border-radius:var(--r-lg);padding:var(--s4);
+  box-shadow:0 8px 32px rgba(0,0,0,.45), inset 0 1px 0 rgba(255,255,255,.14);
+  backdrop-filter:blur(28px) saturate(170%);-webkit-backdrop-filter:blur(28px) saturate(170%);
 }
-.bd-card--quiet{box-shadow:inset 0 1px 0 rgba(255,255,255,.07);}
+.bd-card--quiet{box-shadow:inset 0 1px 0 rgba(255,255,255,.14);}
 .bd-hr{height:1px;background:var(--line);border:0;margin:var(--s4) 0;}
 
 /* ── Chips / tags ───────────────────────────────────────────────────────── */
@@ -247,10 +268,17 @@ h2,.bd-h2{font-size:var(--t-h2);font-weight:600;letter-spacing:-.02em;color:var(
 .bd-js-reveal.bd-reveal{opacity:0;transform:translateY(10px);transition:opacity var(--dur-slow) var(--ease),transform var(--dur-slow) var(--ease);}
 .bd-js-reveal.bd-reveal.in{opacity:1;transform:none;}
 
-/* ── Frosted layer for page-local cards (glass + faint top-edge light) ──────
-   Page styles own the fill (var(--surface) is translucent); this adds the
-   blur + sheen every ".card" shares without touching page-local rules. */
-.card{backdrop-filter:blur(16px) saturate(150%);-webkit-backdrop-filter:blur(16px) saturate(150%);}
+/* ── Frosted layer for page-local cards ─────────────────────────────────────
+   `body .card` outweighs the page-local `.card{background:var(--surface)}`
+   (0,1,1 vs 0,1,0), so every card gets the same glass recipe: specular sweep
+   over the translucent fill, heavy blur, bright top rim. */
+body .card{
+  background:
+    linear-gradient(158deg, rgba(255,255,255,.10) 0%, rgba(255,255,255,.03) 34%, rgba(255,255,255,0) 55%),
+    var(--paper-raised);
+  box-shadow:0 8px 32px rgba(0,0,0,.4), inset 0 1px 0 rgba(255,255,255,.13);
+  backdrop-filter:blur(28px) saturate(170%);-webkit-backdrop-filter:blur(28px) saturate(170%);
+}
 
 /* ── Focus visibility (quality floor) ───────────────────────────────────── */
 :focus-visible{outline:none;box-shadow:0 0 0 3px var(--willow-ring);border-radius:var(--r-sm);}

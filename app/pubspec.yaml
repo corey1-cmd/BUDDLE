@@ -31,3 +31,15 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+
+  # Pretendard — 라틴+한글 통합 프리미엄 UI 서체 (웹 buddle.css와 동일 계열).
+  # 시스템 폰트 폴백 시 한글/라틴이 다른 얼굴로 섞여 깨져 보이는 문제를 막는다.
+  fonts:
+    - family: Pretendard
+      fonts:
+        - asset: assets/fonts/Pretendard-Regular.ttf
+          weight: 400
+        - asset: assets/fonts/Pretendard-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/Pretendard-Bold.ttf
+          weight: 700

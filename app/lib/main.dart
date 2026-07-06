@@ -30,6 +30,7 @@ class BuddleApp extends ConsumerWidget {
         surface: const Color(0xFF07080E),
       ),
       scaffoldBackgroundColor: const Color(0xFF07080E),
+      fontFamily: 'Pretendard',
       fontFamilyFallback: const ['NotoSansKR', 'sans-serif'],
     );
     final t = base.textTheme;
