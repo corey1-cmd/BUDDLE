@@ -63,9 +63,17 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         response = await call_next(request)
 
-        # Content-Type으로 HTML 여부 판별
+        # HTML 문서 여부 판별 → 알맞은 CSP 선택.
+        # Content-Type 우선. 단, 304 Not Modified·HEAD 응답은 Content-Type이 없다.
+        # 이때 경로가 HTML 페이지면(재방문 시 조건부 GET → 304) 여전히 HTML CSP를
+        # 줘야 한다. 아니면 캐시된 HTML 문서가 API용 default-src 'none'을 물려받아
+        # 자신의 스타일·스크립트를 전부 차단당해 화면이 통째로 깨진다.
         ct = response.headers.get("content-type", "")
-        headers = _HTML_HEADERS if "text/html" in ct else _API_HEADERS
+        path = request.url.path
+        is_html_doc = "text/html" in ct or (
+            not ct and (path == "/" or path.endswith((".html", "/")))
+        )
+        headers = _HTML_HEADERS if is_html_doc else _API_HEADERS
 
         for key, value in headers.items():
             response.headers.setdefault(key, value)
