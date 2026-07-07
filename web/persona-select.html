@@ -681,12 +681,7 @@
   // 모든 페르소나가 하나의 시그니처 그라데이션 정체성을 공유
   const PALETTE = [["var(--accent-grad)", "#fff"]];
   let LIVE = false;
-  let personas = [
-    { id: "d1", name: "초록", model: "기본 대화 모델", tags: ["일상", "산책", "커피"], near: 3 },
-    { id: "d2", name: "물결", model: "기본 대화 모델", tags: ["음악", "영화"], near: 1 },
-    { id: "d3", name: "햇살", model: "기본 대화 모델", tags: ["독서", "글쓰기", "역사"], near: 0 },
-    { id: "d4", name: "바람", model: "기본 대화 모델", tags: ["러닝", "등산"], near: 5 },
-  ];
+  let personas = [];   // 실데이터 전용 — 데모 시드 없음 (boot에서 GET /v1/personas)
 
   const grid = document.getElementById("grid");
 

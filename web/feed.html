@@ -476,7 +476,7 @@
     font-family:var(--body);color:var(--ink);min-height:100vh;
     background:radial-gradient(900px 600px at 80% -10%, rgba(61,138,107,.06) 0%, transparent 60%),#07080E;-webkit-font-smoothing:antialiased;
   }
-  .phone{max-width:460px;margin:0 auto;min-height:100vh;background:rgba(10,11,20,.55);backdrop-filter:blur(22px) saturate(160%);display:flex;flex-direction:column;}
+  .phone{max-width:460px;margin:0 auto;min-height:100vh;background:rgba(10,11,20,.55);backdrop-filter:blur(22px) saturate(160%);display:flex;flex-direction:column;padding-bottom:84px;}
   header{display:flex;align-items:center;gap:12px;padding:14px 16px;border-bottom:1px solid var(--line);position:sticky;top:0;background:rgba(10,11,20,.6);backdrop-filter:blur(24px) saturate(160%);z-index:20;}
   .back{width:38px;height:38px;border-radius:14px;border:1px solid var(--line);background:var(--surface);display:grid;place-items:center;cursor:pointer;flex:none;}
   .back svg{width:19px;height:19px;stroke:var(--gold);}
@@ -664,17 +664,16 @@
     <div id="detailView" class="detail hidden"></div>
   </div>
 
-  <!-- 이어가던 대화 (배너 위 빠른 진입) -->
-  <div class="cb-resume" id="resumeRow"></div>
-  <!-- 인스타식 글쓰기 배너 -->
-  <div class="compose-banner" id="composeBanner">
-    <div class="cb-ava" id="cbAva">초</div>
-    <div class="cb-prompt" id="cbPrompt" role="button" tabindex="0">생각을 적어볼까요…</div>
-    <button class="cb-plus" id="cbPlus" aria-label="새 글 만들기">
-      <svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
-    </button>
-  </div>
 </div>
+
+<!-- bottom nav (shared component) -->
+<nav class="bd-nav">
+  <a href="home-dashboard.html"><svg viewBox="0 0 24 24"><path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/></svg>홈</a>
+  <a href="feed.html" class="on"><svg viewBox="0 0 24 24"><path d="M20.8 7.6a5 5 0 0 0-7.1 0L12 9.3l-1.7-1.7a5 5 0 1 0-7.1 7.1L12 23l8.8-8.3a5 5 0 0 0 0-7.1z"/></svg>관심주제</a>
+  <a href="chat.html"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18"/></svg>대화NOW</a>
+  <a href="inbox.html"><svg viewBox="0 0 24 24"><path d="M21 12A9 9 0 1 1 12 3v9z"/><path d="M12 3a9 9 0 0 1 9 9h-9z"/></svg>내 활동</a>
+  <a href="compose.html"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>글쓰기</a>
+</nav>
 
 <script>
   sec.harden();
@@ -687,23 +686,7 @@
   const params = new URLSearchParams(location.search);
   let postId = params.get("post");
 
-  // demo fallback feed (offline preview)
-  const DEMO_TOPICS = ["전체","일상","산책","음악","독서","글쓰기"];
-  const DEMO_FEED = [
-    { id:"d1", source_persona:{name:"초록"}, content_transformed:"오늘 동네를 천천히 걸었습니다. 강가를 따라 이어지는 산책 코스가 특히 마음에 들었어요. 한적한 길을 함께 걸으며 이야기 나눌 분이 있다면 좋겠습니다.", source_language:"ko", tags:["산책","일상"], like_count:12, comment_count:3 },
-    { id:"d2", source_persona:{name:"물결"}, content_transformed:"요즘 듣는 앨범이 하나 있는데, 비 오는 날 창가에서 들으면 마음이 차분해져요. 잔잔한 피아노와 약간의 재즈가 섞인 곡들이에요.", source_language:"ko", tags:["음악"], like_count:8, comment_count:1 },
-    { id:"d3", source_persona:{name:"햇살"}, content_transformed:"A short story I've been writing finally found its ending today. Sometimes the quiet mornings give you the words you've been searching for.", source_language:"en", tags:["글쓰기","독서"], like_count:21, comment_count:5 },
-  ];
-  const DEMO_POST = {
-    id:"d1", source_persona:{name:"초록"}, source_language:"ko",
-    content_transformed:"오늘 동네를 천천히 걸었습니다. 강가를 따라 이어지는 산책 코스가 특히 마음에 들었어요. 한적한 길을 함께 걸으며 이야기 나눌 분이 있다면 좋겠습니다. 관심 있으신 분, 편하게 말 걸어 주세요.",
-    translations:{ en:"I took a slow walk around my neighborhood today. The riverside trail was especially lovely. I'd love to find someone to walk these quiet paths and chat along the way. Feel free to reach out." },
-    tags:["산책","일상"], like_count:12,
-  };
-  const DEMO_COMMENTS = [
-    { author:"물결", kind:"empathize", content:"강가 산책 정말 좋죠. 저도 아침에 자주 걸어요." },
-    { author:"햇살", kind:"question", content:"어느 구간을 주로 걸으세요? 추천 부탁드려요." },
-  ];
+  // 실데이터 전용 — 데모 폴백 없음. API 실패/빈 결과는 빈 상태로 표시한다.
 
   const KIND_LABEL = { inform:"정보", empathize:"공감", question:"질문" };
   const langName = (l) => (l === "en" ? "English" : "한국어");
@@ -889,7 +872,7 @@
     (fallbackItems || []).forEach(it => (it.tags || []).forEach(t => {
       const n = tagName(t); if (n && !names.includes(n)) names.push(n);
     }));
-    renderTopics(["전체", ...(names.length ? names.slice(0, 8) : DEMO_TOPICS.slice(1))]);
+    renderTopics(["전체", ...names.slice(0, 8)]);
     return false;
   }
 
@@ -976,7 +959,7 @@
     const box = $("feedList");
     if (!cursor) box.innerHTML = '<div class="loading">불러오는 중…</div>';
     const tagParam = currentTopic === "전체" ? null : currentTopic;
-    let items = DEMO_FEED, fromApi = false;
+    let items = [], fromApi = false;
     try {
       // 서버사이드 태그 필터 + 검색: 필터를 쿼리에 위임한다. 클라이언트에서
       // 커서 페이지를 거르면 뒷페이지의 매칭이 조용히 누락돼 페이지네이션과
@@ -986,7 +969,7 @@
         items = page.items; fromApi = true;
         nextCursor = page.next_cursor || null;        // FeedPage.next_cursor
       }
-    } catch (_) { nextCursor = null; /* offline → demo */ }
+    } catch (_) { nextCursor = null; /* offline → 빈 상태 */ }
 
     // 토픽 칩은 '전체' 첫 페이지에서 1회만 구성한다(필터된 페이지로 만들면
     // 칩 목록이 그 태그만 남는 문제가 생긴다). 트렌딩 집계 우선, 데모 폴백.
@@ -1025,8 +1008,6 @@
   async function loadDetail(id) {
     $("title").textContent = "글";
     $("listView").classList.add("hidden");
-    $("composeBanner").classList.add("hidden");
-    $("resumeRow").classList.add("hidden");
     const view = $("detailView"); view.classList.remove("hidden");
     view.innerHTML = '<div class="loading">불러오는 중…</div>';
 
@@ -1047,7 +1028,10 @@
         } catch (_) {}
       }
     }
-    if (!post) { post = DEMO_POST; comments = DEMO_COMMENTS; }
+    if (!post) {
+      view.innerHTML = '<div class="loading">글을 찾을 수 없어요. 삭제됐거나 아직 전달되지 않았을 수 있습니다.</div>';
+      return;
+    }
     try {
       const c = await buddle.posts.comments(id);
       if (Array.isArray(c)) comments = c;
@@ -1283,44 +1267,13 @@
     else location.href = "home-dashboard.html";
   }
 
-  /* ── 인스타식 글쓰기 배너 + 이어가던 대화 ──────────────────── */
-  // 만들기 화면(0) = compose.html. (+)/프롬프트 모두 거기서 페르소나 고르고 대화형 작성.
-  function goCompose() { location.href = "compose.html"; }
-  $("cbPlus").addEventListener("click", goCompose);
-  $("cbPrompt").addEventListener("click", goCompose);
-  $("cbPrompt").addEventListener("keydown", e => {
-    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); goCompose(); }
-  });
-
-  // 이어가던 대화: 최근 대화 스레드로 바로 진입 (chat.html?persona=…).
-  // 데모 시드; 통합 시 GET /v1/personas + 최근 세션으로 대체.
-  const RESUME = [
-    { persona: "p1", ava: "초", name: "초록", last: "강가 코스 얘기 중" },
-    { persona: "p4", ava: "바", name: "바람", last: "주말 러닝 모임" },
-    { persona: "p2", ava: "물", name: "물결", last: "잔잔한 곡 추천" },
-  ];
-  function renderResume() {
-    const row = $("resumeRow");
-    row.replaceChildren();
-    RESUME.forEach(r => {
-      const chip = sec.el("button", { class: "cb-rchip" });
-      chip.innerHTML = `<span class="ra">${sec.esc(r.ava)}</span>
-        <span class="rt"><b>${sec.esc(r.name)}</b><small>${sec.esc(r.last)}</small></span>`;
-      chip.addEventListener("click", () => {
-        location.href = `chat.html?persona=${encodeURIComponent(r.persona)}`;
-      });
-      row.appendChild(chip);
-    });
-  }
-
-  // init — 소프트 인증 게이트: 백엔드 가동+비로그인 → login?next, 미가동 → 데모 유지.
+  // init — 인증 게이트 후 실데이터 로드.
   (async function boot() {
     const db = $("debateBtn");
     if (db) db.addEventListener("click", openDebate);
     $("savedBtn").addEventListener("click", () => { location.href = "bookmarks.html"; });
     $("notifBtn").addEventListener("click", () => { location.href = "notifications.html"; });
     bindSearch();
-    renderResume();
     await buddle.requireAuth();
     refreshNotifBadge();
     if (postId) loadDetail(postId);

@@ -647,9 +647,9 @@
       <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
     </button>
     <button class="head-persona" id="personaPicker" aria-haspopup="menu" aria-expanded="false">
-      <div class="head-ava" id="headAva">초</div>
+      <div class="head-ava" id="headAva">·</div>
       <div class="head-text">
-        <h1 id="headName">초록<svg class="chev" viewBox="0 0 24 24" fill="none" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></h1>
+        <h1 id="headName">불러오는 중<svg class="chev" viewBox="0 0 24 24" fill="none" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></h1>
         <small id="headTopic" class="rel-line">
           <span id="relLeaves" class="rel-leaves" aria-hidden="true"></span>
           <span id="relLabel">막 알아가는 사이</span>
@@ -759,46 +759,20 @@
 <script>
   sec.harden();
 
-  // ── live dialogue state (real backend WS; demo fallback when standalone) ──
+  // ── live dialogue state — 실데이터 전용 (데모 대본 없음) ──
+  // 페르소나 = GET /v1/personas, 세션 = GET /v1/personas/{id}/sessions,
+  // 메시지 = GET …/sessions/{sid}/messages, 대화 = WS /v1/ws/dialogue/{id}.
   let live = null;          // openDialogue handle once connected
   let liveReady = false;    // true after server 'auth_ok'
-  const livePersonaId = new URLSearchParams(location.search).get("persona");
+  let livePersonaId = new URLSearchParams(location.search).get("persona");
 
-  // ── demo state (replace with API: GET /v1/personas, GET /v1/personas/{id}/sessions, WS dialogue) ──
-  // 대화 중 전환 가능한 페르소나 목록 (persona-select.html을 흡수 — 별도 페이지 불필요).
-  const personaList = [
-    { id: "p1", name: "초록", ava: "초", model: "기본 대화 모델", tags: ["일상", "산책", "커피"] },
-    { id: "p2", name: "물결", ava: "물", model: "기본 대화 모델", tags: ["음악", "영화"] },
-    { id: "p3", name: "햇살", ava: "햇", model: "기본 대화 모델", tags: ["독서", "글쓰기", "역사"] },
-    { id: "p4", name: "바람", ava: "바", model: "Bilingual model", tags: ["러닝", "등산"] },
-  ];
-  // URL ?persona=ID 로 들어오면 그 페르소나를 초기 선택, 아니면 첫 번째.
-  let persona = personaList.find(p => p.id === new URLSearchParams(location.search).get("persona")) || personaList[0];
-  const sessionList = [
-    { id: "s1", title: "동네 산책", active: true },
-    { id: "s2", title: "주말 러닝" },
-    { id: "s3", title: "카페 탐방" },
-  ];
-  // messages per session (demo)
-  const history = {
-    s1: [
-      { role: "me", text: "오늘 동네 산책했는데 강가 코스가 좋더라." },
-      { role: "persona", text: "강가 코스 정말 좋죠! 아침 시간대가 한적해서 특히 추천해요. 혹시 어느 구간을 걸으셨어요?" },
-      { ref: true, items: [
-        { text: "강가 코스가 아침에 한적하다", insight: false },
-        { text: "산책 후 카페에서 마무리하는 사람이 많다", insight: false },
-        { text: "통합 인사이트: '동네 산책'은 운동보다 휴식·환기 목적이 우세", insight: true },
-      ]},
-      { role: "me", text: "둔치 쪽으로 한 시간 정도 걸었어. 같이 할 사람 있으면 좋겠다." },
-      { role: "persona", text: "한 시간이면 딱 좋은 거리네요. 근처에 비슷한 관심을 가진 분들이 있는지 살펴볼까요? 위치 기반 대화가 켜져 있으면 가까운 분들과 자연스럽게 이어질 수 있어요." },
-    ],
-    s2: [ { role: "persona", text: "주말 러닝 얘기를 시작해볼까요? 목표 거리나 페이스가 있으세요?" } ],
-    s3: [ { role: "persona", text: "요즘 다녀온 카페 중 기억에 남는 곳이 있나요?" } ],
-  };
+  let personaList = [];     // 실제 내 페르소나 목록
+  let persona = null;       // 현재 선택
+  let sessionList = [];     // 실제 대화 세션 목록
+  const history = {};       // sessionId → [{role,text}]
+  let currentSession = null; // null = 서버 기본 세션
 
-  let currentSession = "s1";
-
-  // render session chips
+  // render session chips — 실제 세션 목록 (없으면 '새 주제'만)
   const sessionsEl = document.getElementById("sessions");
   function renderSessions() {
     sessionsEl.innerHTML = "";
@@ -806,26 +780,60 @@
       const b = document.createElement("button");
       b.className = "schip" + (s.id === currentSession ? " on" : "");
       b.textContent = s.title;
-      b.onclick = () => { currentSession = s.id; renderSessions(); renderMsgs(); updateHead(); };
+      b.onclick = () => { switchSession(s.id); };
       sessionsEl.appendChild(b);
     });
     const nu = document.createElement("button");
     nu.className = "schip new";
     nu.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>새 주제';
-    nu.onclick = () => console.log("new topic → compose or empty chat");
+    nu.onclick = newTopic;
     sessionsEl.appendChild(nu);
+  }
+
+  async function switchSession(sid) {
+    currentSession = sid;
+    renderSessions();
+    if (!history[sid] && persona) {
+      try {
+        const msgs = await buddle.sessions.messages(persona.id, sid);
+        history[sid] = (Array.isArray(msgs) ? msgs : []).map(m => ({
+          role: m.role === "user" ? "me" : "persona", text: m.content,
+        }));
+      } catch (_) { history[sid] = []; }
+    }
+    renderMsgs(); updateHead();
+  }
+
+  async function newTopic() {
+    if (!persona) return;
+    const title = prompt("새 주제의 이름을 정해주세요", "");
+    if (title == null) return;
+    try {
+      const s = await buddle.sessions.create(persona.id, title.trim() || "새 대화", null);
+      sessionList.unshift({ id: s.id, title: s.title });
+      history[s.id] = [];
+      switchSession(s.id);
+    } catch (_) { alert("주제를 만들지 못했어요. 잠시 후 다시 시도해 주세요."); }
   }
 
   // render messages
   const msgsEl = document.getElementById("msgs");
   function renderMsgs() {
     msgsEl.innerHTML = "";
-    (history[currentSession] || []).forEach((m, i) => {
+    const msgs = history[currentSession] || [];
+    if (!msgs.length) {
+      const hint = document.createElement("div");
+      hint.style.cssText = "text-align:center;color:var(--ink-faint);font-size:13px;padding:48px 24px;";
+      hint.textContent = "무슨 이야기든 편하게 시작해 보세요. 대화하다 보면 생각이 정리됩니다.";
+      msgsEl.appendChild(hint);
+      return;
+    }
+    msgs.forEach((m, i) => {
       if (m.ref) { msgsEl.appendChild(refBlock(m.items)); return; }
       const row = document.createElement("div");
       row.className = "row " + m.role;
       const ava = m.role === "persona"
-        ? `<div class="m-ava">${sec.esc(persona.ava)}</div>` : "";
+        ? `<div class="m-ava">${sec.esc(persona ? persona.ava : "·")}</div>` : "";
       row.innerHTML = `${ava}<div class="msgwrap">
         <div class="bubble">${escapeHtml(m.text)}</div>
         <button class="ground-add" type="button" data-msg-i="${i}">
@@ -883,6 +891,7 @@
   }
 
   function updateHead() {
+    if (!persona) return;
     // 이름만 갱신하고 chevron 아이콘은 보존 (firstChild = 텍스트 노드).
     const h = document.getElementById("headName");
     h.firstChild.nodeValue = persona.name;
@@ -930,9 +939,11 @@
     ppTrigger.setAttribute("aria-expanded", "false");
   }
   function selectPersona(id) {
-    const p = personaList.find(x => x.id === id);
-    if (p) { persona = p; updateHead(); renderMsgs(); }
     closePersonaMenu();
+    // WS는 페르소나별 연결이므로 URL을 바꿔 깨끗하게 재연결한다.
+    if (!persona || id !== persona.id) {
+      location.href = `chat.html?persona=${encodeURIComponent(id)}`;
+    }
   }
   ppTrigger.addEventListener("click", () => {
     (ppMenu.style.display === "none" ? openPersonaMenu : closePersonaMenu)();
@@ -953,6 +964,12 @@
   function doSend() {
     const text = input.value.trim();
     if (!text) return;
+    if (!(live && liveReady)) {
+      // 실연결 전에는 보내지 않는다 (가짜 응답 없음).
+      setupLiveDialogue();
+      alert("페르소나와 연결 중입니다. 잠시 후 다시 보내주세요.");
+      return;
+    }
     (history[currentSession] ||= []).push({ role: "me", text });
     input.value = ""; input.style.height = "auto"; send.disabled = true;
     renderMsgs();
@@ -962,25 +979,19 @@
     phone.classList.add("generating");
     showTyping();
 
-    // Live backend: send over the dialogue WS. The reply arrives asynchronously
-    // as a 'persona_message' frame, which calls finishReply() (see setupLiveDialogue).
-    if (live && liveReady) {
-      try {
-        live.send(text, null); // session_id null -> backend default session
-        return;
-      } catch (_) { /* fall through to demo */ }
+    // The reply arrives asynchronously as a 'persona_message' frame,
+    // which calls finishReply() (see setupLiveDialogue).
+    try {
+      live.send(text, currentSession); // null -> backend default session
+    } catch (_) {
+      finishReply("전송에 실패했어요. 네트워크를 확인하고 다시 시도해 주세요.");
     }
-
-    // Demo fallback (page opened standalone without a backend / persona).
-    setTimeout(() => {
-      finishReply("(페르소나 응답이 여기에 표시됩니다)");
-    }, 1400);
   }
 
   function showTyping() {
     hideTyping();
     const row = sec.el("div", { class: "row persona", id: "typingRow" });
-    row.appendChild(sec.el("div", { class: "m-ava" }, persona.ava));
+    row.appendChild(sec.el("div", { class: "m-ava" }, persona ? persona.ava : "·"));
     const bubble = sec.el("div", { class: "bubble" });
     const typing = sec.el("div", { class: "typing" });
     typing.appendChild(sec.el("span")); typing.appendChild(sec.el("span")); typing.appendChild(sec.el("span"));
@@ -1047,8 +1058,6 @@
       onClose() { liveReady = false; live = null; },
     });
   }
-  setupLiveDialogue();
-  loadRelationship();
   send.addEventListener("click", doSend);
   input.addEventListener("keydown", e => {
     if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); doSend(); }
@@ -1208,7 +1217,38 @@
     }
   });
 
-  renderSessions(); renderMsgs(); updateHead();
+  // ── boot: 인증 → 실제 페르소나/세션 로드 → WS 연결 ──
+  (async function boot() {
+    const authed = await buddle.requireAuth();
+    if (!authed || !buddle.auth.isAuthed()) return;
+    let items = [];
+    try {
+      const list = await buddle.personas.list();
+      items = (Array.isArray(list) ? list : (list && list.items) || [])
+        .filter(p => p.is_active !== false);
+    } catch (_) {}
+    if (!items.length) { location.replace("persona-create.html"); return; }
+    personaList = items.map(p => ({
+      id: p.id, name: p.name, ava: String(p.name || "·").slice(0, 1),
+      model: p.model_key || "기본 대화 모델", tags: [],
+    }));
+    persona = personaList.find(p => p.id === livePersonaId) || personaList[0];
+    livePersonaId = persona.id;
+    updateHead();
+
+    try {
+      const sess = await buddle.sessions.list(persona.id);
+      sessionList = (Array.isArray(sess) ? sess : [])
+        .sort((a, b) => new Date(b.last_active_at || b.created_at) - new Date(a.last_active_at || a.created_at))
+        .map(s => ({ id: s.id, title: s.title }));
+    } catch (_) { sessionList = []; }
+    renderSessions();
+    if (sessionList.length) { await switchSession(sessionList[0].id); }
+    else { renderMsgs(); }
+
+    setupLiveDialogue();
+    loadRelationship();
+  })();
 </script>
 </body>
 </html>
