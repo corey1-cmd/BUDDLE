@@ -54,3 +54,6 @@ class NewsTopicOut(BaseModel):
     scope: str  # 동네/시/도/전국/해외
     region: str  # 스코프가 지역일 때의 라벨(예: "성남", "강남구")
     headlines: list[NewsTopicHeadline]
+    # 추세(M7): 포아송-감마 사후 + EWMA 방향으로 계산된 상승 확률과 라벨.
+    trend: str = "유지"  # 상승|유지|하락
+    p_rise: float = 0.0

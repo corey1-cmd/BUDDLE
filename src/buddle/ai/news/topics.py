@@ -15,6 +15,7 @@ and a deterministic Korean digest.
 from __future__ import annotations
 
 import html
+import itertools
 import math
 import re
 import time
@@ -78,6 +79,14 @@ _KO_VERBAL_ENDINGS = (
     "났다",
     "인다",
     "든다",
+    # 일반 과거·현재 종결어미 — '나왔다', '내놨다', '계획이다' 류 서술어 일괄
+    # 차단 (한글 명사는 이 꼴로 끝나지 않는다: 실측 '나왔다' 오탐이 근거).
+    "었다",
+    "았다",
+    "이다",
+    "온다",
+    "왔다",
+    "준다",
 )
 
 _KO_STOPWORDS = frozenset(
@@ -384,10 +393,14 @@ def _strip_particles(token: str) -> str:
     return token
 
 
-def extract_keywords(text: str, *, limit: int = 12) -> list[str]:
-    """Salient tokens from a snippet, order-preserving, stopword-filtered."""
+def _token_stream(text: str) -> list[str]:
+    """Ordered, filtered token sequence (duplicates kept — NPMI 인접쌍 계산용).
+
+    extract_keywords가 쓰는 것과 동일한 필터(조사 스트리핑·스톱워드·활용어미)를
+    통과한 토큰을 원문 순서 그대로 돌려준다. 순서가 남아 있어야 '전기차 보조금'
+    같은 인접 연어(collocation)를 통계로 발견할 수 있다.
+    """
     out: list[str] = []
-    seen: set[str] = set()
     for m in _TOKEN_RE.finditer(text or ""):
         tok = m.group(0)
         if tok[0].isascii():
@@ -402,6 +415,15 @@ def extract_keywords(text: str, *, limit: int = 12) -> list[str]:
             # 이름이 되면 무관한 기사를 묶는 오탐을 내므로 제외.
             if len(tok) > 2 and tok.endswith(_KO_VERBAL_ENDINGS):
                 continue
+        out.append(tok)
+    return out
+
+
+def extract_keywords(text: str, *, limit: int = 12) -> list[str]:
+    """Salient tokens from a snippet, order-preserving, stopword-filtered."""
+    out: list[str] = []
+    seen: set[str] = set()
+    for tok in _token_stream(text):
         if tok not in seen:
             seen.add(tok)
             out.append(tok)
@@ -887,6 +909,11 @@ class Topic:
     region: str
     keywords: list[str]
     headlines: list[dict[str, str]] = field(default_factory=list)
+    # 추세(M7): 상승/유지/하락 확률과 라벨 — 포아송-감마 사후 + 이중 EWMA 방향.
+    p_rise: float = 0.0
+    p_hold: float = 1.0
+    p_fall: float = 0.0
+    trend: str = "유지"
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -899,11 +926,18 @@ class Topic:
             "region": self.region,
             "keywords": self.keywords,
             "headlines": self.headlines,
+            "p_rise": round(self.p_rise, 3),
+            "p_hold": round(self.p_hold, 3),
+            "p_fall": round(self.p_fall, 3),
+            "trend": self.trend,
         }
 
 
 _RECENCY_HALF_LIFE_H = 24.0
 _MERGE_OVERLAP = 0.6  # two keywords sharing ≥60% of articles form one topic
+_NPMI_MIN = 0.35  # 인접쌍이 이 이상이면 연어(복합명사)로 병합
+_WINDOW_H = 72.0  # 화제 집계 윈도우(시간) — novelty/persistence의 분모
+_RECENT_H = 6.0  # 추세 판정의 '최근' 창
 
 
 def _recency_weight(published_at: int, now: float) -> float:
@@ -911,6 +945,110 @@ def _recency_weight(published_at: int, now: float) -> float:
         return 1.0
     age_h = max(0.0, (now - published_at) / 3600.0)
     return math.exp(-age_h / _RECENCY_HALF_LIFE_H * math.log(2))
+
+
+# ── Graph primitives (M4/M5: 공기 그래프 + PageRank 대표성) ─────────────────
+
+
+def _pagerank(
+    edges: dict[tuple[str, str], float], *, damping: float = 0.85, iters: int = 30
+) -> dict[str, float]:
+    """Weighted PageRank by power iteration — pure python, no dependencies.
+
+    윈도우 노드 수는 수천 규모라(기사 500 × 키워드 ≤10) 희소행렬 없이도
+    30회 반복이 밀리초 단위다. 결과는 화제의 '대표 태그' 선정과 centrality
+    점수 항에 쓰인다.
+    """
+    nodes: set[str] = set()
+    out_w: dict[str, float] = {}
+    for (a, b), w in edges.items():
+        nodes.add(a)
+        nodes.add(b)
+        out_w[a] = out_w.get(a, 0.0) + w
+        out_w[b] = out_w.get(b, 0.0) + w
+    if not nodes:
+        return {}
+    n = len(nodes)
+    rank = dict.fromkeys(nodes, 1.0 / n)
+    for _ in range(iters):
+        nxt = dict.fromkeys(nodes, (1.0 - damping) / n)
+        for (a, b), w in edges.items():
+            # 무방향 공기 그래프 — 양방향으로 질량 전파.
+            if out_w[a] > 0:
+                nxt[b] += damping * rank[a] * (w / out_w[a])
+            if out_w[b] > 0:
+                nxt[a] += damping * rank[b] * (w / out_w[b])
+        rank = nxt
+    return rank
+
+
+def _sigmoid(x: float) -> float:
+    if x >= 0:
+        return 1.0 / (1.0 + math.exp(-x))
+    e = math.exp(x)
+    return e / (1.0 + e)
+
+
+# ── Trend (M7: 이중 EWMA 방향 + 포아송-감마 상승 확률) ──────────────────────
+
+
+def _erlang_sf(x: float, shape: int, rate: float) -> float:
+    """P(X > x) for Gamma(shape∈ℕ, rate) — Erlang survival, closed form.
+
+    사후분포의 shape가 (1 + 최근 기사 수)라 항상 정수이므로 불완전감마 근사
+    없이 정확식으로 계산한다: exp(-rx)·Σ_{k<shape} (rx)^k / k!
+    """
+    if x <= 0:
+        return 1.0
+    rx = rate * x
+    term = 1.0
+    total = 1.0
+    for k in range(1, shape):
+        term *= rx / k
+        total += term
+    return math.exp(-rx) * min(total, 1e300)
+
+
+def topic_trend(
+    timestamps: list[int], *, now: float | None = None
+) -> tuple[float, float, float, str]:
+    """(P(상승), P(유지), P(하락), 라벨) — 화제의 기사 발행 시각 목록으로부터.
+
+    최근 6h 발생률 λ의 포아송-감마 사후(Gamma(1+n_recent, 1+6))가 이전 66h
+    평균률 λ_base를 넘을 확률 p를 닫힌형(Erlang survival)으로 구하고, 이중
+    EWMA(2h/24h) 방향 d로 상승/하락을 가른다. 외부 호출·학습 데이터 불요.
+    """
+    ts = time.time() if now is None else now
+    recent_n = 0
+    prior_n = 0
+    fast = 0.0
+    slow = 0.0
+    for t in timestamps:
+        age_h = (ts - t) / 3600.0
+        if age_h < 0:
+            age_h = 0.0
+        if age_h > _WINDOW_H:
+            continue
+        if age_h <= _RECENT_H:
+            recent_n += 1
+        else:
+            prior_n += 1
+        fast += math.exp(-age_h / 2.0)
+        slow += math.exp(-age_h / 24.0)
+    prior_hours = _WINDOW_H - _RECENT_H
+    lam_base = max(prior_n / prior_hours, 1e-3)
+    # 사후: Gamma(α0=1 + recent_n, β0=1 + 6h 노출)
+    p_gt = _erlang_sf(lam_base, 1 + recent_n, 1.0 + _RECENT_H)
+    d = fast / 2.0 - slow / 24.0  # 시간당 환산 밀도 차 — 부호가 방향
+    if d > 0:
+        p_rise, p_fall = p_gt, 0.0
+    elif d < 0:
+        p_rise, p_fall = 0.0, 1.0 - p_gt
+    else:
+        p_rise, p_fall = 0.0, 0.0
+    p_hold = max(0.0, 1.0 - p_rise - p_fall)
+    label = "상승" if p_rise >= max(p_hold, p_fall) else ("하락" if p_fall > p_hold else "유지")
+    return p_rise, p_hold, p_fall, label
 
 
 def build_topics(
@@ -929,20 +1067,73 @@ def build_topics(
     min_count=2: 한 건짜리 키워드는 화제가 아니라 잡음이다.
     """
     ts = time.time() if now is None else now
+
+    # ── 1) 토큰화 + NPMI 연어 병합 (M3) ────────────────────────────────────
+    # 인접쌍의 정규화 PMI가 높으면 하나의 복합 태그로 승격한다 — '전기차'와
+    # '보조금'이 늘 붙어 다니면 화제 이름도 '전기차 보조금'이어야 한다.
+    streams = [_token_stream(f"{it.title} {clean_text(it.summary)}") for it in items]
+    uni: dict[str, int] = {}
+    bi: dict[tuple[str, str], int] = {}
+    total_tok = 0
+    for st in streams:
+        total_tok += len(st)
+        for tok in st:
+            uni[tok] = uni.get(tok, 0) + 1
+        for a, b in itertools.pairwise(st):
+            if a != b:
+                bi[(a, b)] = bi.get((a, b), 0) + 1
+    collocations: set[tuple[str, str]] = set()
+    if total_tok:
+        for (a, b), n_ab in bi.items():
+            if n_ab < min_count:
+                continue
+            p_ab = n_ab / total_tok
+            p_a = uni[a] / total_tok
+            p_b = uni[b] / total_tok
+            denom = -math.log(p_ab)
+            if denom <= 0:
+                continue
+            npmi = math.log(p_ab / (p_a * p_b)) / denom
+            if npmi >= _NPMI_MIN:
+                collocations.add((a, b))
+
+    article_keywords: list[list[str]] = []
+    for st in streams:
+        kws: list[str] = []
+        seen: set[str] = set()
+        merged_next = False
+        for i, tok in enumerate(st):
+            if merged_next:
+                merged_next = False
+                continue
+            if i + 1 < len(st) and (tok, st[i + 1]) in collocations:
+                tok = f"{tok} {st[i + 1]}"
+                merged_next = True
+            if tok not in seen:
+                seen.add(tok)
+                kws.append(tok)
+                if len(kws) >= 10:
+                    break
+        article_keywords.append(kws)
+
+    # ── 2) 후보 통계 + 공기 그래프 (M4) ────────────────────────────────────
     kw_articles: dict[str, set[int]] = {}
     kw_score: dict[str, float] = {}
-    article_keywords: list[list[str]] = []
-
+    edges: dict[tuple[str, str], float] = {}
     for idx, it in enumerate(items):
-        text = f"{it.title} {clean_text(it.summary)}"
-        kws = extract_keywords(text, limit=10)
-        article_keywords.append(kws)
+        kws = article_keywords[idx]
         w = _recency_weight(it.published_at, ts) * (1.0 + math.log1p(max(0, it.engagement)) / 4.0)
         for k in kws:
             kw_articles.setdefault(k, set()).add(idx)
             kw_score[k] = kw_score.get(k, 0.0) + w
+        for i, a in enumerate(kws):
+            for b in kws[i + 1 :]:
+                key = (a, b) if a < b else (b, a)
+                edges[key] = edges.get(key, 0.0) + w
+    pr = _pagerank(edges)
+    pr_total = sum(pr.values()) or 1.0
 
-    # Source-diversity boost + minimum support
+    # ── 3) 후보 랭킹(다양성 부스트 + 최소 지지) → v0 겹침 병합 (M5) ─────────
     candidates: list[tuple[str, float]] = []
     for k, idxs in kw_articles.items():
         if len(idxs) < min_count:
@@ -953,7 +1144,7 @@ def build_topics(
 
     topics: list[Topic] = []
     used_articles_by_topic: list[set[int]] = []
-    for k, score in candidates:
+    for k, _cand_score in candidates:
         if len(topics) >= max_topics:
             break
         idxs = set(kw_articles[k])
@@ -969,28 +1160,84 @@ def build_topics(
                 break
         if merged:
             continue
-
-        arts = [items[i] for i in sorted(idxs)]
-        joined = " ".join(f"{a.title} {clean_text(a.summary)}" for a in arts)
-        scope, region = classify_region(joined, arts[0].source)
-        topic = Topic(
-            name=k,
-            score=score,
-            count=len(arts),
-            sources=sorted({a.source for a in arts}),
-            category=classify_category([k], joined),
-            scope=scope,
-            region=region,
-            keywords=[k],
-            headlines=[{"title": a.title, "url": a.url, "source": a.source} for a in arts[:4]],
+        topics.append(
+            Topic(
+                name=k,
+                score=0.0,  # 아래 6)에서 다항 점수로 확정
+                count=len(idxs),
+                sources=[],
+                category="",
+                scope="",
+                region="",
+                keywords=[k],
+            )
         )
-        topics.append(topic)
         used_articles_by_topic.append(idxs)
 
-    # Refresh counts after merges
+    # ── 4) 병합 반영 + 대표 태그(PageRank, 한국어 우선) ─────────────────────
+    max_count = max((len(s) for s in used_articles_by_topic), default=1)
     for t, idxs in zip(topics, used_articles_by_topic, strict=True):
+        arts = [items[i] for i in sorted(idxs)]
+        joined = " ".join(f"{a.title} {clean_text(a.summary)}" for a in arts)
+        # 대표 태그: 별칭 중 PageRank 최상. 한국어 서비스라 최고점의 90% 안에
+        # 한글 태그가 있으면 그것을 이름으로 쓴다.
+        best = max(t.keywords, key=lambda kw: pr.get(kw, 0.0))
+        best_pr = pr.get(best, 0.0)
+        hangul = [
+            kw
+            for kw in t.keywords
+            if re.search(r"[가-힣]", kw) and pr.get(kw, 0.0) >= 0.9 * best_pr
+        ]
+        t.name = hangul[0] if hangul else best
         t.count = len(idxs)
-        t.sources = sorted({items[i].source for i in idxs})
+        t.sources = sorted({a.source for a in arts})
+        scope, region = classify_region(joined, arts[0].source)
+        t.scope, t.region = scope, region
+        t.category = classify_category(list(t.keywords), joined)
+        t.headlines = [{"title": a.title, "url": a.url, "source": a.source} for a in arts[:4]]
+
+        # ── 5) 추세 (M7) ───────────────────────────────────────────────────
+        t.p_rise, t.p_hold, t.p_fall, t.trend = topic_trend(
+            [a.published_at for a in arts if a.published_at > 0], now=ts
+        )
+
+        # ── 6) 다항 점수 (M6): 설계서 §M6의 구현 7항 ────────────────────────
+        volume = math.log1p(len(idxs)) / math.log1p(max_count)
+        recent = sum(1 for a in arts if 0 < (ts - a.published_at) <= _RECENT_H * 3600)
+        prior_rate = max(
+            sum(1 for a in arts if (ts - a.published_at) > _RECENT_H * 3600)
+            / (_WINDOW_H - _RECENT_H),
+            1e-3,
+        )
+        growth = _sigmoid(math.log((recent / _RECENT_H + 1e-3) / prior_rate))
+        n_src = len(t.sources)
+        if n_src > 1:
+            counts: dict[str, int] = {}
+            for art in arts:
+                counts[art.source] = counts.get(art.source, 0) + 1
+            h = -sum((c / len(arts)) * math.log(c / len(arts)) for c in counts.values())
+            diversity = h / math.log(n_src)
+        else:
+            diversity = 0.0
+        centrality = sum(pr.get(kw, 0.0) for kw in t.keywords) / pr_total
+        kwset = set(t.keywords)
+        internal = sum(w for (ka, kb), w in edges.items() if ka in kwset and kb in kwset)
+        boundary = sum(w for (ka, kb), w in edges.items() if (ka in kwset) != (kb in kwset))
+        cohesion = internal / (internal + boundary) if (internal + boundary) > 0 else 0.5
+        ages = [(ts - a.published_at) / 3600.0 for a in arts if a.published_at > 0]
+        novelty = math.exp(-(min(ages) if ages else 0.0) / _WINDOW_H)
+        buckets = {int(a // 6.0) for a in ages}
+        persistence = len(buckets) / (_WINDOW_H / 6.0)
+        t.score = (
+            0.20 * volume
+            + 0.20 * growth
+            + 0.15 * diversity
+            + 0.10 * centrality
+            + 0.10 * cohesion
+            + 0.10 * novelty
+            + 0.05 * persistence
+        )
+
     topics.sort(key=lambda t: t.score, reverse=True)
     return topics
 

@@ -129,6 +129,8 @@ async def list_topics(
                     for h in heads
                     if isinstance(h, dict)
                 ],
+                trend=str(t.get("trend") or "유지"),
+                p_rise=float(t.get("p_rise") or 0.0),  # type: ignore[arg-type]
             )
         )
     return out

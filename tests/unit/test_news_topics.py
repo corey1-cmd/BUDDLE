@@ -202,17 +202,55 @@ def test_source_diversity_outranks_single_source_repetition():
 
 
 def test_overlapping_keywords_merge_into_one_topic():
-    # 두 키워드가 같은 기사 집합을 가리키면(≥60% 겹침) 화제 1개로 병합.
+    # 늘 붙어 다니는 인접쌍은 NPMI 연어로 승격되고(복합 태그), 겹치는 키워드는
+    # 한 화제로 병합된다 — '우주발사체'와 '누리호'가 별개 화제로 뜨지 않는다.
     items = [
         _item("우주발사체 누리호 발사 성공", source="a"),
         _item("우주발사체 누리호 2차 발사", source="b"),
     ]
     topics = build_topics(items, now=NOW)
-    with_kw = [t for t in topics if "누리호" in t.keywords or t.name == "누리호"]
     top_names = [t.name for t in topics]
-    # '우주발사체'와 '누리호'가 별개 화제로 뜨지 않는다
     assert not ("우주발사체" in top_names and "누리호" in top_names)
+    # '누리호'는 어떤 화제의 키워드(단독 또는 '우주발사체 누리호' 연어)로 존재한다
+    with_kw = [t for t in topics if any("누리호" in kw for kw in t.keywords)]
     assert with_kw, topics
+
+
+def test_npmi_collocation_becomes_compound_tag():
+    # 인접 반복되는 쌍('전기차 보조금')은 하나의 복합 태그로 승격된다.
+    items = [
+        _item("전기차 보조금 상한 인하", source="a"),
+        _item("전기차 보조금 지급 기준 변경", source="b"),
+        _item("전기차 보조금 신청 폭주", source="c"),
+    ]
+    topics = build_topics(items, now=NOW)
+    assert any(t.name == "전기차 보조금" for t in topics), [t.name for t in topics]
+
+
+def test_trend_burst_is_rising_and_stale_is_not():
+    # 최근 6h에 몰린 화제는 상승, 옛날에만 있던 화제는 상승이 아니다.
+    fresh = build_topics(
+        [_item("급상승화제 속보", age_h=1), _item("급상승화제 후속", age_h=2, source="b")],
+        now=NOW,
+    )
+    stale = build_topics(
+        [_item("묵은화제 기사", age_h=60), _item("묵은화제 재탕", age_h=65, source="b")],
+        now=NOW,
+    )
+    assert fresh[0].trend == "상승"
+    assert fresh[0].p_rise > 0.5
+    assert stale[0].trend != "상승"
+
+
+def test_scores_are_bounded():
+    items = [
+        _item("경계값화제 첫보도", source="a"),
+        _item("경계값화제 후속", source="b"),
+    ]
+    for t in build_topics(items, now=NOW):
+        assert 0.0 <= t.score <= 1.0
+        assert 0.0 <= t.p_rise <= 1.0 and 0.0 <= t.p_hold <= 1.0 and 0.0 <= t.p_fall <= 1.0
+        assert abs(t.p_rise + t.p_hold + t.p_fall - 1.0) < 1e-6
 
 
 def test_recent_articles_outweigh_stale_ones():
@@ -279,3 +317,27 @@ def test_digest_highlights_regional_issue():
 def test_digest_empty_without_supported_topics():
     assert compose_digest([]) == ""
     assert compose_digest([_topic("한건짜리", count=1)]) == ""
+
+
+# ── simhash (준중복 지문 — fetcher) ─────────────────────────────────────────
+
+
+def test_simhash_near_duplicates_are_close():
+    # 전재(같은 통신사 기사, 다른 URL)는 제목+요약 전체가 거의 동일하다 —
+    # 수십 토큰 중 한두 개 변형이면 지문이 임계(≤10) 안에 남는다 (무관 쌍 실측 최솟값 27).
+    from buddle.ai.news.fetcher import hamming64, simhash64
+
+    base = (
+        "성남시 버스 노선 대규모 개편 확정 내달부터 적용 "
+        "성남시가 시내버스 노선을 대규모로 개편한다 버스 노선 42개가 조정되고 "
+        "배차 간격이 줄어든다 시는 주민 설명회를 거쳐 최종안을 확정했다고 밝혔다"
+    )
+    variant = base.replace("내달부터", "다음달부터")  # 매체별 표기 차이
+    other = (
+        "AI 규제 법안 국회 상임위 통과 인공지능 산업 진흥과 규제를 담은 "
+        "기본법이 상임위를 통과했다 본회의 표결을 앞두고 업계 반응이 엇갈린다"
+    )
+    assert hamming64(simhash64(base), simhash64(base)) == 0
+    assert hamming64(simhash64(base), simhash64(variant)) <= 10
+    assert hamming64(simhash64(base), simhash64(other)) > 20
+    assert simhash64("") == 0

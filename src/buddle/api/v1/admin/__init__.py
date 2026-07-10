@@ -473,6 +473,16 @@ async def news_sources(_: CurrentAdmin, redis: Redis) -> list[dict[str, object]]
     return await get_news_sources(redis)
 
 
+@admin_router.post(
+    "/news/sources/reset",
+    summary="Reset sources to defaults (한국 전용 기본값 — 해외 소스 비활성)",
+)
+async def news_sources_reset(_: CurrentAdmin, redis: Redis) -> list[dict[str, object]]:
+    from buddle.services.news_service import reset_news_sources
+
+    return await reset_news_sources(redis)
+
+
 @admin_router.post("/news/sources", summary="Add a news source (rss/hackernews/devto)")
 async def news_source_add(
     body: NewsSourceCreate, _: CurrentAdmin, redis: Redis

@@ -27,7 +27,7 @@ from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from buddle.ai.news.fetcher import RawArticle, fetch_configured
+from buddle.ai.news.fetcher import RawArticle, fetch_configured, hamming64, simhash64
 from buddle.ai.news.topics import (
     Topic,
     TopicInput,
@@ -52,6 +52,7 @@ _STATUS_KEY = "buddle:news:status"
 _DIGEST_KEY = "buddle:news:digest"  # combined briefing (the 'combination' stage)
 _SOURCES_KEY = "buddle:news:sources"  # admin-configured fetch sources (where to search)
 _TOPICS_KEY = "buddle:news:topics"  # algorithmic 화제 cache (홈·관심주제 노출용)
+_SIMHASH_KEY = "buddle:news:simhash"  # 최근 기사 내용 지문(준중복 탐지, 48h)
 _BRIEFINGS_TTL = 60 * 60 * 25  # 25 hours
 _SEEN_TTL = 60 * 60 * 48  # 48 hours (dedup window)
 _MAX_STORED = 60  # max articles kept in cache
@@ -61,24 +62,25 @@ _TOPIC_WINDOW_H = 72  # 화제 집계 윈도우 (DB 기준)
 # (Techmeme, WSJ, New Yorker, …); the API kinds use their own fixed endpoints.
 _ALLOWED_KINDS = ("rss", "hackernews", "devto")
 
-# Seeded on first read so behaviour matches the previous hardcoded set. Techmeme
-# is the worked example of a free, public RSS feed; add WSJ/New Yorker as rss too.
+# 한국 전용 초기 배포: 기본 활성 소스는 한국 정부·공공 RSS만이다(화제는
+# 한국어여야 한다). 해외 소스는 레지스트리에 남겨 admin이 토글로 켤 수 있고,
+# 지자체 RSS는 admin 화면(뉴스 소스 추가)에서 URL만 등록하면 된다.
 DEFAULT_SOURCES: list[dict[str, object]] = [
     {
         "id": "hackernews",
         "name": "Hacker News",
         "kind": "hackernews",
         "url": "",
-        "enabled": True,
+        "enabled": False,
         "limit": 20,
     },
-    {"id": "devto", "name": "dev.to", "kind": "devto", "url": "", "enabled": True, "limit": 10},
+    {"id": "devto", "name": "dev.to", "kind": "devto", "url": "", "enabled": False, "limit": 10},
     {
         "id": "techmeme",
         "name": "Techmeme",
         "kind": "rss",
         "url": "https://www.techmeme.com/feed.xml",
-        "enabled": True,
+        "enabled": False,
         "limit": 10,
     },
     # Public RSS expansion (beta Phase 2). Official feeds only — the rights
@@ -89,7 +91,7 @@ DEFAULT_SOURCES: list[dict[str, object]] = [
         "name": "The Guardian",
         "kind": "rss",
         "url": "https://www.theguardian.com/world/rss",
-        "enabled": True,
+        "enabled": False,
         "limit": 10,
     },
     {
@@ -97,7 +99,7 @@ DEFAULT_SOURCES: list[dict[str, object]] = [
         "name": "BBC",
         "kind": "rss",
         "url": "https://feeds.bbci.co.uk/news/rss.xml",
-        "enabled": True,
+        "enabled": False,
         "limit": 10,
     },
     {
@@ -105,7 +107,7 @@ DEFAULT_SOURCES: list[dict[str, object]] = [
         "name": "The Verge",
         "kind": "rss",
         "url": "https://www.theverge.com/rss/index.xml",
-        "enabled": True,
+        "enabled": False,
         "limit": 10,
     },
     {
@@ -113,7 +115,7 @@ DEFAULT_SOURCES: list[dict[str, object]] = [
         "name": "Ars Technica",
         "kind": "rss",
         "url": "https://feeds.arstechnica.com/arstechnica/index",
-        "enabled": True,
+        "enabled": False,
         "limit": 10,
     },
     # ── 정부·공공(공공누리 제1유형 = 출처표시 시 상업적 이용·2차 창작 허용) ──
@@ -309,6 +311,16 @@ async def delete_news_source(redis: RedisClient, source_id: str) -> bool:
     return True
 
 
+async def reset_news_sources(redis: RedisClient) -> list[dict[str, object]]:
+    """Overwrite the registry with DEFAULT_SOURCES.
+
+    레지스트리는 Redis에 영속되므로 코드의 기본값을 바꿔도 기존 배포엔 반영되지
+    않는다 — 한국 전용 기본값(해외 비활성)을 라이브에 적용하는 1클릭 경로.
+    """
+    await _save_sources(redis, list(DEFAULT_SOURCES))
+    return list(DEFAULT_SOURCES)
+
+
 def _analyse_algorithmic(article: RawArticle) -> dict[str, object]:
     """Per-article analysis with zero API calls — the LLM 대체 경로.
 
@@ -423,10 +435,38 @@ async def news_tick(db: AsyncSession, *, redis: RedisClient) -> dict[str, object
     log.info("news.tick.fetched", count=fetched, sources=len(sources))
 
     # Redis seen-set: 같은 틱 주기 안에서의 값싼 선필터 (진짜 중복 제거는 DB UNIQUE)
-    new_articles: list[RawArticle] = []
+    unseen: list[RawArticle] = []
     for a in articles:
         if not await _is_seen(redis, a.url_hash):
+            unseen.append(a)
+
+    # SimHash 준중복: URL은 다른데 내용이 같은 전재 기사(통신사 기사가 여러
+    # 매체로 유입)를 거른다. 임계 ≤10 — 제목+요약 20~40토큰 규모에서 표기
+    # 한두 곳 차이는 거리 4~6, 무관 기사 쌍은 최소 27로 실측돼(분포 27~43)
+    # 여유가 17비트다. seen 처리해 다음 틱 재검사도 막는다. (설계서 §M1-4)
+    new_articles: list[RawArticle] = []
+    if unseen:
+        near_dup = 0
+        now_s = time.time()
+        raw_hashes = await redis.zrangebyscore(_SIMHASH_KEY, now_s - _SEEN_TTL, "+inf")
+        recent_hashes = [int(h) for h in raw_hashes if str(h).isdigit()]
+        fresh_hashes: dict[str, float] = {}
+        for a in unseen:
+            sh = simhash64(f"{a.title} {a.summary[:300]}")
+            if sh and any(hamming64(sh, r) <= 10 for r in recent_hashes):
+                near_dup += 1
+                await _mark_seen(redis, a.url_hash)
+                continue
+            if sh:
+                recent_hashes.append(sh)
+                fresh_hashes[str(sh)] = now_s
             new_articles.append(a)
+        if fresh_hashes:
+            await redis.zadd(_SIMHASH_KEY, fresh_hashes)
+            await redis.zremrangebyscore(_SIMHASH_KEY, 0, now_s - _SEEN_TTL)
+            await redis.expire(_SIMHASH_KEY, _SEEN_TTL)
+        if near_dup:
+            log.info("news.tick.near_dup", count=near_dup)
     log.info("news.tick.new", count=len(new_articles))
 
     stored = 0

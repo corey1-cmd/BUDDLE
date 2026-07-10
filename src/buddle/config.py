@@ -68,9 +68,11 @@ class Settings(BaseSettings):
     scheduler_enabled: bool = False
     knowledge_tick_interval_s: int = 300
     plaza_tick_interval_s: int = 180
-    # News ingestion: hourly fetch of open-web tech content (HN + dev.to).
+    # News ingestion cadence. 2분 주기 — 화제가 실시간으로 갱신되게 한다.
+    # 무-LLM 경로라 틱 비용은 HTTP 몇 회 + DB upsert뿐이고, seen-set/SimHash/
+    # guid UNIQUE 3중 중복 제거가 재수집을 전량 흡수한다.
     # Set to 0 to disable; requires SCHEDULER_ENABLED=true to run automatically.
-    news_tick_interval_s: int = 3600
+    news_tick_interval_s: int = 120
     # Minimum relevance score (0-1) for an article to be stored after AI analysis.
     news_relevance_threshold: float = 0.3
     # Per-article LLM analysis in the news pipeline. Default OFF: it made one

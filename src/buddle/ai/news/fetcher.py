@@ -202,6 +202,35 @@ async def fetch_rss(url: str, *, source_name: str, limit: int = 10) -> list[RawA
     return articles
 
 
+_SIMHASH_TOKEN_RE = re.compile(r"[0-9A-Za-z가-힣]{2,}")
+
+
+def simhash64(text: str) -> int:
+    """64-bit SimHash over tokens — 통신사 전재(같은 기사, 다른 URL) 탐지용.
+
+    URL/guid dedup은 '같은 주소'만 거른다. 한국 뉴스 생태계에선 같은 통신사
+    기사가 여러 매체 URL로 유입되므로, 제목+요약의 내용 지문이 필요하다.
+    해밍거리 ≤ 3이면 준중복으로 판정한다(설계서 §M1-4).
+    """
+    tokens = _SIMHASH_TOKEN_RE.findall((text or "").lower())
+    if not tokens:
+        return 0
+    v = [0] * 64
+    for tok in tokens:
+        h = int.from_bytes(hashlib.md5(tok.encode("utf-8")).digest()[:8], "big")
+        for i in range(64):
+            v[i] += 1 if (h >> i) & 1 else -1
+    out = 0
+    for i in range(64):
+        if v[i] > 0:
+            out |= 1 << i
+    return out
+
+
+def hamming64(a: int, b: int) -> int:
+    return (a ^ b).bit_count()
+
+
 def _dedup(articles: list[RawArticle]) -> list[RawArticle]:
     """Keep the first occurrence per URL."""
     seen: set[str] = set()
