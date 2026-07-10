@@ -131,6 +131,7 @@ async def list_topics(
                 ],
                 trend=str(t.get("trend") or "유지"),
                 p_rise=float(t.get("p_rise") or 0.0),  # type: ignore[arg-type]
+                post_id=(str(t["post_id"]) if t.get("post_id") else None),
             )
         )
     return out

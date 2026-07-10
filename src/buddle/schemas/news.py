@@ -57,3 +57,6 @@ class NewsTopicOut(BaseModel):
     # 추세(M7): 포아송-감마 사후 + EWMA 방향으로 계산된 상승 확률과 라벨.
     trend: str = "유지"  # 상승|유지|하락
     p_rise: float = 0.0
+    # 화제 글(광장) id — 카드 탭 시 뉴스 링크가 아니라 좋아요·댓글·토론이 있는
+    # 글 상세로 이동한다(레딧식). tick이 화제마다 멱등 생성.
+    post_id: str | None = None

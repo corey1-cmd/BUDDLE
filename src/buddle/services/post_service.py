@@ -407,6 +407,7 @@ async def _feed_items_for_posts(db: AsyncSession, posts: list[Post]) -> list[Pos
                 if p.source_persona_id and p.source_persona_id in persona_map
                 else None
             ),
+            author_label=p.author_label,
             content_transformed=p.content_transformed,
             tags=tags_by_post.get(p.id, []),
             importance=importance_map.get(p.id, 0.0),

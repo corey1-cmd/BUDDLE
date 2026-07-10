@@ -520,6 +520,12 @@ async def news_tick(db: AsyncSession, *, redis: RedisClient) -> dict[str, object
     except Exception as e:
         log.warning("news.topics_error", error=str(e))
 
+    # 화제 → 광장 글 승격(멱등) — 상호작용(좋아요·댓글·토론)의 대상을 만든다.
+    try:
+        await _ensure_topic_posts(db, redis, topics)
+    except Exception as e:
+        log.warning("news.topic_post_error", error=str(e))
+
     try:
         digest_text = compose_digest(topics)
         if digest_text:
@@ -568,6 +574,129 @@ async def news_tick(db: AsyncSession, *, redis: RedisClient) -> dict[str, object
     return {"fetched": fetched, "new": len(new_articles), "stored": stored, "topics": len(topics)}
 
 
+# ── 화제 → 광장 글 승격 (레딧식 상호작용의 대상 엔티티) ─────────────────────
+#
+# 화제 카드를 눌렀을 때 외부 뉴스 링크가 아니라 좋아요·댓글·토론이 있는 글로
+# 가야 한다. 화제마다 시스템 글을 1건 만들어 기존 상호작용(좋아요/댓글/토론/
+# 논증 대화)을 전부 재사용한다 — 새 상호작용 테이블이 필요 없다.
+
+_TOPICPOST_KEY = "buddle:news:topicpost:"  # + 화제명 → post_id (72h TTL)
+_TOPICPOST_TTL = _TOPIC_WINDOW_H * 3600
+NEWS_AUTHOR_LABEL = "지금 화제"
+
+
+def compose_topic_post(t: Topic) -> str:
+    """화제 글 본문 — 전부 집계값·발췌로 조립한다(생성 없음, 환각 불가).
+
+    이 텍스트가 논증 대화(argument-chat)와 댓글의 시드가 되므로, 사실 진술
+    (보도 건수·매체 수·헤드라인)과 참여 유도 한 줄로 구성한다.
+    """
+    where = f"{t.region} · " if t.region else ""
+    lines = [
+        f"[지금 화제] {t.name}",
+        "",
+        f"{where}{t.category} · {t.scope} — 최근 보도 {t.count}건, 매체 {len(t.sources)}곳"
+        f" · 추세 {t.trend}",
+        "",
+        "관련 보도:",
+    ]
+    for h in t.headlines[:3]:
+        lines.append(f"· {h.get('title', '')} ({h.get('source', '')})")
+    lines += ["", "이 화제, 어떻게 생각하세요? 댓글이나 토론으로 생각을 나눠보세요."]
+    return "\n".join(lines)
+
+
+async def _ensure_topic_posts(
+    db: AsyncSession, redis: RedisClient, topics: list[Topic]
+) -> dict[str, str]:
+    """화제마다 공개 글을 정확히 1건 보장하고 {화제명: post_id}를 돌려준다.
+
+    멱등성 2중 보장: Redis 매핑(72h TTL) 선조회 → 미스 시 DB에서 같은 태그의
+    최근 시스템 글을 재사용(Redis 재시작 대비) → 그래도 없으면 생성.
+
+    의도적으로 post_service._ingest_post(윤리 게이트+mediator)를 타지 않는다:
+    본문이 집계값·헤드라인 발췌로만 조립되는 결정론적 자체 생성 텍스트라
+    LLM 게이트가 불필요하고, 2분 틱마다 모델 호출을 유발하면 무-LLM 원칙이
+    깨진다. 사용자 유래 텍스트는 이 경로에 절대 섞이지 않는다.
+    """
+    from buddle.db.models.enums import AuthorKind, PostVisibility
+    from buddle.db.models.importance import ImportanceScore
+    from buddle.db.models.post import Post
+    from buddle.db.models.tag import PostTag, Tag
+
+    mapping: dict[str, str] = {}
+    since = dt.datetime.now(dt.UTC) - dt.timedelta(hours=_TOPIC_WINDOW_H)
+    for t in topics:
+        if t.count < 2 or not t.name:
+            continue
+        tag_name = t.name[:64]
+        key = _TOPICPOST_KEY + tag_name
+        cached = await redis.get(key)
+        if cached:
+            mapping[t.name] = str(cached)
+            continue
+
+        # DB 폴백 — Redis가 비워져도 같은 화제 글을 중복 생성하지 않는다.
+        existing = (
+            await db.execute(
+                select(Post.id)
+                .join(PostTag, PostTag.post_id == Post.id)
+                .join(Tag, Tag.id == PostTag.tag_id)
+                .where(
+                    Tag.name == tag_name,
+                    Post.author_kind == AuthorKind.EXTERNAL_AI,
+                    Post.author_label == NEWS_AUTHOR_LABEL,
+                    Post.created_at >= since,
+                )
+                .order_by(Post.created_at.desc())
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+        if existing is not None:
+            mapping[t.name] = str(existing)
+            await redis.setex(key, _TOPICPOST_TTL, str(existing))
+            continue
+
+        content = compose_topic_post(t)
+        post = Post(
+            source_persona_id=None,
+            agent_id=None,
+            author_kind=AuthorKind.EXTERNAL_AI,
+            author_label=NEWS_AUTHOR_LABEL,
+            content_raw=content,
+            content_transformed=content,
+            visibility=PostVisibility.PUBLIC,
+        )
+        db.add(post)
+        await db.flush()
+        db.add(ImportanceScore(post_id=post.id, raw_score=0.0, normalized=0.0))
+        tag = (await db.execute(select(Tag).where(Tag.name == tag_name))).scalar_one_or_none()
+        if tag is None:
+            tag = Tag(name=tag_name)
+            db.add(tag)
+            await db.flush()
+        db.add(PostTag(post_id=post.id, tag_id=tag.id))
+        await db.commit()
+        mapping[t.name] = str(post.id)
+        await redis.setex(key, _TOPICPOST_TTL, str(post.id))
+        log.info("news.topic_post.created", topic=t.name, post_id=str(post.id))
+    return mapping
+
+
+async def _attach_topic_posts(
+    redis: RedisClient, topics: list[dict[str, object]]
+) -> list[dict[str, object]]:
+    """서빙 직전에 화제 dict에 post_id를 붙인다(Redis 매핑 일괄 조회)."""
+    if not topics:
+        return topics
+    keys = [_TOPICPOST_KEY + str(t.get("name") or "")[:64] for t in topics]
+    values = await redis.mget(keys)
+    for t, v in zip(topics, values, strict=True):
+        if v:
+            t["post_id"] = str(v)
+    return topics
+
+
 async def get_news_topics(
     db: AsyncSession,
     redis: RedisClient,
@@ -598,6 +727,8 @@ async def get_news_topics(
     if region:
         needle = region.strip()
         topics = [t for t in topics if needle and needle in str(t.get("region") or "")]
+    with contextlib.suppress(Exception):
+        topics = await _attach_topic_posts(redis, topics)
     return topics[:limit]
 
 

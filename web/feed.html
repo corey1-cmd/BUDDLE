@@ -559,7 +559,9 @@
   .lang-tabs{display:inline-flex;background:var(--paper-sunken);border-radius:999px;padding:3px;margin-bottom:14px;}
   .lang-tabs button{border:0;background:transparent;font-family:var(--body);font-size:13.5px;font-weight:600;color:var(--ink-soft);padding:8px 16px;border-radius:999px;cursor:pointer;}
   .lang-tabs button.on{background:linear-gradient(135deg,#6D8CFF 0%,#7C6FF2 55%,#3A3480 100%);color:#fff;box-shadow:0 6px 16px rgba(104,96,255,.26),inset 0 1px 0 rgba(255,255,255,.08);}
-  .post-text{font-size:16px;line-height:1.7;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:19px;padding:18px;}
+  /* pre-line: 작성 줄바꿈 보존 — 화제 글([지금 화제])의 헤드라인 목록과
+     사용자 글의 문단이 한 덩어리로 접히지 않게 한다. */
+  .post-text{font-size:16px;line-height:1.7;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:19px;padding:18px;white-space:pre-line;}
   .actions{display:flex;gap:10px;margin:16px 0;}
   .act{flex:1;display:flex;align-items:center;justify-content:center;gap:7px;padding:12px;border:1px solid var(--line);border-radius:16px;background:var(--surface);color:var(--ink-soft);font-family:var(--body);font-size:14px;font-weight:600;cursor:pointer;transition:all .15s;}
   .act svg{width:17px;height:17px;stroke:currentColor;fill:none;}
@@ -651,8 +653,15 @@
     padding:0 12px;font-family:var(--body);font-size:13px;color:var(--ink);}
   .ns-loc input:focus{outline:none;border-color:var(--gold);}
   .ns-loc input:disabled{opacity:.45;}
-  .nt-card{padding:11px 12px;border:1px solid var(--line);border-radius:14px;background:var(--paper-sunken);margin-bottom:8px;}
+  .nt-card{padding:11px 12px;border:1px solid var(--line);border-radius:14px;background:var(--paper-sunken);margin-bottom:8px;cursor:pointer;transition:border-color .15s,transform .12s;}
+  .nt-card:hover{border-color:var(--line-strong);}
+  .nt-card:active{transform:scale(.99);}
   .nt-card:last-child{margin-bottom:0;}
+  /* 홈에서 넘어온 화제 하이라이트 (feed.html?news_topic=…) */
+  .nt-card.hl{border-color:var(--willow);box-shadow:0 0 0 3px var(--willow-wash);}
+  /* 참여 유도 줄 — 카드 탭 = 화제 글(좋아요·댓글·토론)로 */
+  .nt-join{display:flex;align-items:center;gap:6px;margin-top:8px;font-size:12px;font-weight:600;color:var(--willow-text);}
+  .nt-join svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2;}
   .nt-top{display:flex;align-items:center;gap:7px;flex-wrap:wrap;}
   .nt-name{font-size:14.5px;font-weight:700;color:var(--ink);}
   .nt-badge{font-size:10.5px;font-weight:700;padding:2px 8px;border-radius:999px;background:var(--willow-wash);color:var(--willow-text);}
@@ -962,6 +971,10 @@
   }
 
   let nsSeq = 0;
+  // 홈 화제 카드에서 넘어올 때(feed.html?news_topic=…) 그 화제를 최상단에
+  // 하이라이트로 고정한다 — 첫 렌더 1회만 스크롤.
+  const nsPinName = (params.get("news_topic") || "").trim();
+  let nsPinScrolled = false;
   async function loadNewsTopics() {
     const box = $("newsSec"), list = $("nsList");
     const mySeq = ++nsSeq;
@@ -986,29 +999,66 @@
         "이 필터에 잡힌 화제가 아직 없어요. 범위나 주제를 넓혀보세요."));
       return;
     }
-    topics.forEach(t => list.appendChild(nsTopicCard(t)));
+    if (nsPinName) {
+      const i = topics.findIndex(t => (t.name || "") === nsPinName);
+      if (i > 0) topics.unshift(topics.splice(i, 1)[0]);
+    }
+    topics.forEach(t => list.appendChild(nsTopicCard(t, nsPinName && t.name === nsPinName)));
+    if (nsPinName && !nsPinScrolled) {
+      nsPinScrolled = true;
+      setTimeout(() => box.scrollIntoView({ behavior: "smooth" }), 250);
+    }
   }
 
-  function nsTopicCard(t) {
-    const card = sec.el("div", { class: "nt-card" });
+  function nsTopicCard(t, highlight) {
+    const card = sec.el("div", { class: "nt-card" + (highlight ? " hl" : "") });
     const top = sec.el("div", { class: "nt-top" });
     top.appendChild(sec.el("span", { class: "nt-name" }, "#" + (t.name || "")));
     top.appendChild(sec.el("span", { class: "nt-badge" }, t.category || "사회"));
     const scopeLabel = t.region ? `${t.scope} · ${t.region}` : (t.scope || "");
     if (scopeLabel) top.appendChild(sec.el("span", { class: "nt-badge" }, scopeLabel));
+    if (t.trend === "상승") top.appendChild(sec.el("span", { class: "nt-badge" }, "↑ 상승"));
     top.appendChild(sec.el("span", { class: "nt-meta" },
       `기사 ${t.count || 0}건 · 매체 ${(t.sources || []).length}곳`));
     card.appendChild(top);
     const heads = Array.isArray(t.headlines) ? t.headlines.slice(0, 3) : [];
     if (heads.length) {
       const hbox = sec.el("div", { class: "nt-heads" });
-      heads.forEach(h => hbox.appendChild(sec.el("a", {
-        href: sec.safeUrl(h && h.url), target: "_blank", rel: "noopener noreferrer",
-        title: (h && h.source) || "",
-      }, (h && h.title) || "")));
+      heads.forEach(h => {
+        const a = sec.el("a", {
+          href: sec.safeUrl(h && h.url), target: "_blank", rel: "noopener noreferrer",
+          title: (h && h.source) || "",
+        }, (h && h.title) || "");
+        // 원문 링크는 부가 정보 — 카드 클릭(화제 참여)과 분리한다.
+        a.addEventListener("click", (e) => e.stopPropagation());
+        hbox.appendChild(a);
+      });
       card.appendChild(hbox);
     }
+    const join = sec.el("div", { class: "nt-join" });
+    join.innerHTML = '<svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>';
+    join.appendChild(document.createTextNode("이 화제에 참여하기 — 좋아요·댓글·토론"));
+    card.appendChild(join);
+    // 카드 탭 = 화제 글(상호작용)로. 뉴스로 바로 넘기지 않는다(레딧식).
+    card.addEventListener("click", () => nsOpenTopic(t));
     return card;
+  }
+
+  function nsOpenTopic(t) {
+    if (t.post_id) {
+      // 상세 폴백이 태그 필터로 이 글을 찾을 수 있게 tag도 함께 넘긴다.
+      const qs = new URLSearchParams({ post: t.post_id });
+      if (t.name) qs.set("tag", t.name);
+      location.href = "feed.html?" + qs.toString();
+      return;
+    }
+    // 글 승격 전(다음 tick 대기 등) — 같은 이름의 화제 태그 피드로 폴백.
+    if (t.name) {
+      currentTopic = t.name;
+      updateDebateButton();
+      nextCursor = null;
+      loadFeed();
+    }
   }
 
   function bindNewsFilters() {
@@ -1030,7 +1080,7 @@
   }
 
   function postCard(item) {
-    const persona = (item.source_persona && item.source_persona.name) || "익명";
+    const persona = (item.source_persona && item.source_persona.name) || item.author_label || "익명";
     const [bg, fg] = palOf(persona);
     const card = sec.el("div", { class: "card" });
 
@@ -1176,8 +1226,15 @@
       try { post = await buddle.posts.get(id); }
       catch (_) {
         try {
-          const page = await buddle.feed.list();
+          // 화제 카드(feed.html?post=…&tag=…)처럼 스태시 없이 진입한 경우:
+          // 태그 필터 피드가 그 글을 1페이지 안에 담고 있을 확률이 가장 높다.
+          const tagHint = (params.get("tag") || "").trim() || null;
+          let page = await buddle.feed.list(null, tagHint);
           post = ((page && page.items) || []).find(it => it.id === id) || null;
+          if (!post && tagHint) {
+            page = await buddle.feed.list();
+            post = ((page && page.items) || []).find(it => it.id === id) || null;
+          }
         } catch (_) {}
       }
     }
@@ -1214,7 +1271,7 @@
   function renderDetail(post, comments) {
     const view = $("detailView");
     view.innerHTML = "";
-    const persona = (post.source_persona && post.source_persona.name) || "익명";
+    const persona = (post.source_persona && post.source_persona.name) || post.author_label || "익명";
     const [bg, fg] = palOf(persona);
 
     // author

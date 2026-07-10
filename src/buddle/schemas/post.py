@@ -51,6 +51,9 @@ class PostFeedItem(BaseModel):
 
     id: uuid.UUID
     source_persona: PersonaBrief | None
+    # 비인간 저자(뉴스 화제 글 등)의 표시 이름 — persona가 없을 때 클라이언트가
+    # '익명' 대신 이 라벨을 보여준다.
+    author_label: str | None = None
     content_transformed: str
     tags: list[TagName]
     importance: float  # normalized [-1, 1]

@@ -606,7 +606,7 @@
 
   // 레딧식 카드 한 장
   function renderCard(item){
-    const persona = (item.source_persona && item.source_persona.name) || "익명";
+    const persona = (item.source_persona && item.source_persona.name) || item.author_label || "익명";
     const text = (item.content_transformed || "").trim();
     const tags = (item.tags||[]).map(tagName).filter(Boolean);
     const card = sec.el("div", { class:"rcard" });
@@ -705,7 +705,12 @@
     if(!items.length){ strip.style.display = "none"; return; }
     strip.replaceChildren();
     items.forEach(t => {
-      const card = sec.el("a", { class:"ntcard", href:"feed.html#news" });
+      // 관심주제로 넘어가되 '그 화제'가 최상단 하이라이트로 뜨게 이름을 넘긴다.
+      // (화제 카드를 다시 탭하면 화제 글 — 좋아요·댓글·토론 — 로 진입)
+      const card = sec.el("a", {
+        class:"ntcard",
+        href:"feed.html?news_topic=" + encodeURIComponent(t.name || ""),
+      });
       card.appendChild(sec.el("b", null, "#"+(t.name||"")));
       const region = t.region ? ` · ${t.region}` : "";
       card.appendChild(sec.el("small", null,
