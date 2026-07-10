@@ -12,8 +12,8 @@ from __future__ import annotations
 from fastapi import APIRouter, Query
 
 from buddle.ai.news.rights import rights_of
-from buddle.api.deps import CurrentUser, Redis
-from buddle.schemas.news import NewsBriefingOut, NewsDigestOut
+from buddle.api.deps import DB, CurrentUser, Redis
+from buddle.schemas.news import NewsBriefingOut, NewsDigestOut, NewsTopicHeadline, NewsTopicOut
 from buddle.services import news_service
 
 router = APIRouter(prefix="/news", tags=["news"])
@@ -75,3 +75,60 @@ async def read_digest(_: CurrentUser, redis: Redis) -> NewsDigestOut:
         count=int(d.get("count") or 0),  # type: ignore[call-overload]
         ts=int(d.get("ts") or 0),  # type: ignore[call-overload]
     )
+
+
+_TOPIC_SCOPES = ("동네", "시", "도", "전국", "해외")
+_TOPIC_CATEGORIES = ("환경", "교육", "경제", "정치", "기술", "사회")
+
+
+@router.get(
+    "/topics",
+    response_model=list[NewsTopicOut],
+    summary="알고리즘 집계 화제 — 범위/주제/위치 필터로 탐색 (위치 자동 매칭 없음)",
+)
+async def list_topics(
+    _: CurrentUser,
+    db: DB,
+    redis: Redis,
+    scope: str | None = Query(default=None, description="동네|시|도|전국|해외"),
+    category: str | None = Query(default=None, description="환경|교육|경제|정치|기술|사회"),
+    region: str | None = Query(
+        default=None,
+        max_length=40,
+        description="선택 — 지역 이슈를 좁힐 때만 (예: 성남). 전국/해외엔 불필요",
+    ),
+    limit: int = Query(default=12, ge=1, le=24),
+) -> list[NewsTopicOut]:
+    if scope and scope not in _TOPIC_SCOPES:
+        scope = None
+    if category and category not in _TOPIC_CATEGORIES:
+        category = None
+    topics = await news_service.get_news_topics(
+        db, redis, scope=scope, category=category, region=region, limit=limit
+    )
+    out: list[NewsTopicOut] = []
+    for t in topics:
+        heads_raw = t.get("headlines")
+        heads = heads_raw if isinstance(heads_raw, list) else []
+        sources_raw = t.get("sources")
+        sources_list = sources_raw if isinstance(sources_raw, list) else []
+        out.append(
+            NewsTopicOut(
+                name=str(t.get("name") or ""),
+                count=int(t.get("count") or 0),  # type: ignore[call-overload]
+                sources=[str(x) for x in sources_list],
+                category=str(t.get("category") or "사회"),
+                scope=str(t.get("scope") or "해외"),
+                region=str(t.get("region") or ""),
+                headlines=[
+                    NewsTopicHeadline(
+                        title=str(h.get("title") or ""),
+                        url=str(h.get("url") or ""),
+                        source=str(h.get("source") or ""),
+                    )
+                    for h in heads
+                    if isinstance(h, dict)
+                ],
+            )
+        )
+    return out

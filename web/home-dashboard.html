@@ -91,6 +91,17 @@
   .rc-debate svg{width:15px;height:15px;stroke:#fff;fill:none;stroke-width:2;}
   .rmore{width:100%;margin-top:4px;padding:12px;border:1px solid var(--line);border-radius:14px;background:var(--surface);color:var(--willow-text);font-family:var(--body);font-size:14px;font-weight:600;cursor:pointer;}
   .rempty{text-align:center;color:var(--ink-faint);font-size:14px;line-height:1.6;padding:48px 24px;}
+
+  /* ── 지금 화제 스트립 — 뉴스 무-LLM 집계 미리보기 (탭→관심주제의 화제 탐색) ── */
+  .ntstrip{display:flex;gap:10px;overflow-x:auto;padding-bottom:6px;margin-bottom:14px;scrollbar-width:none;-webkit-overflow-scrolling:touch;}
+  .ntstrip::-webkit-scrollbar{display:none;}
+  .ntcard{flex:none;width:190px;padding:12px 13px;border:1px solid var(--line);border-radius:16px;text-decoration:none;
+    background:linear-gradient(158deg,rgba(255,255,255,.055) 0%,rgba(255,255,255,.02) 40%,transparent 62%),var(--paper-raised);
+    box-shadow:0 6px 22px rgba(0,0,0,.3),inset 0 1px 0 rgba(255,255,255,.10);backdrop-filter:blur(20px) saturate(150%);-webkit-backdrop-filter:blur(20px) saturate(150%);}
+  .ntcard b{display:block;font-size:14px;font-weight:700;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .ntcard small{display:block;margin-top:3px;font-size:11px;color:var(--ink-faint);}
+  .ntcard .hl{margin-top:7px;font-size:12px;line-height:1.45;color:var(--ink-soft);
+    display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
 </style>
 </head>
 <body>
@@ -484,6 +495,18 @@
     },
   };
 
+  /* ── News topics (무-LLM 화제 집계) ────────────────────── */
+  const news = {
+    // GET /v1/news/topics — 범위(동네|시|도|전국|해외)·주제·위치(선택) 필터.
+    topics({ scope = null, category = null, region = null, limit = 12 } = {}) {
+      const qs = new URLSearchParams({ limit: String(limit) });
+      if (scope) qs.set("scope", scope);
+      if (category) qs.set("category", category);
+      if (region) qs.set("region", region);
+      return request("GET", `/v1/news/topics?${qs.toString()}`);
+    },
+  };
+
   /* ── Dialogue WebSocket (chat live) ────────────────────── */
   function openDialogue(personaId, { onMessage, onOpen, onClose } = {}) {
     const proto = location.protocol === "https:" ? "wss:" : "ws:";
@@ -511,7 +534,7 @@
 
   global.buddle = {
     ApiError, setTokens, clearTokens, requireAuth,
-    auth, users, personas, tags, posts, feed, inbox, sessions, knowledge, proximity,
+    auth, users, personas, tags, posts, feed, inbox, sessions, knowledge, proximity, news,
     openDialogue,
   };
 })(window);
@@ -547,6 +570,9 @@
 
   <!-- 트렌딩 화제 칩 (탭하면 관심주제에서 필터) -->
   <div class="rchips" id="rchips"></div>
+
+  <!-- 지금 화제 — 뉴스 헤드라인 무-LLM 집계 (탭하면 관심주제의 화제 탐색으로) -->
+  <div class="ntstrip" id="ntstrip" style="display:none"></div>
 
   <!-- 레딧식 개별 피드 -->
   <div class="rfeed" id="rfeed"><div class="rloading">불러오는 중…</div></div>
@@ -672,6 +698,25 @@
     }
   }
 
+  // 지금 화제 — 뉴스 무-LLM 집계 미리보기. 탭하면 관심주제의 화제 탐색으로.
+  function renderNewsTopics(topics){
+    const strip = document.getElementById("ntstrip");
+    const items = Array.isArray(topics) ? topics : [];
+    if(!items.length){ strip.style.display = "none"; return; }
+    strip.replaceChildren();
+    items.forEach(t => {
+      const card = sec.el("a", { class:"ntcard", href:"feed.html#news" });
+      card.appendChild(sec.el("b", null, "#"+(t.name||"")));
+      const region = t.region ? ` · ${t.region}` : "";
+      card.appendChild(sec.el("small", null,
+        `${t.category||"사회"} · ${t.scope||""}${region} · ${t.count||0}건`));
+      const h = Array.isArray(t.headlines) ? t.headlines[0] : null;
+      if (h && h.title) card.appendChild(sec.el("span", { class:"hl" }, h.title));
+      strip.appendChild(card);
+    });
+    strip.style.display = "";
+  }
+
   // 트렌딩 화제 칩 — 탭하면 관심주제에서 필터
   function renderChips(rows){
     const items = Array.isArray(rows) ? rows : [];
@@ -690,6 +735,8 @@
       if(me && me.is_admin){ const b=document.getElementById("adminBtn"); if(b) b.style.display="flex"; }
     }).catch(()=>{});
     buddle.tags.trending({days:7,limit:8}).then(renderChips).catch(()=>{ rchips.style.display="none"; });
+    // 뉴스 화제 스트립 — 파이프라인이 없는 서버에선 조용히 생략(빈 상태 유지).
+    buddle.news.topics({limit:8}).then(renderNewsTopics).catch(()=>{});
     loadFeed();
   })();
 </script>

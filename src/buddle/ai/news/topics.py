@@ -1,0 +1,1022 @@
+"""Algorithmic topic extraction — the no-LLM replacement for per-article AI.
+
+Why algorithmic: the news pipeline surfaces *화제* (what people are talking
+about), not long-form summaries. Inputs are many short heterogeneous snippets
+(RSS title + description), which aggregate well with plain frequency/recency
+scoring — no API calls, no rate limits, no cost, deterministic and testable.
+
+    RSS 수집 → XML 파싱 → DB 저장 → 중복 제거 → [이 모듈] → 사용자 제공
+
+Everything here is a pure function of its inputs: tokenization, keyword
+scoring, topic clustering, category/region classification, extractive gists,
+and a deterministic Korean digest.
+"""
+
+from __future__ import annotations
+
+import html
+import math
+import re
+import time
+from dataclasses import dataclass, field
+
+# ── Tokenization ────────────────────────────────────────────────────────────
+
+# Korean particles commonly glued to nouns in headlines. Stripped iteratively
+# from the tail while the stem stays ≥2 chars ("정부는"→"정부", "산불로"→"산불").
+_KO_PARTICLES = (
+    "에서의",
+    "으로써",
+    "으로서",
+    "에게서",
+    "부터",
+    "까지",
+    "에서",
+    "으로",
+    "이라",
+    "라고",
+    "보다",
+    "마다",
+    "조차",
+    "처럼",
+    "은",
+    "는",
+    "이",
+    "가",
+    "을",
+    "를",
+    "의",
+    "에",
+    "와",
+    "과",
+    "도",
+    "만",
+    "로",
+    "요",
+)
+
+# 동사/형용사 활용 어미 — 이런 꼴로 끝나는 토큰은 개체가 아니라 서술어라
+# 화제 이름 후보에서 제외한다 (실측: '조정되고'가 무관한 두 기사를 묶었다).
+_KO_VERBAL_ENDINGS = (
+    "된다",
+    "한다",
+    "됐다",
+    "했다",
+    "되고",
+    "하고",
+    "되며",
+    "하며",
+    "되는",
+    "하는",
+    "하기",
+    "되기",
+    "졌다",
+    "진다",
+    "겠다",
+    "린다",
+    "난다",
+    "났다",
+    "인다",
+    "든다",
+)
+
+_KO_STOPWORDS = frozenset(
+    [
+        "지난",
+        "올해",
+        "내년",
+        "오늘",
+        "어제",
+        "내일",
+        "이번",
+        "관련",
+        "대한",
+        "위한",
+        "위해",
+        "통해",
+        "따라",
+        "대해",
+        "함께",
+        "그리고",
+        "하지만",
+        "그러나",
+        "또한",
+        "모든",
+        "어떤",
+        "이런",
+        "저런",
+        "그런",
+        "여러",
+        "다시",
+        "계속",
+        "가장",
+        "정말",
+        "된다",
+        "한다",
+        "했다",
+        "있다",
+        "없다",
+        "밝혔다",
+        "말했다",
+        "전했다",
+        "나타났다",
+        "보인다",
+        "예정",
+        "진행",
+        "기자",
+        "뉴스",
+        "사진",
+        "영상",
+        "단독",
+        "속보",
+        "종합",
+        "인터뷰",
+        "칼럼",
+        "오피니언",
+        "것",
+        "수",
+        "등",
+        "및",
+        "첫",
+        "새",
+        "억원",
+        "조원",
+        "만원",
+        "년",
+        "월",
+        "일",
+        "시",
+        "분",
+        "명",
+        "개",
+        "건",
+        "회",
+        # 저널리즘 상투어 — 화제 이름이 되면 무관한 기사를 한 클러스터로 묶는
+        # 오탐을 낸다 (실측: '개편'이 버스 노선 개편과 보조금 개편안을 병합).
+        "개편",
+        "개편안",
+        "발표",
+        "확정",
+        "통과",
+        "추진",
+        "검토",
+        "계획",
+        "방안",
+        "대책",
+        "논란",
+        "우려",
+        "반응",
+        "소식",
+        "문의",
+        "급증",
+        "급감",
+        "확대",
+        "축소",
+        "강화",
+        "완화",
+        "전망",
+        "분석",
+        "지적",
+        "경고",
+        "비상",
+        "위기",
+        "사상",
+        "최대",
+        "최소",
+        "최초",
+        "공개",
+        "공식",
+        "본격",
+        "돌입",
+        "나서",
+        "열려",
+        "개최",
+    ]
+)
+
+_EN_STOPWORDS = frozenset(
+    [
+        "the",
+        "a",
+        "an",
+        "and",
+        "or",
+        "but",
+        "for",
+        "nor",
+        "with",
+        "without",
+        "from",
+        "into",
+        "onto",
+        "over",
+        "under",
+        "of",
+        "to",
+        "in",
+        "on",
+        "at",
+        "by",
+        "as",
+        "is",
+        "are",
+        "was",
+        "were",
+        "be",
+        "been",
+        "being",
+        "do",
+        "does",
+        "did",
+        "done",
+        "have",
+        "has",
+        "had",
+        "having",
+        "will",
+        "would",
+        "can",
+        "could",
+        "should",
+        "may",
+        "might",
+        "must",
+        "shall",
+        "this",
+        "that",
+        "these",
+        "those",
+        "it",
+        "its",
+        "they",
+        "them",
+        "their",
+        "we",
+        "our",
+        "you",
+        "your",
+        "he",
+        "she",
+        "his",
+        "her",
+        "i",
+        "me",
+        "my",
+        "not",
+        "no",
+        "yes",
+        "if",
+        "then",
+        "than",
+        "so",
+        "such",
+        "very",
+        "more",
+        "most",
+        "much",
+        "many",
+        "few",
+        "own",
+        "same",
+        "other",
+        "another",
+        "each",
+        "any",
+        "all",
+        "some",
+        "both",
+        "several",
+        "after",
+        "before",
+        "during",
+        "between",
+        "about",
+        "against",
+        "up",
+        "down",
+        "out",
+        "off",
+        "again",
+        "once",
+        "here",
+        "there",
+        "when",
+        "where",
+        "why",
+        "how",
+        "what",
+        "who",
+        "whom",
+        "which",
+        "while",
+        "just",
+        "only",
+        "also",
+        "even",
+        "still",
+        "ever",
+        "never",
+        "now",
+        "new",
+        "says",
+        "said",
+        "say",
+        "show",
+        "shows",
+        "first",
+        "last",
+        "best",
+        "top",
+        "big",
+        "small",
+        "make",
+        "makes",
+        "made",
+        "get",
+        "gets",
+        "got",
+        "use",
+        "uses",
+        "used",
+        "using",
+        "how",
+        "why",
+        "ask",
+        "asks",
+        "asked",
+        "launch",
+        "launches",
+        "launched",
+        "report",
+        "reports",
+        "year",
+        "years",
+        "week",
+        "weeks",
+        "day",
+        "days",
+        "today",
+    ]
+)
+
+_TOKEN_RE = re.compile(r"[A-Za-z][A-Za-z0-9+#.\-]{1,}|[가-힣]{2,}")
+_TAG_RE = re.compile(r"<[^>]+>")
+_WS_RE = re.compile(r"\s+")
+
+
+def clean_text(raw: str) -> str:
+    """Strip HTML tags/entities and collapse whitespace (RSS descriptions
+    frequently embed markup)."""
+    text = _TAG_RE.sub(" ", raw or "")
+    text = html.unescape(text)
+    return _WS_RE.sub(" ", text).strip()
+
+
+def _strip_particles(token: str) -> str:
+    changed = True
+    while changed and len(token) > 2:
+        changed = False
+        for p in _KO_PARTICLES:
+            if token.endswith(p) and len(token) - len(p) >= 2:
+                token = token[: -len(p)]
+                changed = True
+                break
+    return token
+
+
+def extract_keywords(text: str, *, limit: int = 12) -> list[str]:
+    """Salient tokens from a snippet, order-preserving, stopword-filtered."""
+    out: list[str] = []
+    seen: set[str] = set()
+    for m in _TOKEN_RE.finditer(text or ""):
+        tok = m.group(0)
+        if tok[0].isascii():
+            tok = tok.lower().strip(".-")
+            if len(tok) < 3 or tok in _EN_STOPWORDS or tok.isdigit():
+                continue
+        else:
+            tok = _strip_particles(tok)
+            if len(tok) < 2 or tok in _KO_STOPWORDS:
+                continue
+            # 활용형 서술어('조정되고', '늘어난다')는 개체가 아니다 — 화제
+            # 이름이 되면 무관한 기사를 묶는 오탐을 내므로 제외.
+            if len(tok) > 2 and tok.endswith(_KO_VERBAL_ENDINGS):
+                continue
+        if tok not in seen:
+            seen.add(tok)
+            out.append(tok)
+            if len(out) >= limit:
+                break
+    return out
+
+
+# ── Category classification (주제 필터: 환경·교육·경제·정치·기술·사회) ────────
+
+_CATEGORY_KEYWORDS: dict[str, frozenset[str]] = {
+    "환경": frozenset(
+        [
+            "환경",
+            "기후",
+            "탄소",
+            "온실가스",
+            "폭염",
+            "폭우",
+            "홍수",
+            "가뭄",
+            "태풍",
+            "산불",
+            "미세먼지",
+            "재활용",
+            "쓰레기",
+            "생태",
+            "멸종",
+            "해수면",
+            "신재생",
+            "태양광",
+            "풍력",
+            "원전",
+            "방사능",
+            "오염",
+            "climate",
+            "environment",
+            "carbon",
+            "emission",
+            "emissions",
+            "wildfire",
+            "flood",
+            "drought",
+            "heatwave",
+            "renewable",
+            "solar",
+            "pollution",
+            "recycling",
+            "ecosystem",
+        ]
+    ),
+    "교육": frozenset(
+        [
+            "교육",
+            "학교",
+            "대학",
+            "대학교",
+            "등록금",
+            "입시",
+            "수능",
+            "학생",
+            "교사",
+            "교수",
+            "학원",
+            "사교육",
+            "급식",
+            "교육청",
+            "장학금",
+            "학위",
+            "education",
+            "school",
+            "university",
+            "tuition",
+            "student",
+            "teacher",
+            "curriculum",
+            "college",
+            "campus",
+            "exam",
+        ]
+    ),
+    "경제": frozenset(
+        [
+            "경제",
+            "금리",
+            "물가",
+            "인플레이션",
+            "증시",
+            "주가",
+            "코스피",
+            "환율",
+            "수출",
+            "수입",
+            "무역",
+            "관세",
+            "부동산",
+            "전세",
+            "월세",
+            "일자리",
+            "고용",
+            "실업",
+            "임금",
+            "세금",
+            "예산",
+            "투자",
+            "은행",
+            "대출",
+            "채권",
+            "소비",
+            "소비자",
+            "보조금",
+            "economy",
+            "inflation",
+            "market",
+            "stocks",
+            "stock",
+            "trade",
+            "tariff",
+            "bank",
+            "interest",
+            "jobs",
+            "employment",
+            "tax",
+            "budget",
+            "investment",
+            "price",
+            "recession",
+            "earnings",
+            "revenue",
+        ]
+    ),
+    "정치": frozenset(
+        [
+            "정치",
+            "국회",
+            "법안",
+            "선거",
+            "대통령",
+            "총리",
+            "장관",
+            "정부",
+            "여당",
+            "야당",
+            "정당",
+            "외교",
+            "안보",
+            "국방",
+            "규제",
+            "탄핵",
+            "개헌",
+            "공약",
+            "입법",
+            "조례",
+            "election",
+            "parliament",
+            "congress",
+            "senate",
+            "president",
+            "minister",
+            "policy",
+            "government",
+            "regulation",
+            "law",
+            "bill",
+            "diplomacy",
+            "sanctions",
+            "vote",
+            "campaign",
+        ]
+    ),
+    "기술": frozenset(
+        [
+            "기술",
+            "인공지능",
+            "반도체",
+            "소프트웨어",
+            "로봇",
+            "우주",
+            "위성",
+            "배터리",
+            "전기차",
+            "자율주행",
+            "데이터",
+            "클라우드",
+            "보안",
+            "해킹",
+            "스타트업",
+            "플랫폼",
+            "알고리즘",
+            "오픈소스",
+            "개발자",
+            "코딩",
+            "양자",
+            "ai",
+            "tech",
+            "technology",
+            "software",
+            "hardware",
+            "chip",
+            "chips",
+            "semiconductor",
+            "robot",
+            "robotics",
+            "space",
+            "satellite",
+            "battery",
+            "ev",
+            "data",
+            "cloud",
+            "security",
+            "hacking",
+            "startup",
+            "platform",
+            "algorithm",
+            "opensource",
+            "developer",
+            "coding",
+            "quantum",
+            "crypto",
+            "bitcoin",
+            "blockchain",
+            "gpu",
+            "llm",
+            "model",
+            "app",
+            "apps",
+            "api",
+            "linux",
+            "android",
+            "ios",
+            "google",
+            "apple",
+            "microsoft",
+            "meta",
+            "amazon",
+            "nvidia",
+            "openai",
+        ]
+    ),
+}
+
+_DEFAULT_CATEGORY = "사회"
+
+
+def classify_category(keywords: list[str], text: str = "") -> str:
+    """Best-matching 주제 bucket by keyword-dictionary hits (ties → first)."""
+    haystack = {k.lower() for k in keywords}
+    if text:
+        haystack.update(extract_keywords(text, limit=24))
+    best, best_hits = _DEFAULT_CATEGORY, 0
+    for cat, vocab in _CATEGORY_KEYWORDS.items():
+        hits = len(haystack & vocab)
+        if hits > best_hits:
+            best, best_hits = cat, hits
+    return best
+
+
+# ── Region / scope classification (범위 필터: 동네·시·도·전국·해외) ───────────
+
+SCOPE_NEIGHBORHOOD = "동네"
+SCOPE_CITY = "시"
+SCOPE_PROVINCE = "도"
+SCOPE_NATIONAL = "전국"
+SCOPE_GLOBAL = "해외"
+
+_PROVINCES = [
+    "서울",
+    "부산",
+    "대구",
+    "인천",
+    "광주",
+    "대전",
+    "울산",
+    "세종",
+    "경기",
+    "강원",
+    "충북",
+    "충남",
+    "전북",
+    "전남",
+    "경북",
+    "경남",
+    "제주",
+    "경기도",
+    "강원도",
+    "충청북도",
+    "충청남도",
+    "전라북도",
+    "전라남도",
+    "경상북도",
+    "경상남도",
+    "제주도",
+]
+
+_CITIES = [
+    "수원",
+    "성남",
+    "용인",
+    "고양",
+    "부천",
+    "안산",
+    "안양",
+    "화성",
+    "평택",
+    "시흥",
+    "파주",
+    "김포",
+    "광명",
+    "군포",
+    "이천",
+    "오산",
+    "하남",
+    "의정부",
+    "남양주",
+    "구리",
+    "양주",
+    "포천",
+    "동두천",
+    "과천",
+    "여주",
+    "안성",
+    "의왕",
+    "춘천",
+    "원주",
+    "강릉",
+    "속초",
+    "동해",
+    "태백",
+    "삼척",
+    "청주",
+    "충주",
+    "제천",
+    "천안",
+    "아산",
+    "공주",
+    "보령",
+    "서산",
+    "논산",
+    "당진",
+    "전주",
+    "군산",
+    "익산",
+    "정읍",
+    "남원",
+    "김제",
+    "목포",
+    "여수",
+    "순천",
+    "나주",
+    "광양",
+    "포항",
+    "경주",
+    "김천",
+    "안동",
+    "구미",
+    "영주",
+    "영천",
+    "상주",
+    "문경",
+    "경산",
+    "창원",
+    "진주",
+    "통영",
+    "사천",
+    "김해",
+    "밀양",
+    "거제",
+    "양산",
+    "서귀포",
+]
+
+# 서울 25개 자치구 + 주요 광역시 구 일부 — '동네' 스코프 판정용 (오탐 방지를 위해
+# 접미사 패턴 대신 화이트리스트만 사용한다: '도시/다시/역시' 같은 단어와 충돌 없음).
+_DISTRICTS = [
+    "강남구",
+    "강동구",
+    "강북구",
+    "강서구",
+    "관악구",
+    "광진구",
+    "구로구",
+    "금천구",
+    "노원구",
+    "도봉구",
+    "동대문구",
+    "동작구",
+    "마포구",
+    "서대문구",
+    "서초구",
+    "성동구",
+    "성북구",
+    "송파구",
+    "양천구",
+    "영등포구",
+    "용산구",
+    "은평구",
+    "종로구",
+    "중구",
+    "중랑구",
+    "해운대구",
+    "수영구",
+    "연제구",
+    "달서구",
+    "수성구",
+    "유성구",
+    "서구",
+    "남구",
+    "북구",
+    "동구",
+]
+
+# 국내 매체/공공 소스 — 지역 언급이 없으면 '전국'으로 본다.
+_KOREAN_SOURCES = frozenset(
+    ["korea-kr-policy", "korea-kr-dept", "korea-kr-fact", "대한민국 정책브리핑"]
+)
+
+
+def classify_region(text: str, source: str) -> tuple[str, str]:
+    """Return (scope, region_label).
+
+    위치가 중요한 이슈(동네 가로등)일수록 좁은 스코프가, 전국 공통 이슈(등록금,
+    AI 규제)일수록 넓은 스코프가 나온다 — 텍스트에 등장하는 행정구역 단서의
+    입자(구 > 시 > 도)로 판정하고, 단서가 없으면 소스 국적으로 전국/해외를 가른다.
+    """
+    t = text or ""
+    for d in _DISTRICTS:
+        if d in t:
+            return SCOPE_NEIGHBORHOOD, d
+    for c in _CITIES:
+        if c + "시" in t or re.search(rf"\b{c}\b", t):
+            return SCOPE_CITY, c
+    for p in _PROVINCES:
+        if p in t:
+            return SCOPE_PROVINCE, p.rstrip("도") if p.endswith("도") else p
+    # 지역 단서가 없을 때: 국내 소스이거나 한국어 텍스트면 전국 이슈, 아니면 해외.
+    if source in _KOREAN_SOURCES or re.search(r"[가-힣]", t):
+        return SCOPE_NATIONAL, ""
+    return SCOPE_GLOBAL, ""
+
+
+# ── Extractive gist (요약 API 대체: 첫 문장 발췌) ────────────────────────────
+
+_SENT_SPLIT_RE = re.compile(r"(?<=[.!?다요])\s+")
+
+
+def extractive_gist(title: str, summary: str, *, max_len: int = 180) -> str:
+    """First sentence(s) of the cleaned snippet, capped — no generation."""
+    body = clean_text(summary)
+    if not body or body == title:
+        return title.strip()
+    sentences = _SENT_SPLIT_RE.split(body)
+    gist = sentences[0].strip()
+    if len(gist) < 60 and len(sentences) > 1:
+        gist = f"{gist} {sentences[1].strip()}"
+    if len(gist) > max_len:
+        gist = gist[: max_len - 1].rstrip() + "…"
+    return gist or title.strip()
+
+
+# ── Topic clustering ────────────────────────────────────────────────────────
+
+
+@dataclass(slots=True)
+class TopicInput:
+    """Minimal per-article facts the clustering needs (source-agnostic)."""
+
+    title: str
+    url: str
+    source: str
+    summary: str = ""
+    published_at: int = 0  # unix seconds; 0 → treated as now
+    engagement: int = 0  # upvotes/reactions when the source has them
+
+
+@dataclass(slots=True)
+class Topic:
+    name: str
+    score: float
+    count: int
+    sources: list[str]
+    category: str
+    scope: str
+    region: str
+    keywords: list[str]
+    headlines: list[dict[str, str]] = field(default_factory=list)
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "name": self.name,
+            "score": round(self.score, 3),
+            "count": self.count,
+            "sources": self.sources,
+            "category": self.category,
+            "scope": self.scope,
+            "region": self.region,
+            "keywords": self.keywords,
+            "headlines": self.headlines,
+        }
+
+
+_RECENCY_HALF_LIFE_H = 24.0
+_MERGE_OVERLAP = 0.6  # two keywords sharing ≥60% of articles form one topic
+
+
+def _recency_weight(published_at: int, now: float) -> float:
+    if published_at <= 0:
+        return 1.0
+    age_h = max(0.0, (now - published_at) / 3600.0)
+    return math.exp(-age_h / _RECENCY_HALF_LIFE_H * math.log(2))
+
+
+def build_topics(
+    items: list[TopicInput],
+    *,
+    now: float | None = None,
+    max_topics: int = 12,
+    min_count: int = 2,
+) -> list[Topic]:
+    """Cluster snippets into 화제 by shared keywords.
+
+    Scoring per keyword k: Σ_articles w_recency·(1+log(1+engagement)), then a
+    source-diversity boost (같은 매체 반복보다 여러 매체가 다룬 화제가 위로).
+    Keywords whose article sets overlap ≥60% merge into a single topic (the
+    higher-scored keyword names it) so "반도체/semiconductor" 류 중복이 줄어든다.
+    min_count=2: 한 건짜리 키워드는 화제가 아니라 잡음이다.
+    """
+    ts = time.time() if now is None else now
+    kw_articles: dict[str, set[int]] = {}
+    kw_score: dict[str, float] = {}
+    article_keywords: list[list[str]] = []
+
+    for idx, it in enumerate(items):
+        text = f"{it.title} {clean_text(it.summary)}"
+        kws = extract_keywords(text, limit=10)
+        article_keywords.append(kws)
+        w = _recency_weight(it.published_at, ts) * (1.0 + math.log1p(max(0, it.engagement)) / 4.0)
+        for k in kws:
+            kw_articles.setdefault(k, set()).add(idx)
+            kw_score[k] = kw_score.get(k, 0.0) + w
+
+    # Source-diversity boost + minimum support
+    candidates: list[tuple[str, float]] = []
+    for k, idxs in kw_articles.items():
+        if len(idxs) < min_count:
+            continue
+        n_sources = len({items[i].source for i in idxs})
+        candidates.append((k, kw_score[k] * (1.0 + 0.3 * (n_sources - 1))))
+    candidates.sort(key=lambda kv: kv[1], reverse=True)
+
+    topics: list[Topic] = []
+    used_articles_by_topic: list[set[int]] = []
+    for k, score in candidates:
+        if len(topics) >= max_topics:
+            break
+        idxs = set(kw_articles[k])
+        merged = False
+        for t_i, prev in enumerate(used_articles_by_topic):
+            inter = len(idxs & prev)
+            if inter and inter / min(len(idxs), len(prev)) >= _MERGE_OVERLAP:
+                # Same story cluster — absorb as an alias keyword.
+                if k not in topics[t_i].keywords:
+                    topics[t_i].keywords.append(k)
+                used_articles_by_topic[t_i] |= idxs
+                merged = True
+                break
+        if merged:
+            continue
+
+        arts = [items[i] for i in sorted(idxs)]
+        joined = " ".join(f"{a.title} {clean_text(a.summary)}" for a in arts)
+        scope, region = classify_region(joined, arts[0].source)
+        topic = Topic(
+            name=k,
+            score=score,
+            count=len(arts),
+            sources=sorted({a.source for a in arts}),
+            category=classify_category([k], joined),
+            scope=scope,
+            region=region,
+            keywords=[k],
+            headlines=[{"title": a.title, "url": a.url, "source": a.source} for a in arts[:4]],
+        )
+        topics.append(topic)
+        used_articles_by_topic.append(idxs)
+
+    # Refresh counts after merges
+    for t, idxs in zip(topics, used_articles_by_topic, strict=True):
+        t.count = len(idxs)
+        t.sources = sorted({items[i].source for i in idxs})
+    topics.sort(key=lambda t: t.score, reverse=True)
+    return topics
+
+
+# ── Deterministic digest (LLM 종합 브리핑 대체) ──────────────────────────────
+
+
+def compose_digest(topics: list[Topic], *, max_topics: int = 4) -> str:
+    """One connected Korean paragraph assembled from the top topics — fixed
+    templates, zero generation, always faithful to the underlying counts."""
+    tops = [t for t in topics if t.count >= 2][:max_topics]
+    if not tops:
+        return ""
+    domestic = [t for t in tops if t.scope != SCOPE_GLOBAL]
+    global_ = [t for t in tops if t.scope == SCOPE_GLOBAL]
+
+    parts: list[str] = []
+    if domestic:
+        names = ", ".join(f"'{t.name}'" for t in domestic[:3])
+        cats = ", ".join(sorted({t.category for t in domestic[:3]}))
+        parts.append(f"오늘의 흐름: {names} 관련 소식이 이어지고 있어요({cats}).")
+    if global_:
+        names = ", ".join(f"'{t.name}'" for t in global_[:3])
+        parts.append(f"해외에선 {names}이(가) 주목받고 있습니다.")
+    regional = [t for t in tops if t.region]
+    if regional:
+        t0 = regional[0]
+        parts.append(f"{t0.region} 지역의 '{t0.name}' 이슈도 함께 살펴보세요.")
+    return " ".join(parts)

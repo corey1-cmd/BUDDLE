@@ -38,6 +38,7 @@ from buddle.db.models.knowledge_unit import KnowledgeUnit
 from buddle.db.models.mediator_policy import MediatorPolicy
 from buddle.db.models.message import Message
 from buddle.db.models.metric_snapshot import MetricSnapshot
+from buddle.db.models.news_item import NewsItem
 from buddle.db.models.notification import Notification
 from buddle.db.models.persona import Persona
 from buddle.db.models.persona_context_ref import PersonaContextRef
@@ -88,6 +89,7 @@ __all__ = [
     "Message",
     "MessageRole",
     "MetricSnapshot",
+    "NewsItem",
     "Notification",
     "NotificationKind",
     "Persona",

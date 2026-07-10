@@ -18,28 +18,44 @@ Admin endpoint returns:
 from __future__ import annotations
 
 import contextlib
+import datetime as dt
 import json
 import time
 from dataclasses import dataclass
 
+from sqlalchemy import select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from buddle.ai.news.fetcher import RawArticle, fetch_configured
-from buddle.ai.news.mediator import MediatedArticle, analyse_batch, synthesize_digest
+from buddle.ai.news.topics import (
+    Topic,
+    TopicInput,
+    build_topics,
+    classify_category,
+    classify_region,
+    clean_text,
+    compose_digest,
+    extract_keywords,
+    extractive_gist,
+)
 from buddle.core.logging import get_logger
 from buddle.core.types import RedisClient
 from buddle.db.models.knowledge_audit import KnowledgeAudit
+from buddle.db.models.news_item import NewsItem
 
 log = get_logger(__name__)
 
 _BRIEFINGS_KEY = "buddle:news:briefings"
 _SEEN_KEY = "buddle:news:seen"
 _STATUS_KEY = "buddle:news:status"
-_DIGEST_KEY = "buddle:news:digest"  # mediator-combined briefing (the 'combination' stage)
+_DIGEST_KEY = "buddle:news:digest"  # combined briefing (the 'combination' stage)
 _SOURCES_KEY = "buddle:news:sources"  # admin-configured fetch sources (where to search)
+_TOPICS_KEY = "buddle:news:topics"  # algorithmic 화제 cache (홈·관심주제 노출용)
 _BRIEFINGS_TTL = 60 * 60 * 25  # 25 hours
 _SEEN_TTL = 60 * 60 * 48  # 48 hours (dedup window)
 _MAX_STORED = 60  # max articles kept in cache
+_TOPIC_WINDOW_H = 72  # 화제 집계 윈도우 (DB 기준)
 
 # Source kinds the fetcher can dispatch. 'rss' takes an arbitrary feed url
 # (Techmeme, WSJ, New Yorker, …); the API kinds use their own fixed endpoints.
@@ -156,26 +172,13 @@ async def _mark_seen(redis: RedisClient, url_hash: str) -> None:
     await redis.expire(_SEEN_KEY, _SEEN_TTL)
 
 
-async def _store_briefings(redis: RedisClient, articles: list[MediatedArticle]) -> None:
-    """Prepend new briefings to the Redis list, cap at MAX_STORED."""
-    serialised = [
-        json.dumps(
-            {
-                "url": a.raw.url,
-                "title": a.raw.title,
-                "source": a.raw.source,
-                "gist_ko": a.gist_ko,
-                "tags": a.tags,
-                "ekb_briefing": a.ekb_briefing,
-                "relevance": a.relevance,
-                "stub": a.stub,
-                "stored_at": int(time.time()),
-            },
-            ensure_ascii=False,
-        )
-        for a in articles
-    ]
+async def _store_briefing_dicts(redis: RedisClient, briefings: list[dict[str, object]]) -> None:
+    """Prepend new briefings to the Redis list, cap at MAX_STORED.
 
+    Takes ready-made dicts (algorithmic or LLM path both produce the same
+    shape), so the storage layer no longer depends on the mediator types.
+    """
+    serialised = [json.dumps(b, ensure_ascii=False) for b in briefings]
     if not serialised:
         return
 
@@ -306,8 +309,108 @@ async def delete_news_source(redis: RedisClient, source_id: str) -> bool:
     return True
 
 
+def _analyse_algorithmic(article: RawArticle) -> dict[str, object]:
+    """Per-article analysis with zero API calls — the LLM 대체 경로.
+
+    Produces the same briefing dict shape the Redis cache has always held
+    (gist_ko / tags / ekb_briefing / relevance), so every existing consumer
+    (persona dialogue injection, user /v1/news, admin dashboard) keeps working
+    unchanged. gist = 발췌(첫 문장), tags = 키워드, relevance = 소스 휴리스틱.
+    """
+    from buddle.ai.news.rights import is_open_license
+
+    text = f"{article.title} {clean_text(article.summary)}"
+    keywords = extract_keywords(text, limit=5)
+    gist = extractive_gist(article.title, article.summary)
+    category = classify_category(keywords, text)
+    scope, region = classify_region(text, article.source)
+    # 개방 라이선스(공공누리 1유형)는 인용 추천 우선순위가 높다; 그 외에는
+    # 참여도(로그 스케일)를 살짝 반영한 고정 기본값 — 임계 필터(0.3)는 통과.
+    relevance = 0.9 if is_open_license(article.source) else min(0.85, 0.6 + article.score / 400)
+    return {
+        "url": article.url,
+        "title": article.title,
+        "source": article.source,
+        "gist_ko": gist,
+        "tags": keywords or [category],
+        "ekb_briefing": f"{article.title} — {gist}" if gist != article.title else article.title,
+        "relevance": round(relevance, 2),
+        "stub": False,
+        "category": category,
+        "scope": scope,
+        "region": region,
+        "stored_at": int(time.time()),
+    }
+
+
+async def _persist_items(
+    db: AsyncSession, articles: list[RawArticle], analysed: list[dict[str, object]]
+) -> int:
+    """DB 저장 + 중복 제거: guid UNIQUE에 ON CONFLICT DO NOTHING.
+
+    Returns the number of genuinely new rows — the pipeline's dedup truth
+    (Redis seen-set stays as a cheap pre-filter but is no longer load-bearing).
+    """
+    if not articles:
+        return 0
+    rows = [
+        {
+            "guid": a.url_hash,
+            "source": a.source,
+            "title": a.title[:500],
+            "url": a.url,
+            "summary": clean_text(a.summary)[:2000],
+            "category": str(meta["category"]),
+            "scope": str(meta["scope"]),
+            "region": str(meta["region"]),
+            "published_at": dt.datetime.fromtimestamp(a.published_at, tz=dt.UTC),
+        }
+        for a, meta in zip(articles, analysed, strict=True)
+    ]
+    stmt = pg_insert(NewsItem).values(rows).on_conflict_do_nothing(index_elements=["guid"])
+    result = await db.execute(stmt)
+    await db.commit()
+    return int(result.rowcount or 0)
+
+
+async def _rebuild_topics(db: AsyncSession, redis: RedisClient) -> list[Topic]:
+    """최근 윈도우의 DB 아이템으로 화제를 재계산하고 Redis에 캐시한다."""
+    since = dt.datetime.now(tz=dt.UTC) - dt.timedelta(hours=_TOPIC_WINDOW_H)
+    rows = (
+        (await db.execute(select(NewsItem).where(NewsItem.published_at >= since).limit(500)))
+        .scalars()
+        .all()
+    )
+    inputs = [
+        TopicInput(
+            title=r.title,
+            url=r.url,
+            source=r.source,
+            summary=r.summary,
+            published_at=int(r.published_at.timestamp()),
+        )
+        for r in rows
+    ]
+    topics = build_topics(inputs)
+    await redis.setex(
+        _TOPICS_KEY,
+        _BRIEFINGS_TTL,
+        json.dumps(
+            {"topics": [t.to_dict() for t in topics], "ts": int(time.time())},
+            ensure_ascii=False,
+        ),
+    )
+    return topics
+
+
 async def news_tick(db: AsyncSession, *, redis: RedisClient) -> dict[str, object]:
-    """Main scheduler entry-point. Returns a summary dict for the scheduler log."""
+    """Main scheduler entry-point. Returns a summary dict for the scheduler log.
+
+    RSS 수집 → 파싱 → DB 저장(중복 제거) → 알고리즘 분석 → 화제/브리핑/다이제스트.
+    기본 경로는 외부 AI 호출 0회. (기사당 LLM 1회를 쓰던 이전 경로는
+    NEWS_AI_ANALYSIS_ENABLED=true 로만 활성화되는 opt-in으로 강등 — 무료 쿼터를
+    태우고 429를 유발하던 원인이었다.)
+    """
     from buddle.config import get_settings
 
     settings = get_settings()
@@ -319,72 +422,143 @@ async def news_tick(db: AsyncSession, *, redis: RedisClient) -> dict[str, object
     fetched = len(articles)
     log.info("news.tick.fetched", count=fetched, sources=len(sources))
 
-    # Filter already-seen articles
+    # Redis seen-set: 같은 틱 주기 안에서의 값싼 선필터 (진짜 중복 제거는 DB UNIQUE)
     new_articles: list[RawArticle] = []
     for a in articles:
         if not await _is_seen(redis, a.url_hash):
             new_articles.append(a)
-
     log.info("news.tick.new", count=len(new_articles))
-    if not new_articles:
-        return {"fetched": fetched, "new": 0, "stored": 0}
 
-    # AI analysis via mediator
-    mediated = await analyse_batch(new_articles, settings=settings, max_concurrent=3)
+    stored = 0
+    if new_articles:
+        if getattr(settings, "news_ai_analysis_enabled", False):
+            # Opt-in legacy path: per-article LLM analysis (429-prone, costly).
+            from buddle.ai.news.mediator import analyse_batch
 
-    # Filter by relevance threshold
-    threshold = getattr(settings, "news_relevance_threshold", 0.3)
-    kept = [m for m in mediated if m.relevance >= threshold]
+            mediated = await analyse_batch(new_articles, settings=settings, max_concurrent=3)
+            threshold = getattr(settings, "news_relevance_threshold", 0.3)
+            analysed = [
+                {
+                    "url": m.raw.url,
+                    "title": m.raw.title,
+                    "source": m.raw.source,
+                    "gist_ko": m.gist_ko,
+                    "tags": m.tags,
+                    "ekb_briefing": m.ekb_briefing,
+                    "relevance": m.relevance,
+                    "stub": m.stub,
+                    "category": classify_category(m.tags, m.raw.title),
+                    "scope": classify_region(m.raw.title, m.raw.source)[0],
+                    "region": classify_region(m.raw.title, m.raw.source)[1],
+                    "stored_at": int(time.time()),
+                }
+                for m in mediated
+                if m.relevance >= threshold
+            ]
+            kept_articles = [
+                a for a, m in zip(new_articles, mediated, strict=True) if m.relevance >= threshold
+            ]
+        else:
+            # Default path: pure algorithmic analysis — zero API calls.
+            analysed = [_analyse_algorithmic(a) for a in new_articles]
+            kept_articles = new_articles
 
-    # Store in Redis + mark seen
-    await _store_briefings(redis, kept)
-    for m in kept:
-        await _mark_seen(redis, m.raw.url_hash)
-
-    # Combination stage — the mediator weaves the kept articles into ONE cohesive
-    # digest (not a flat list). Stored separately for the background page and as
-    # the lead block delivered to personas. Failure here never breaks ingestion.
-    digest_text = ""
-    if kept:
         try:
-            digest_text = await synthesize_digest(kept, settings=settings)
-            if digest_text:
-                digest_tags = list({t for m in kept for t in m.tags})[:8]
-                await redis.setex(
-                    _DIGEST_KEY,
-                    _BRIEFINGS_TTL,
-                    json.dumps(
-                        {
-                            "text": digest_text,
-                            "tags": digest_tags,
-                            "count": len(kept),
-                            "ts": int(time.time()),
-                        },
-                        ensure_ascii=False,
-                    ),
-                )
-        except Exception as e:
-            log.warning("news.digest_error", error=str(e))
+            stored = await _persist_items(db, kept_articles, analysed)
+        except Exception as e:  # DB unavailable must not kill the Redis path
+            log.warning("news.persist_error", error=str(e))
+            stored = len(kept_articles)
+
+        await _store_briefing_dicts(redis, analysed)
+        for a in kept_articles:
+            await _mark_seen(redis, a.url_hash)
+
+    # 화제 재계산(수집이 없어도 최신 윈도우 반영) + 결정론적 다이제스트.
+    topics: list[Topic] = []
+    try:
+        topics = await _rebuild_topics(db, redis)
+    except Exception as e:
+        log.warning("news.topics_error", error=str(e))
+
+    try:
+        digest_text = compose_digest(topics)
+        if digest_text:
+            digest_tags = [t.name for t in topics[:8]]
+            await redis.setex(
+                _DIGEST_KEY,
+                _BRIEFINGS_TTL,
+                json.dumps(
+                    {
+                        "text": digest_text,
+                        "tags": digest_tags,
+                        "count": stored,
+                        "ts": int(time.time()),
+                    },
+                    ensure_ascii=False,
+                ),
+            )
+    except Exception as e:
+        log.warning("news.digest_error", error=str(e))
 
     # Save status snapshot
-    kept_sources = list({m.raw.source for m in kept})
+    kept_sources = list({a.source for a in new_articles})
     status = {
         "last_run_ts": time.time(),
         "fetched": fetched,
         "new_items": len(new_articles),
-        "stored": len(kept),
+        "stored": stored,
         "sources": kept_sources,
     }
     await redis.setex(_STATUS_KEY, _BRIEFINGS_TTL, json.dumps(status, ensure_ascii=False))
 
     # KnowledgeAudit log
-    try:
-        await _audit(db, len(kept), ",".join(kept_sources))
-    except Exception as e:
-        log.warning("news.audit_error", error=str(e))
+    if stored:
+        try:
+            await _audit(db, stored, ",".join(kept_sources))
+        except Exception as e:
+            log.warning("news.audit_error", error=str(e))
 
-    log.info("news.tick.done", fetched=fetched, new=len(new_articles), stored=len(kept))
-    return {"fetched": fetched, "new": len(new_articles), "stored": len(kept)}
+    log.info(
+        "news.tick.done",
+        fetched=fetched,
+        new=len(new_articles),
+        stored=stored,
+        topics=len(topics),
+    )
+    return {"fetched": fetched, "new": len(new_articles), "stored": stored, "topics": len(topics)}
+
+
+async def get_news_topics(
+    db: AsyncSession,
+    redis: RedisClient,
+    *,
+    scope: str | None = None,
+    category: str | None = None,
+    region: str | None = None,
+    limit: int = 12,
+) -> list[dict[str, object]]:
+    """화제 읽기 경로 — 필터(범위·주제·위치)로 좁힌다. 위치 자동 매칭은 없다:
+    사용자가 명시적으로 고른 필터만 적용된다(전국/해외 이슈는 위치 불필요).
+
+    Redis 캐시 우선, 비어 있으면 DB에서 재계산(콜드스타트/재기동 복원).
+    """
+    topics: list[dict[str, object]] = []
+    raw = await redis.get(_TOPICS_KEY)
+    if raw:
+        with contextlib.suppress(json.JSONDecodeError):
+            topics = json.loads(raw).get("topics") or []
+    if not topics:
+        with contextlib.suppress(Exception):
+            topics = [t.to_dict() for t in await _rebuild_topics(db, redis)]
+
+    if scope:
+        topics = [t for t in topics if str(t.get("scope")) == scope]
+    if category:
+        topics = [t for t in topics if str(t.get("category")) == category]
+    if region:
+        needle = region.strip()
+        topics = [t for t in topics if needle and needle in str(t.get("region") or "")]
+    return topics[:limit]
 
 
 def _topic_overlap(briefing: dict[str, object], topic_set: set[str]) -> int:

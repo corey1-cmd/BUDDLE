@@ -73,6 +73,10 @@ class Settings(BaseSettings):
     news_tick_interval_s: int = 3600
     # Minimum relevance score (0-1) for an article to be stored after AI analysis.
     news_relevance_threshold: float = 0.3
+    # Per-article LLM analysis in the news pipeline. Default OFF: it made one
+    # AI call per fetched article (60건 수집 = 60+회 → 무료 쿼터 소진·429 폭주).
+    # The default algorithmic path (ai/news/topics.py) needs zero API calls.
+    news_ai_analysis_enabled: bool = False
 
     # ── Observability: Sentry (optional)
     # No DSN (default) -> never imported/initialised; zero overhead.

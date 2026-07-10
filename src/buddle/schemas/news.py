@@ -34,3 +34,23 @@ class NewsDigestOut(BaseModel):
     tags: list[str]
     count: int
     ts: int
+
+
+class NewsTopicHeadline(BaseModel):
+    """제목+링크+출처만 — 권리엔진 default-deny 하에서 안전한 최소 표면."""
+
+    title: str
+    url: str
+    source: str
+
+
+class NewsTopicOut(BaseModel):
+    """알고리즘 집계 화제 하나 — 필터(범위·주제·위치)로 탐색된다."""
+
+    name: str
+    count: int  # 관련 기사 수
+    sources: list[str]
+    category: str  # 환경/교육/경제/정치/기술/사회
+    scope: str  # 동네/시/도/전국/해외
+    region: str  # 스코프가 지역일 때의 라벨(예: "성남", "강남구")
+    headlines: list[NewsTopicHeadline]

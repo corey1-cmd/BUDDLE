@@ -401,6 +401,18 @@
     },
   };
 
+  /* ── News topics (무-LLM 화제 집계) ────────────────────── */
+  const news = {
+    // GET /v1/news/topics — 범위(동네|시|도|전국|해외)·주제·위치(선택) 필터.
+    topics({ scope = null, category = null, region = null, limit = 12 } = {}) {
+      const qs = new URLSearchParams({ limit: String(limit) });
+      if (scope) qs.set("scope", scope);
+      if (category) qs.set("category", category);
+      if (region) qs.set("region", region);
+      return request("GET", `/v1/news/topics?${qs.toString()}`);
+    },
+  };
+
   const debate = {
     // Topic debate dashboard (conversation axes, stance, trend).
     dashboard(tagId) {
@@ -457,7 +469,7 @@
   global.buddle = {
     ApiError, setTokens, clearTokens, requireAuth,
     auth, users, personas, tags, posts, feed, inbox, sessions, knowledge, proximity, debate, contextNotes,
-    bookmarks, notifications,
+    bookmarks, notifications, news,
     openDialogue,
   };
 })(window);
@@ -622,6 +634,36 @@
   .cb-rchip .rt b{font-size:12.5px;font-weight:600;color:var(--ink);}
   .cb-rchip .rt small{font-size:10.5px;color:var(--ink-faint);}
 
+  /* ── 지금 화제 (뉴스 무-LLM 자동 집계) — 필터로 탐색, 위치 자동 매칭 없음 ── */
+  .news-sec{margin:2px 0 16px;padding:14px;border:1px solid var(--line);border-radius:19px;
+    background:linear-gradient(158deg,rgba(255,255,255,.05) 0%,rgba(255,255,255,.015) 45%,transparent 65%),var(--paper-raised);
+    box-shadow:0 6px 22px rgba(0,0,0,.28),inset 0 1px 0 rgba(255,255,255,.09);}
+  .ns-head{display:flex;align-items:baseline;gap:8px;margin-bottom:10px;}
+  .ns-head h2{font-family:var(--display);font-size:16px;font-weight:600;color:var(--ink);}
+  .ns-head small{font-size:11.5px;color:var(--ink-faint);}
+  .ns-row{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;margin-bottom:8px;}
+  .ns-row::-webkit-scrollbar{display:none;}
+  .ns-chip{flex:none;padding:6px 12px;border-radius:999px;border:1px solid var(--line);background:var(--paper-sunken);
+    font-family:var(--body);font-size:12.5px;font-weight:600;color:var(--ink-soft);cursor:pointer;white-space:nowrap;transition:all .15s;}
+  .ns-chip.on{background:var(--accent-grad);color:#fff;border-color:rgba(255,255,255,.18);box-shadow:var(--shadow-pop-sm);}
+  .ns-loc{display:flex;align-items:center;gap:8px;margin-bottom:10px;}
+  .ns-loc input{flex:1;height:36px;border-radius:12px;border:1px solid var(--line);background:var(--paper-sunken);
+    padding:0 12px;font-family:var(--body);font-size:13px;color:var(--ink);}
+  .ns-loc input:focus{outline:none;border-color:var(--gold);}
+  .ns-loc input:disabled{opacity:.45;}
+  .nt-card{padding:11px 12px;border:1px solid var(--line);border-radius:14px;background:var(--paper-sunken);margin-bottom:8px;}
+  .nt-card:last-child{margin-bottom:0;}
+  .nt-top{display:flex;align-items:center;gap:7px;flex-wrap:wrap;}
+  .nt-name{font-size:14.5px;font-weight:700;color:var(--ink);}
+  .nt-badge{font-size:10.5px;font-weight:700;padding:2px 8px;border-radius:999px;background:var(--willow-wash);color:var(--willow-text);}
+  .nt-meta{font-size:11.5px;color:var(--ink-faint);margin-left:auto;}
+  .nt-heads{margin-top:7px;display:flex;flex-direction:column;gap:4px;}
+  .nt-heads a{font-size:12.5px;line-height:1.45;color:var(--ink-soft);text-decoration:none;display:block;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .nt-heads a:hover{color:var(--gold);}
+  .nt-heads a::before{content:"· ";color:var(--ink-faint);}
+  .ns-empty{text-align:center;font-size:12.5px;color:var(--ink-faint);padding:16px 6px;}
+
   .hidden{display:none;}
 </style>
 </head>
@@ -656,6 +698,18 @@
         </div>
       </div>
       <div class="search-hint" id="searchHint" style="display:none"></div>
+
+      <!-- 지금 화제: 뉴스 헤드라인 무-LLM 집계. 위치 자동 매칭 없이 필터(범위/주제/위치)로 탐색 -->
+      <section class="news-sec" id="newsSec" style="display:none">
+        <div class="ns-head"><h2>지금 화제</h2><small>뉴스 헤드라인 자동 집계</small></div>
+        <div class="ns-row" id="nsScope"></div>
+        <div class="ns-row" id="nsCat"></div>
+        <div class="ns-loc">
+          <input id="nsRegion" type="search" placeholder="위치(선택) — 예: 성남, 마포구" maxlength="40" autocomplete="off" />
+        </div>
+        <div id="nsList"></div>
+      </section>
+
       <div class="topics" id="topics"></div>
       <div id="feedList"><div class="loading">불러오는 중…</div></div>
     </div>
@@ -874,6 +928,105 @@
     }));
     renderTopics(["전체", ...names.slice(0, 8)]);
     return false;
+  }
+
+  /* ── 지금 화제 (뉴스 무-LLM 집계) ──────────────────────────
+   * GET /v1/news/topics — 범위(우리 동네/시/도/전국/해외)·주제·위치(선택) 필터.
+   * 위치 자동 매칭은 하지 않는다: 동네 이슈(가로등 고장)에만 위치가 중요하고
+   * 전국 이슈(AI 규제 법안)엔 불필요하므로 사용자가 필터로 직접 좁힌다. */
+  const NS_SCOPES = [["", "전체"], ["동네", "우리 동네"], ["시", "우리 시"], ["도", "우리 도"], ["전국", "전국"], ["해외", "해외"]];
+  const NS_CATS = [["", "전체"], ["환경", "환경"], ["교육", "교육"], ["경제", "경제"], ["정치", "정치"], ["기술", "기술"]];
+  const nsFilter = { scope: "", category: "", region: "" };
+
+  function nsRenderChips(boxId, defs, key) {
+    const box = $(boxId); box.replaceChildren();
+    defs.forEach(([val, label]) => {
+      const chip = sec.el("button", { class: "ns-chip" + (nsFilter[key] === val ? " on" : ""), type: "button" }, label);
+      chip.addEventListener("click", () => {
+        nsFilter[key] = val;
+        [...box.children].forEach(c => c.classList.remove("on"));
+        chip.classList.add("on");
+        if (key === "scope") nsSyncRegionInput();
+        loadNewsTopics();
+      });
+      box.appendChild(chip);
+    });
+  }
+
+  // 전국/해외에선 위치 입력이 무의미 — 비활성화로 그 사실을 UI에 드러낸다.
+  function nsSyncRegionInput() {
+    const input = $("nsRegion");
+    const pointless = nsFilter.scope === "전국" || nsFilter.scope === "해외";
+    input.disabled = pointless;
+    if (pointless && input.value) { input.value = ""; nsFilter.region = ""; }
+  }
+
+  let nsSeq = 0;
+  async function loadNewsTopics() {
+    const box = $("newsSec"), list = $("nsList");
+    const mySeq = ++nsSeq;
+    let topics = [];
+    try {
+      topics = await buddle.news.topics({
+        scope: nsFilter.scope || null,
+        category: nsFilter.category || null,
+        region: nsFilter.region || null,
+        limit: 8,
+      });
+    } catch (_) {
+      // 뉴스 파이프라인이 없는(구버전/오프라인) 서버 → 섹션 자체를 숨긴다.
+      if (mySeq === nsSeq && !box.dataset.ready) box.style.display = "none";
+      return;
+    }
+    if (mySeq !== nsSeq) return;   // 늦은 응답이 최신 필터 결과를 덮지 않게
+    box.style.display = ""; box.dataset.ready = "1";
+    list.replaceChildren();
+    if (!Array.isArray(topics) || !topics.length) {
+      list.appendChild(sec.el("div", { class: "ns-empty" },
+        "이 필터에 잡힌 화제가 아직 없어요. 범위나 주제를 넓혀보세요."));
+      return;
+    }
+    topics.forEach(t => list.appendChild(nsTopicCard(t)));
+  }
+
+  function nsTopicCard(t) {
+    const card = sec.el("div", { class: "nt-card" });
+    const top = sec.el("div", { class: "nt-top" });
+    top.appendChild(sec.el("span", { class: "nt-name" }, "#" + (t.name || "")));
+    top.appendChild(sec.el("span", { class: "nt-badge" }, t.category || "사회"));
+    const scopeLabel = t.region ? `${t.scope} · ${t.region}` : (t.scope || "");
+    if (scopeLabel) top.appendChild(sec.el("span", { class: "nt-badge" }, scopeLabel));
+    top.appendChild(sec.el("span", { class: "nt-meta" },
+      `기사 ${t.count || 0}건 · 매체 ${(t.sources || []).length}곳`));
+    card.appendChild(top);
+    const heads = Array.isArray(t.headlines) ? t.headlines.slice(0, 3) : [];
+    if (heads.length) {
+      const hbox = sec.el("div", { class: "nt-heads" });
+      heads.forEach(h => hbox.appendChild(sec.el("a", {
+        href: sec.safeUrl(h && h.url), target: "_blank", rel: "noopener noreferrer",
+        title: (h && h.source) || "",
+      }, (h && h.title) || "")));
+      card.appendChild(hbox);
+    }
+    return card;
+  }
+
+  function bindNewsFilters() {
+    nsRenderChips("nsScope", NS_SCOPES, "scope");
+    nsRenderChips("nsCat", NS_CATS, "category");
+    const input = $("nsRegion");
+    let timer = null;
+    input.addEventListener("input", () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        const v = input.value.trim();
+        if (v === nsFilter.region) return;
+        nsFilter.region = v;
+        loadNewsTopics();
+      }, 350);
+    });
+    nsSyncRegionInput();
+    loadNewsTopics();
   }
 
   function postCard(item) {
@@ -1274,10 +1427,23 @@
     $("savedBtn").addEventListener("click", () => { location.href = "bookmarks.html"; });
     $("notifBtn").addEventListener("click", () => { location.href = "notifications.html"; });
     bindSearch();
+    // 홈 트렌딩 칩(feed.html?tag=…)에서 넘어온 태그 필터를 반영한다 —
+    // 파라미터를 읽지 않으면 칩 탭이 조용히 무필터 피드로 떨어진다.
+    const tagParam = (params.get("tag") || "").trim();
+    if (tagParam && !postId) { currentTopic = tagParam; updateDebateButton(); }
     await buddle.requireAuth();
     refreshNotifBadge();
-    if (postId) loadDetail(postId);
-    else loadFeed();
+    if (postId) { loadDetail(postId); return; }
+    if (tagParam) {
+      // 필터 상태로 시작해도 칩 줄은 전체 트렌딩으로 구성해 '전체' 복귀를 남겨둔다.
+      loadTrendingTopics([]); topicsRendered = true;
+    }
+    loadFeed();
+    bindNewsFilters();
+    // 홈의 "지금 화제" 카드(feed.html#news)에서 진입 시 섹션으로 스크롤.
+    if (location.hash === "#news") {
+      setTimeout(() => { const s = $("newsSec"); if (s) s.scrollIntoView({ behavior: "smooth" }); }, 400);
+    }
   })();
 </script>
 </body>

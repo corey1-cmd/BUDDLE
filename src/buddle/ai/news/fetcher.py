@@ -38,10 +38,39 @@ class RawArticle:
     score: int = 0
     comments: int = 0
     published_at: int = field(default_factory=lambda: int(time.time()))
+    summary: str = ""  # RSS <description>/<summary>, tag-stripped (화제 추출 입력)
 
     @property
     def url_hash(self) -> str:
         return hashlib.sha256(self.url.encode()).hexdigest()[:16]
+
+
+def _parse_pubdate(raw_block: str) -> int:
+    """Best-effort RFC-822/ISO date from an RSS/Atom item block → unix seconds.
+
+    Recency drives topic scoring, so a real timestamp beats fetch time when the
+    feed provides one; on any parse failure we fall back to now.
+    """
+    m = re.search(
+        r"<(?:pubDate|published|updated|dc:date)[^>]*>(.*?)</(?:pubDate|published|updated|dc:date)>",
+        raw_block,
+        re.DOTALL,
+    )
+    if not m:
+        return int(time.time())
+    text = m.group(1).strip()
+    try:
+        from email.utils import parsedate_to_datetime
+
+        return int(parsedate_to_datetime(text).timestamp())
+    except (TypeError, ValueError):
+        pass
+    try:
+        from datetime import datetime
+
+        return int(datetime.fromisoformat(text.replace("Z", "+00:00")).timestamp())
+    except ValueError:
+        return int(time.time())
 
 
 async def fetch_hacker_news(*, limit: int = 20) -> list[RawArticle]:
@@ -144,7 +173,23 @@ async def fetch_rss(url: str, *, source_name: str, limit: int = 10) -> list[RawA
                 link = link_m.group(1).strip()
                 if not title or not link:
                     continue
-                articles.append(RawArticle(url=link, title=title, source=source_name))
+                # RSS 구조의 요약(<description>/<summary>) — 화제 추출·발췌 요약 입력.
+                desc_m = re.search(
+                    r"<(?:description|summary|content)[^>]*>(?:<!\[CDATA\[)?(.*?)"
+                    r"(?:\]\]>)?</(?:description|summary|content)>",
+                    raw,
+                    re.DOTALL,
+                )
+                summary = re.sub(r"<[^>]+>", " ", desc_m.group(1)).strip() if desc_m else ""
+                articles.append(
+                    RawArticle(
+                        url=link,
+                        title=title,
+                        source=source_name,
+                        summary=summary[:2000],
+                        published_at=_parse_pubdate(raw),
+                    )
+                )
     except Exception as e:
         log.warning("rss.fetch_error", source=source_name, url=url, error=str(e))
     return articles
