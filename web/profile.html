@@ -3,101 +3,107 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<title>버들 — 내 프로파일</title>
+<title>버들 — 프로필</title>
 <link rel="stylesheet" href="buddle.css">
 <style>
-  /* page-local: profile composition only */
-  .intro .bd-eyebrow{margin-bottom:var(--s2);}
-  .rights{display:flex;flex-direction:column;gap:var(--s2);margin-top:var(--s4);}
-  .right-item{display:flex;gap:var(--s3);align-items:flex-start;}
-  .right-item .n{flex:none;width:22px;height:22px;border-radius:50%;background:var(--willow-wash);color:var(--willow-press);font-size:var(--t-xs);font-weight:700;display:flex;align-items:center;justify-content:center;margin-top:1px;}
-  .right-item .t b{font-size:var(--t-sm);color:var(--ink);}
-  .right-item .t span{font-size:var(--t-xs);color:var(--ink-soft);}
+  /* ── 인스타식 프로필: 헤더(아바타·통계) + 내 글 목록(글이라 한 줄에 1개) ── */
+  .ph{display:flex;align-items:center;gap:var(--s4);margin:var(--s2) 0 var(--s4);}
+  .ph .ava{width:76px;height:76px;border-radius:26px;flex:none;display:grid;place-items:center;
+    font-family:var(--display);font-weight:700;font-size:30px;color:#fff;background:var(--accent-grad);
+    border:1px solid rgba(255,255,255,.18);box-shadow:var(--shadow-pop-sm);}
+  .ph .stats{flex:1;display:flex;justify-content:space-around;text-align:center;}
+  .ph .stat b{display:block;font-family:var(--display);font-size:19px;font-weight:700;color:var(--ink);font-variant-numeric:tabular-nums;}
+  .ph .stat span{font-size:var(--t-xs);color:var(--ink-soft);}
+  .ph-name{margin-bottom:var(--s4);}
+  .ph-name b{display:block;font-family:var(--display);font-size:17px;font-weight:700;color:var(--ink);}
+  .ph-name span{font-size:var(--t-xs);color:var(--ink-faint);}
 
-  .trait{padding:var(--s3) 0;border-bottom:1px solid var(--line);}
-  .trait:last-child{border-bottom:none;}
-  .trait .row1{display:flex;align-items:baseline;gap:var(--s2);}
-  .trait .name{font-size:var(--t-body);font-weight:600;color:var(--ink);}
-  .trait .desc{font-size:var(--t-xs);color:var(--ink-faint);}
-  .trait .val{margin-left:auto;font-variant-numeric:tabular-nums;font-weight:700;font-size:var(--t-sm);color:var(--willow-press);}
-  .trait .bd-meter{margin-top:var(--s2);}
-  .trait input[type=range]{width:100%;margin-top:var(--s2);accent-color:var(--willow);display:none;}
-  .editing .trait input[type=range]{display:block;}
-  .editing .trait .bd-meter{display:none;}
+  /* 액션 버튼 2개 — 인스타의 '프로필 편집 / 프로필 공유' 자리 */
+  .ph-actions{display:flex;gap:var(--s2);margin-bottom:var(--s5);}
+  .ph-actions a{flex:1;display:flex;align-items:center;justify-content:center;gap:6px;height:38px;
+    border-radius:12px;border:1px solid var(--line);background:var(--paper-raised);
+    font-size:var(--t-sm);font-weight:600;color:var(--ink);text-decoration:none;transition:background var(--dur) var(--ease);}
+  .ph-actions a:hover{background:var(--paper-sunken);}
+  .ph-actions svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.9;}
 
-  .meter-row{display:flex;align-items:center;gap:var(--s3);}
-  .meter-row .bd-meter{flex:1;}
-  .meter-row .pct{font-size:var(--t-sm);font-weight:700;color:var(--ink);min-width:48px;text-align:right;}
-  .hint{font-size:var(--t-xs);color:var(--ink-faint);margin-top:var(--s2);line-height:1.55;}
+  /* 목록 시작 구분선 — 인스타 탭바 위치 (글 전용이라 탭은 1개) */
+  .ph-tab{display:flex;align-items:center;justify-content:center;gap:7px;padding:10px 0;margin:0 calc(-1 * var(--s4)) var(--s4);
+    border-top:1px solid var(--line);border-bottom:1px solid var(--line);
+    font-size:var(--t-xs);font-weight:700;color:var(--ink-soft);letter-spacing:.06em;}
+  .ph-tab svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.9;}
 
-  .optrow{display:flex;align-items:center;gap:var(--s3);}
-  .optrow .txt{flex:1;}
-  .optrow .txt b{font-size:var(--t-sm);color:var(--ink);display:block;margin-bottom:2px;}
-  .optrow .txt span{font-size:var(--t-xs);color:var(--ink-soft);}
+  /* 내 글 — 한 줄에 하나 (3열 그리드는 글 가시성이 죽는다) */
+  .mypost{background:linear-gradient(158deg,rgba(255,255,255,.055) 0%,rgba(255,255,255,.02) 40%,transparent 62%),var(--paper-raised);
+    border:1px solid var(--line);border-radius:18px;padding:14px 15px;margin-bottom:12px;cursor:pointer;
+    box-shadow:0 6px 22px rgba(23,26,60,.08),inset 0 1px 0 rgba(255,255,255,.10);
+    backdrop-filter:blur(20px) saturate(150%);-webkit-backdrop-filter:blur(20px) saturate(150%);
+    transition:transform .12s,border-color .15s;}
+  .mypost:hover{border-color:var(--line-strong);}
+  .mypost:active{transform:scale(.99);}
+  .mp-head{display:flex;align-items:center;gap:8px;margin-bottom:9px;}
+  .mp-persona{font-size:13px;font-weight:600;color:var(--ink);}
+  .mp-time{font-size:11.5px;color:var(--ink-faint);}
+  .mp-badge{margin-left:auto;font-size:10px;font-weight:700;padding:2px 8px;border-radius:999px;
+    background:var(--paper-sunken);color:var(--ink-faint);}
+  .mp-badge.warn{background:var(--caution-wash);color:var(--caution);}
+  .mp-body{font-size:14.5px;line-height:1.6;color:var(--ink);display:-webkit-box;-webkit-line-clamp:5;-webkit-box-orient:vertical;overflow:hidden;}
+  .mp-tags{display:flex;flex-wrap:wrap;gap:6px;margin-top:9px;}
+  .mp-tag{font-size:11px;font-weight:600;color:var(--willow-text);background:var(--willow-wash);border-radius:999px;padding:2px 9px;}
+  .mp-foot{display:flex;align-items:center;gap:16px;margin-top:10px;font-size:12.5px;font-weight:600;color:var(--ink-soft);}
+  .mp-foot .it{display:flex;align-items:center;gap:5px;}
+  .mp-foot svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.9;}
 
-  .actions{display:flex;gap:var(--s2);margin-top:var(--s2);}
-  .actions .bd-btn{flex:1;}
-  .status{font-size:var(--t-xs);color:var(--ink-soft);min-height:16px;margin-top:var(--s3);text-align:center;}
-  .card-title{font-size:var(--t-h2);font-weight:600;color:var(--ink);margin-bottom:var(--s3);display:flex;align-items:center;gap:8px;}
-  .card-title svg{width:18px;height:18px;stroke:var(--willow);fill:none;stroke-width:1.8;}
-  section.bd-card{margin-bottom:var(--s4);}
+  .ph-empty{text-align:center;color:var(--ink-faint);font-size:14px;line-height:1.7;padding:44px 20px;}
+  .ph-empty a{color:var(--willow-text);font-weight:700;text-decoration:none;}
+  .ph-loading{text-align:center;color:var(--ink-faint);font-size:14px;padding:40px 0;}
+  .ph-more{width:100%;margin:2px 0 8px;padding:12px;border:1px solid var(--line);border-radius:14px;
+    background:var(--paper-raised);color:var(--willow-text);font-family:var(--body);font-size:14px;font-weight:600;cursor:pointer;}
 </style>
 </head>
 <body>
 <div class="bd-phone">
 
   <div class="bd-top">
-    <a class="bd-back" href="home-dashboard.html" aria-label="홈으로">
-      <svg viewBox="0 0 24 24" width="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M15 18l-6-6 6-6"/></svg>
+    <h1 style="flex:1;font-family:var(--display);font-weight:700;font-size:20px">프로필</h1>
+    <a class="bd-iconbtn" href="bookmarks.html" aria-label="저장한 글" title="저장한 글">
+      <svg viewBox="0 0 24 24"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
     </a>
-    <h1 style="flex:1">내 프로파일</h1>
-    <span class="bd-badge" id="modeBadge">추정값</span>
+    <a class="bd-iconbtn" href="notifications.html" aria-label="알림" title="알림">
+      <svg viewBox="0 0 24 24"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
+    </a>
   </div>
 
-  <section class="bd-card intro bd-reveal">
-    <div class="bd-eyebrow">투명하게 · 연결만을 위해</div>
-    <p class="bd-muted">버들이 대화와 글을 바탕으로 <b style="color:var(--ink)">추정</b>한 성향과 관심입니다. 비슷한 결의 사람·이야기와 <b style="color:var(--ink)">이어주는 용도로만</b> 쓰이며, 누군가를 배제하거나 차별하는 데는 쓰이지 않습니다. 단정이 아닌 추정이고 — 최종 결정권은 늘 본인에게 있어요.</p>
-    <div class="rights">
-      <div class="right-item"><div class="n">1</div><div class="t"><b>열람</b> <span>— 지금 이 화면</span></div></div>
-      <div class="right-item"><div class="n">2</div><div class="t"><b>수정</b> <span>— 직접 고치면 자동 추정이 멈춰요</span></div></div>
-      <div class="right-item"><div class="n">3</div><div class="t"><b>삭제</b> <span>— 언제든 비울 수 있어요</span></div></div>
-      <div class="right-item"><div class="n">4</div><div class="t"><b>거부</b> <span>— 매칭에서 빼둘 수 있어요</span></div></div>
+  <!-- 인스타식 헤더: 아바타 + 통계(게시물 · 받은 좋아요 · 받은 댓글) -->
+  <div class="ph bd-reveal">
+    <div class="ava" id="phAva">·</div>
+    <div class="stats">
+      <div class="stat"><b id="stPosts">0</b><span>게시물</span></div>
+      <div class="stat"><b id="stLikes">0</b><span>받은 좋아요</span></div>
+      <div class="stat"><b id="stComments">0</b><span>받은 댓글</span></div>
     </div>
-  </section>
+  </div>
+  <div class="ph-name bd-reveal">
+    <b id="phHandle">…</b>
+    <span id="phSub">버들에서 생각을 나누는 중</span>
+  </div>
 
-  <section class="bd-card bd-reveal" id="traitCard">
-    <div class="card-title"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 3v18M3 12h18"/></svg>성향 (Big Five)</div>
-    <div id="traits"></div>
-    <p class="hint" id="traitHint">막대는 0~1 사이 추정값이에요. ‘수정하기’를 누르면 직접 조정할 수 있고, 한 번이라도 직접 설정하면 그 값이 최종이 되어 자동 추정이 멈춥니다.</p>
-    <div class="actions">
-      <button id="editBtn" class="bd-btn">수정하기</button>
-      <button id="saveBtn" class="bd-btn bd-btn--primary" style="display:none">저장</button>
-      <button id="cancelBtn" class="bd-btn" style="display:none">취소</button>
-    </div>
-  </section>
+  <div class="ph-actions bd-reveal">
+    <a href="profile-traits.html">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+      성향 프로파일
+    </a>
+    <a href="compose.html">
+      <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+      새 글 쓰기
+    </a>
+  </div>
 
-  <section class="bd-card bd-reveal">
-    <div class="card-title"><svg viewBox="0 0 24 24"><path d="M3 17l5-5 4 4 8-8"/></svg>추정 신뢰도</div>
-    <div class="meter-row"><div class="bd-meter"><i id="confBar" style="width:0%"></i></div><span class="pct" id="confPct">0%</span></div>
-    <p class="hint" id="evidenceTxt">아직 누적된 근거가 없어요. 페르소나와 대화할수록 추정이 차분히 정교해집니다 — 한 번의 말로는 거의 움직이지 않게 설계돼 있어요.</p>
-  </section>
+  <div class="ph-tab bd-reveal">
+    <svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"/></svg>
+    내 글
+  </div>
 
-  <section class="bd-card bd-reveal">
-    <div class="card-title"><svg viewBox="0 0 24 24"><path d="M20.8 7.6a5 5 0 0 0-7.1 0L12 9.3l-1.7-1.7a5 5 0 1 0-7.1 7.1L12 23l8.8-8.3a5 5 0 0 0 0-7.1z"/></svg>관심 분야</div>
-    <p class="bd-muted" id="interestTxt" style="font-size:var(--t-sm)">아직 게시한 글이 없어 관심 지도가 비어 있어요. 글을 쓰면 그 결이 모여 ‘관심의 중심점’이 만들어지고, 매칭의 10%로만 쓰입니다.</p>
-  </section>
-
-  <section class="bd-card bd-reveal">
-    <div class="optrow">
-      <div class="txt"><b>매칭에 프로파일 사용 안 함</b>
-        <span>켜면 추정·관찰이 멈추고, 매칭은 콘텐츠·위치만으로 다시 계산됩니다.</span></div>
-      <label class="bd-switch"><input type="checkbox" id="optOut"><i></i></label>
-    </div>
-    <div class="actions" style="margin-top:var(--s4)">
-      <button class="bd-btn bd-btn--danger" id="deleteBtn" style="flex:none">프로파일 삭제</button>
-    </div>
-    <div class="status" id="status"></div>
-  </section>
+  <div id="myPosts"><div class="ph-loading">불러오는 중…</div></div>
 
 </div>
 
@@ -113,12 +119,14 @@
 <script src="buddle.ux.js"></script>
 <script>
 /* ── 최소 보안 헬퍼 (SECURITY_FRONTEND 규약 부분집합: API 텍스트는 DOM API로만) ── */
-const sec = {
-  text(node, value){ node.textContent = value == null ? "" : String(value); },
-};
+function el(tag, cls, text){
+  const n = document.createElement(tag);
+  if (cls) n.className = cls;
+  if (text != null) n.textContent = String(text);
+  return n;
+}
 
-/* ── 최소 API (api.js 규약 부분집합: sessionStorage 토큰 buddle.auth.v1, Bearer,
-      BUDDLE_API_BASE 오버라이드, 백엔드 부재 시 데모 폴백) ── */
+/* ── 최소 API (api.js 규약 부분집합: sessionStorage 토큰 buddle.auth.v1, Bearer) ── */
 const api = (() => {
   const BASE = window.BUDDLE_API_BASE || "";
   const TOKEN_KEY = "buddle.auth.v1";
@@ -128,162 +136,115 @@ const api = (() => {
       return raw ? (JSON.parse(raw).a || null) : null;
     }catch{ return null; }
   }
-  async function call(method, path, body){
+  async function call(method, path){
     const headers = { "Accept": "application/json" };
     const t = token();
     if (t) headers["Authorization"] = "Bearer " + t;
-    if (body !== undefined) headers["Content-Type"] = "application/json";
-    const res = await fetch(BASE + path, {
-      method, headers, body: body === undefined ? undefined : JSON.stringify(body),
-    });
-    if (res.status === 204) return null;
+    const res = await fetch(BASE + path, { method, headers });
     if (!res.ok) throw new Error("HTTP " + res.status);
     return res.json();
   }
   return {
     hasToken: () => !!token(),
-    getProfile: () => call("GET", "/v1/me/profile"),
-    patchProfile: (payload) => call("PATCH", "/v1/me/profile", payload),
-    deleteProfile: () => call("DELETE", "/v1/me/profile"),
+    me: () => call("GET", "/v1/users/me"),
+    myPosts: (cursor) => call("GET", "/v1/posts?limit=20" + (cursor ? "&cursor=" + encodeURIComponent(cursor) : "")),
   };
 })();
 
-/* ── 상태 ── */
-const TRAITS = [
-  { key:"o", name:"개방성",      desc:"새로움·호기심·상상" },
-  { key:"c", name:"성실성",      desc:"계획·꾸준함·체계" },
-  { key:"e", name:"외향성",      desc:"사람·모임에서 얻는 에너지" },
-  { key:"a", name:"우호성",      desc:"공감·배려·따뜻함" },
-  { key:"n", name:"정서 민감성", desc:"걱정·스트레스에 반응하는 정도" },
-];
-const NEUTRAL = { o:.5, c:.5, e:.5, a:.5, n:.5, confidence:0, evidence_count:0,
-                  has_interests:false, profile_opt_out:false, is_user_edited:false };
-let profile = { ...NEUTRAL };
-let demoMode = false;
-let editing = false;
-
-/* ── 렌더 ── */
 const $ = (id) => document.getElementById(id);
 
-function renderTraits(){
-  const wrap = $("traits");
-  wrap.replaceChildren();
-  for (const t of TRAITS){
-    const v = Math.max(0, Math.min(1, Number(profile[t.key])));
-    const row = document.createElement("div"); row.className = "trait";
-    const r1 = document.createElement("div"); r1.className = "row1";
-    const nm = document.createElement("span"); nm.className = "name"; sec.text(nm, t.name);
-    const ds = document.createElement("span"); ds.className = "desc"; sec.text(ds, t.desc);
-    const vl = document.createElement("span"); vl.className = "val";
-    sec.text(vl, v.toFixed(2));
-    r1.append(nm, ds, vl);
-    const bar = document.createElement("div"); bar.className = "bd-meter";
-    const fill = document.createElement("i"); fill.style.width = (v*100).toFixed(0) + "%";
-    bar.append(fill);
-    const slider = document.createElement("input");
-    slider.type = "range"; slider.min = "0"; slider.max = "1"; slider.step = "0.05";
-    slider.value = String(v); slider.dataset.key = t.key;
-    slider.setAttribute("aria-label", t.name + " 직접 설정");
-    slider.addEventListener("input", () => sec.text(vl, Number(slider.value).toFixed(2)));
-    row.append(r1, bar, slider);
-    wrap.append(row);
+function relTime(iso){
+  if(!iso) return "방금";
+  const s = (Date.now() - new Date(iso).getTime()) / 1000;
+  if(s < 60) return "방금";
+  if(s < 3600) return `${Math.floor(s/60)}분 전`;
+  if(s < 86400) return `${Math.floor(s/3600)}시간 전`;
+  return `${Math.floor(s/86400)}일 전`;
+}
+function fmt(n){ return n >= 10000 ? (n/10000).toFixed(1).replace(/\.0$/,"") + "만" : String(n); }
+function tagName(t){ return (t && typeof t === "object") ? (t.name || "") : String(t || ""); }
+
+/* 한 줄 글 카드 — 인스타 그리드 대신 가독성 우선(글이니까) */
+function postRow(item){
+  const card = el("div", "mypost");
+  const head = el("div", "mp-head");
+  head.appendChild(el("span", "mp-persona", (item.source_persona && item.source_persona.name) || "나"));
+  head.appendChild(el("span", "mp-time", "· " + relTime(item.created_at)));
+  if (item.is_suppressed) head.appendChild(el("span", "mp-badge warn", "검토중"));
+  else if (item.visibility === "private") head.appendChild(el("span", "mp-badge", "비공개"));
+  card.appendChild(head);
+  card.appendChild(el("div", "mp-body", item.content_transformed || ""));
+  const tags = (item.tags || []).map(tagName).filter(Boolean);
+  if (tags.length){
+    const tb = el("div", "mp-tags");
+    tags.slice(0, 4).forEach(t => tb.appendChild(el("span", "mp-tag", "#" + t)));
+    card.appendChild(tb);
   }
-}
-
-function renderMeta(){
-  const pct = Math.round(Number(profile.confidence) * 100);
-  $("confBar").style.width = pct + "%";
-  sec.text($("confPct"), pct + "%");
-  const n = Number(profile.evidence_count) || 0;
-  sec.text($("evidenceTxt"), n === 0
-    ? "아직 누적된 근거가 없습니다. 페르소나와 대화할수록 추정이 차분히 정교해집니다 — 한 번의 말로는 거의 움직이지 않게 설계되어 있어요."
-    : `대화 ${n}건의 신호를 누적한 추정입니다. 신뢰도는 근거가 쌓일수록 천천히 오르고, 100%에는 도달하지 않습니다 — 추정은 추정이니까요.`);
-  sec.text($("interestTxt"), profile.has_interests
-    ? "게시한 글들의 결이 모여 관심의 중심점이 만들어져 있습니다. 원문이 아니라 방향(임베딩 평균)만 저장되며, 매칭의 10%로만 쓰입니다."
-    : "아직 게시한 글이 없어 관심 지도가 비어 있습니다. 글을 쓰면 그 내용의 결이 모여 ‘관심의 중심점’이 만들어지고, 매칭의 10%로만 쓰입니다.");
-  $("optOut").checked = !!profile.profile_opt_out;
-  const badge = $("modeBadge");
-  if (demoMode){ badge.className = "badge demo"; sec.text(badge, "데모 모드"); }
-  else if (profile.is_user_edited){ badge.className = "badge"; sec.text(badge, "내가 설정함"); }
-  else { badge.className = "badge"; sec.text(badge, "추정값"); }
-}
-
-function setEditing(on){
-  editing = on;
-  $("traitCard").classList.toggle("editing", on);
-  $("editBtn").style.display = on ? "none" : "";
-  $("saveBtn").style.display = on ? "" : "none";
-  $("cancelBtn").style.display = on ? "" : "none";
-}
-
-function setStatus(msg){ sec.text($("status"), msg || ""); }
-
-/* ── 액션 ── */
-$("editBtn").addEventListener("click", () => setEditing(true));
-$("cancelBtn").addEventListener("click", () => { renderTraits(); setEditing(false); });
-
-$("saveBtn").addEventListener("click", async () => {
-  const payload = {};
-  document.querySelectorAll('#traits input[type=range]').forEach(s => {
-    payload[s.dataset.key] = Number(s.value);
+  const foot = el("div", "mp-foot");
+  const like = el("span", "it");
+  like.innerHTML = '<svg viewBox="0 0 24 24"><path d="M20.8 7.6a5 5 0 0 0-7.1 0L12 9.3l-1.7-1.7a5 5 0 1 0-7.1 7.1L12 23l8.8-8.3a5 5 0 0 0 0-7.1z"/></svg>';
+  like.appendChild(document.createTextNode(" " + fmt(item.like_count || 0)));
+  const cmt = el("span", "it");
+  cmt.innerHTML = '<svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>';
+  cmt.appendChild(document.createTextNode(" " + fmt(item.comment_count || 0)));
+  foot.append(like, cmt);
+  card.appendChild(foot);
+  card.addEventListener("click", () => {
+    // 상세는 피드와 같은 스태시 규약 — MyPostItem 필드가 feed item과 호환된다.
+    try { sessionStorage.setItem("buddle.feed.item." + item.id, JSON.stringify(item)); } catch(_){}
+    location.href = "feed.html?post=" + encodeURIComponent(item.id);
   });
-  setStatus("저장 중…");
-  if (demoMode){
-    Object.assign(profile, payload, { is_user_edited:true, confidence:1 });
-    renderTraits(); renderMeta(); setEditing(false);
-    setStatus("데모 모드: 이 탭에서만 반영되었습니다."); return;
-  }
-  try{
-    profile = normalize(await api.patchProfile(payload));
-    renderTraits(); renderMeta(); setEditing(false);
-    setStatus("저장되었습니다. 직접 설정한 값은 최종이며 자동 추정이 멈춥니다.");
-  }catch(e){ setStatus("저장 실패: " + e.message); }
-});
+  return card;
+}
 
-$("optOut").addEventListener("change", async (ev) => {
-  const want = ev.target.checked;
-  if (demoMode){
-    profile.profile_opt_out = want; renderMeta();
-    setStatus(want ? "데모: 매칭에서 프로파일 제외(콘텐츠·위치만 사용)." : "데모: 프로파일 사용 재개."); return;
+let nextCursor = null;
+async function loadPosts(cursor){
+  const box = $("myPosts");
+  if(!cursor) box.replaceChildren(el("div", "ph-loading", "불러오는 중…"));
+  let page = null;
+  try { page = await api.myPosts(cursor || null); }
+  catch(_){
+    box.replaceChildren(el("div", "ph-empty", "글을 불러오지 못했어요. 잠시 후 다시 시도해 주세요."));
+    return;
   }
-  setStatus("적용 중…");
-  try{
-    profile = normalize(await api.patchProfile({ profile_opt_out: want }));
-    renderMeta();
-    setStatus(want ? "이제 매칭은 콘텐츠·위치만으로 계산됩니다." : "프로파일 사용을 재개했습니다.");
-  }catch(e){ ev.target.checked = !want; setStatus("적용 실패: " + e.message); }
-});
+  // 헤더 통계 — 전체 합계(서버 집계)
+  $("stPosts").textContent = fmt(page.post_count || 0);
+  $("stLikes").textContent = fmt(page.like_count || 0);
+  $("stComments").textContent = fmt(page.comment_count || 0);
+  nextCursor = page.next_cursor || null;
 
-$("deleteBtn").addEventListener("click", async () => {
-  if (!confirm("프로파일 추정값과 관심 중심점을 모두 삭제할까요?\n(계속 사용하면 처음부터 다시, 천천히 추정됩니다 — 거부를 원하면 위의 토글을 켜 두세요)")) return;
-  if (demoMode){
-    profile = { ...NEUTRAL }; renderTraits(); renderMeta();
-    setStatus("데모: 프로파일이 비워졌습니다."); return;
+  if(!cursor) box.replaceChildren();
+  const oldMore = $("phMore"); if (oldMore) oldMore.remove();
+  const items = page.items || [];
+  if(!cursor && !items.length){
+    const empty = el("div", "ph-empty");
+    empty.appendChild(document.createTextNode("아직 쓴 글이 없어요."));
+    empty.appendChild(document.createElement("br"));
+    const a = el("a", null, "가운데 글쓰기에서 첫 생각을 남겨보세요 →");
+    a.href = "compose.html";
+    empty.appendChild(a);
+    box.appendChild(empty);
+    return;
   }
-  setStatus("삭제 중…");
-  try{
-    await api.deleteProfile();
-    profile = { ...NEUTRAL };
-    renderTraits(); renderMeta(); setEditing(false);
-    setStatus("프로파일이 삭제되었습니다. 이 화면의 값은 중립 초기값입니다.");
-  }catch(e){ setStatus("삭제 실패: " + e.message); }
-});
-
-/* ── 로드 (백엔드 부재/미로그인 → 데모 폴백: 파일 단독 열람 보장) ── */
-function normalize(p){ return { ...NEUTRAL, ...(p || {}) }; }
-
-(async function init(){
-  renderTraits(); renderMeta();
-  try{
-    if (!api.hasToken()) throw new Error("no token");
-    profile = normalize(await api.getProfile());
-    demoMode = false;
-  }catch{
-    demoMode = true;
-    profile = normalize({ o:.62, c:.48, e:.41, a:.71, n:.57, confidence:.34,
-      evidence_count:14, has_interests:true });
+  items.forEach(it => box.appendChild(postRow(it)));
+  if (nextCursor){
+    const more = el("button", "ph-more", "더 보기");
+    more.id = "phMore";
+    more.addEventListener("click", () => loadPosts(nextCursor));
+    box.appendChild(more);
   }
-  renderTraits(); renderMeta();
+}
+
+(async function boot(){
+  if (!api.hasToken()){ location.href = "login.html"; return; }
+  try {
+    const me = await api.me();
+    const handle = (me.email || "").split("@")[0] || "나";
+    $("phHandle").textContent = handle;
+    $("phAva").textContent = handle.slice(0, 1).toUpperCase();
+    $("phSub").textContent = me.is_admin ? "관리자 · 버들에서 생각을 나누는 중" : "버들에서 생각을 나누는 중";
+  } catch(_){ /* 토큰 만료 등 — 목록 호출이 다시 판정 */ }
+  loadPosts();
 })();
 </script>
 </body>

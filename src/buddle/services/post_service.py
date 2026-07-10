@@ -7,7 +7,7 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import and_, or_, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from buddle.ai.mediator import MediatorService
@@ -17,15 +17,19 @@ from buddle.core.cursor import decode_cursor, encode_cursor
 from buddle.core.exceptions import PostNotFound
 from buddle.core.logging import get_logger
 from buddle.core.types import RedisClient
+from buddle.db.models.comment import Comment
 from buddle.db.models.distribution import Distribution
 from buddle.db.models.enums import AIRole, PostVisibility, TransformationTypeEnum
 from buddle.db.models.importance import ImportanceScore
 from buddle.db.models.persona import Persona
 from buddle.db.models.post import Post
+from buddle.db.models.post_like import PostLike
 from buddle.db.models.tag import PostTag, Tag
 from buddle.db.models.user import User
 from buddle.schemas.post import (
     FeedPage,
+    MyPostItem,
+    MyPostsPage,
     PersonaBrief,
     PostCreate,
     PostFeedItem,
@@ -366,6 +370,148 @@ async def get_feed(
         next_cursor = encode_cursor({"ts": last.created_at.isoformat(), "id": str(last.id)})
 
     return FeedPage(items=items, next_cursor=next_cursor)
+
+
+async def get_my_posts(
+    db: AsyncSession,
+    user: User,
+    *,
+    cursor: str | None,
+    limit: int,
+) -> MyPostsPage:
+    """소유자 프로필의 글 목록 — 인스타식 헤더 통계 + 한 줄 카드용 데이터.
+
+    내 페르소나가 작성한 모든 글(비공개·억제 포함 — 자기 글은 자기에게 항상
+    보인다)을 (created_at, id) 키셋 커서로 최신순 페이지네이션하고, 글별
+    좋아요·댓글 수와 전체 합계(게시물·받은 좋아요·받은 댓글)를 동반한다.
+    """
+    limit = max(1, min(limit, 50))
+    my_persona_ids = select(Persona.id).where(Persona.user_id == user.id)
+
+    where_clauses: list[Any] = [Post.source_persona_id.in_(my_persona_ids)]
+    if cursor:
+        payload = decode_cursor(cursor)
+        ts_str = payload.get("ts")
+        last_id_str = payload.get("id")
+        if not ts_str or not last_id_str:
+            raise PostNotFound()
+        ts = datetime.fromisoformat(ts_str)
+        last_id = uuid.UUID(last_id_str)
+        where_clauses.append(
+            or_(Post.created_at < ts, and_(Post.created_at == ts, Post.id < last_id))
+        )
+
+    rows = (
+        (
+            await db.execute(
+                select(Post)
+                .where(*where_clauses)
+                .order_by(Post.created_at.desc(), Post.id.desc())
+                .limit(limit + 1)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    has_more = len(rows) > limit
+    page_rows = list(rows[:limit])
+    post_ids = [p.id for p in page_rows]
+
+    # 글별 카운트 + 태그 + 페르소나 (페이지 범위만)
+    like_map: dict[uuid.UUID, int] = {}
+    comment_map: dict[uuid.UUID, int] = {}
+    tags_by_post: dict[uuid.UUID, list[TagName]] = {}
+    persona_map: dict[uuid.UUID, Persona] = {}
+    if post_ids:
+        for pid, n in (
+            await db.execute(
+                select(PostLike.post_id, func.count())
+                .where(PostLike.post_id.in_(post_ids))
+                .group_by(PostLike.post_id)
+            )
+        ).all():
+            like_map[pid] = int(n)
+        for pid, n in (
+            await db.execute(
+                select(Comment.post_id, func.count())
+                .where(Comment.post_id.in_(post_ids))
+                .group_by(Comment.post_id)
+            )
+        ).all():
+            comment_map[pid] = int(n)
+        for pid, tag_id, tag_name in (
+            await db.execute(
+                select(PostTag.post_id, Tag.id, Tag.name)
+                .join(Tag, Tag.id == PostTag.tag_id)
+                .where(PostTag.post_id.in_(post_ids))
+            )
+        ).all():
+            tags_by_post.setdefault(pid, []).append(TagName(id=tag_id, name=tag_name))
+        persona_ids = [p.source_persona_id for p in page_rows if p.source_persona_id]
+        if persona_ids:
+            prs = await db.execute(select(Persona).where(Persona.id.in_(persona_ids)))
+            persona_map = {p.id: p for p in prs.scalars().all()}
+
+    # 헤더 통계 — 전체 합계(페이지가 아니라 프로필 전체 기준)
+    post_count = int(
+        (
+            await db.execute(
+                select(func.count())
+                .select_from(Post)
+                .where(Post.source_persona_id.in_(my_persona_ids))
+            )
+        ).scalar_one()
+    )
+    like_total = int(
+        (
+            await db.execute(
+                select(func.count())
+                .select_from(PostLike)
+                .join(Post, Post.id == PostLike.post_id)
+                .where(Post.source_persona_id.in_(my_persona_ids))
+            )
+        ).scalar_one()
+    )
+    comment_total = int(
+        (
+            await db.execute(
+                select(func.count())
+                .select_from(Comment)
+                .join(Post, Post.id == Comment.post_id)
+                .where(Post.source_persona_id.in_(my_persona_ids))
+            )
+        ).scalar_one()
+    )
+
+    next_cursor: str | None = None
+    if has_more and page_rows:
+        last = page_rows[-1]
+        next_cursor = encode_cursor({"ts": last.created_at.isoformat(), "id": str(last.id)})
+
+    return MyPostsPage(
+        items=[
+            MyPostItem(
+                id=p.id,
+                source_persona=(
+                    PersonaBrief.model_validate(persona_map[p.source_persona_id])
+                    if p.source_persona_id and p.source_persona_id in persona_map
+                    else None
+                ),
+                content_transformed=p.content_transformed,
+                visibility=p.visibility,
+                is_suppressed=p.is_suppressed,
+                tags=tags_by_post.get(p.id, []),
+                like_count=like_map.get(p.id, 0),
+                comment_count=comment_map.get(p.id, 0),
+                created_at=p.created_at,
+            )
+            for p in page_rows
+        ],
+        next_cursor=next_cursor,
+        post_count=post_count,
+        like_count=like_total,
+        comment_count=comment_total,
+    )
 
 
 async def _feed_items_for_posts(db: AsyncSession, posts: list[Post]) -> list[PostFeedItem]:
