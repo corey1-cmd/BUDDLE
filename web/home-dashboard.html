@@ -63,6 +63,34 @@
   .region-flags{display:flex;gap:var(--s2);margin-bottom:var(--s4);flex-wrap:wrap;}
   .rflag{display:flex;align-items:center;gap:6px;font-size:var(--t-xs);font-weight:600;color:var(--ink-soft);background:var(--paper-sunken);border-radius:var(--r-pill);padding:5px 11px;}
   .rflag .dot{width:7px;height:7px;border-radius:50%;}
+
+  /* ── 레딧식 개별 피드 ── */
+  .rchips{display:flex;gap:8px;overflow-x:auto;padding-bottom:4px;margin-bottom:16px;scrollbar-width:none;}
+  .rchips::-webkit-scrollbar{display:none;}
+  .rchip{flex:none;font-size:13px;font-weight:600;color:var(--ink-soft);background:var(--paper-sunken);border:1px solid var(--line);border-radius:999px;padding:7px 14px;text-decoration:none;white-space:nowrap;}
+  .rchip:hover{border-color:var(--line-strong);color:var(--ink);}
+  .rloading{text-align:center;color:var(--ink-faint);font-size:14px;padding:40px 0;}
+  .rfeed{display:flex;flex-direction:column;gap:14px;padding-bottom:8px;}
+  .rcard{background:linear-gradient(158deg,rgba(255,255,255,.055) 0%,rgba(255,255,255,.02) 40%,transparent 62%),var(--paper-raised);border:1px solid var(--line);border-radius:18px;padding:15px;box-shadow:0 6px 22px rgba(0,0,0,.3),inset 0 1px 0 rgba(255,255,255,.10);backdrop-filter:blur(20px) saturate(150%);-webkit-backdrop-filter:blur(20px) saturate(150%);}
+  .rc-head{display:flex;align-items:center;gap:9px;margin-bottom:11px;}
+  .rc-ava{width:30px;height:30px;border-radius:10px;flex:none;display:grid;place-items:center;font-family:var(--display);font-weight:600;font-size:13px;color:#fff;background:var(--accent-grad);box-shadow:var(--shadow-pop-sm);}
+  .rc-who{font-size:13.5px;font-weight:600;color:var(--ink);}
+  .rc-dot{color:var(--ink-faint);}
+  .rc-time{font-size:12px;color:var(--ink-faint);}
+  .rc-body{font-size:15.5px;line-height:1.6;color:var(--ink);display:-webkit-box;-webkit-line-clamp:6;-webkit-box-orient:vertical;overflow:hidden;cursor:pointer;}
+  /* 내용 없을 때: 블러 처리된 유리 박스 */
+  .rc-blur{position:relative;height:120px;border-radius:14px;overflow:hidden;background:linear-gradient(120deg,rgba(124,130,247,.16),rgba(84,140,255,.10) 50%,rgba(124,108,255,.14));}
+  .rc-blur::after{content:"";position:absolute;inset:0;backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);background:repeating-linear-gradient(100deg,rgba(255,255,255,.05) 0 22px,rgba(255,255,255,.02) 22px 44px);}
+  .rc-tags{display:flex;flex-wrap:wrap;gap:6px;margin-top:11px;}
+  .rc-tag{font-size:12px;font-weight:600;color:var(--willow-text);background:var(--willow-wash);border-radius:999px;padding:3px 9px;}
+  .rc-foot{display:flex;align-items:center;gap:18px;margin-top:13px;}
+  .rc-stat{display:flex;align-items:center;gap:6px;font-size:13px;font-weight:600;color:var(--ink-soft);background:none;border:0;cursor:pointer;padding:0;font-family:var(--body);}
+  .rc-stat svg{width:17px;height:17px;stroke:currentColor;fill:none;stroke-width:1.9;}
+  .rc-stat.on{color:var(--willow-text);}
+  .rc-debate{margin-left:auto;display:flex;align-items:center;gap:6px;font-size:13px;font-weight:700;color:#fff;background:var(--accent-grad);border:1px solid rgba(255,255,255,.18);border-radius:999px;padding:8px 15px;text-decoration:none;box-shadow:var(--shadow-pop-sm);}
+  .rc-debate svg{width:15px;height:15px;stroke:#fff;fill:none;stroke-width:2;}
+  .rmore{width:100%;margin-top:4px;padding:12px;border:1px solid var(--line);border-radius:14px;background:var(--surface);color:var(--willow-text);font-family:var(--body);font-size:14px;font-weight:600;cursor:pointer;}
+  .rempty{text-align:center;color:var(--ink-faint);font-size:14px;line-height:1.6;padding:48px 24px;}
 </style>
 </head>
 <body>
@@ -511,203 +539,158 @@
     <a href="notifications.html" class="bd-iconbtn" aria-label="알림"><svg viewBox="0 0 24 24"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg></a>
   </div>
 
-  <!-- greeting: one clear message -->
-  <div class="greet bd-reveal">
-    <div class="bd-eyebrow">오늘의 버들</div>
-    <h1 id="greetLine">곁에 두고, <span class="accent">천천히</span><br>이야기를 나눠요</h1>
-    <p>잘 쓰지 않아도 괜찮아요. 페르소나와 대화하면, 결이 맞는 사람에게 가닿습니다.</p>
-  </div>
-
-  <!-- search -->
+  <!-- 검색 (관심주제로) -->
   <a href="feed.html" class="search bd-reveal" style="text-decoration:none">
     <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
-    주제, 페르소나, 대화 찾기
+    화제·글 내용 검색
   </a>
 
-  <!-- the day's single calm headline — real trending data only (hidden until loaded) -->
-  <section class="brief bd-reveal" id="briefCard" role="button" tabindex="0" style="display:none" onclick="location.href='feed.html'">
-    <div class="bd-eyebrow" id="briefDate">오늘의 흐름</div>
-    <h2 id="briefLine"></h2>
-    <div class="hint"><svg viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg>화제로 들어가 토론 보기</div>
-  </section>
+  <!-- 트렌딩 화제 칩 (탭하면 관심주제에서 필터) -->
+  <div class="rchips" id="rchips"></div>
 
-  <!-- my personas — presences, not tickers -->
-  <section class="sec bd-reveal">
-    <div class="sec-head">
-      <h2>나의 페르소나</h2>
-      <a href="chat.html">전체 보기</a>
-    </div>
-    <div id="myList"><!-- rendered --></div>
-  </section>
-
-  <!-- recent conversations -->
-  <section class="sec bd-reveal">
-    <div class="sec-head"><h2>이어서 대화하기</h2></div>
-    <div class="strip" id="recentStrip"><!-- rendered --></div>
-  </section>
-
-  <!-- live topics — real trending tags only -->
-  <section class="sec bd-reveal">
-    <div class="sec-head">
-      <h2>지금 활발한 화제</h2>
-      <a href="feed.html">더 보기</a>
-    </div>
-    <div id="topicList"><!-- rendered --></div>
-  </section>
+  <!-- 레딧식 개별 피드 -->
+  <div class="rfeed" id="rfeed"><div class="rloading">불러오는 중…</div></div>
 
 </div>
 
-<!-- bottom nav (shared component) -->
+<!-- bottom nav (Instagram식 5슬롯: 홈·관심주제·글쓰기(중앙)·내활동·프로필) -->
 <nav class="bd-nav">
   <a href="home-dashboard.html" class="on"><svg viewBox="0 0 24 24"><path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/></svg>홈</a>
-  <a href="feed.html"><svg viewBox="0 0 24 24"><path d="M20.8 7.6a5 5 0 0 0-7.1 0L12 9.3l-1.7-1.7a5 5 0 1 0-7.1 7.1L12 23l8.8-8.3a5 5 0 0 0 0-7.1z"/></svg>관심주제</a>
-  <a href="chat.html"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18"/></svg>대화NOW</a>
+  <a href="feed.html"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>관심주제</a>
+  <a href="compose.html" class="nav-create"><span class="plus"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></span>글쓰기</a>
   <a href="inbox.html"><svg viewBox="0 0 24 24"><path d="M21 12A9 9 0 1 1 12 3v9z"/><path d="M12 3a9 9 0 0 1 9 9h-9z"/></svg>내 활동</a>
-  <a href="compose.html"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>글쓰기</a>
+  <a href="profile.html"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 5-6 8-6s6.5 2 8 6"/></svg>프로필</a>
 </nav>
 <script src="buddle.ux.js"></script>
 <script>
   sec.harden();
 
-  /* 모든 페르소나가 하나의 시그니처 그라데이션 정체성을 공유 */
-  const ava=(name,_i)=>{
-    return `<div class="ava" style="background:var(--accent-grad);color:#fff">${sec.esc(String(name).slice(0,1))}</div>`;};
-
-  /* Real data only — no demo seeds. Sections render empty-state guidance
-     until the API returns rows. */
-  let myPersonas=[];
-  let recent=[];
-  let topics=[];
-
-  function renderMyList(){
-    const box=document.getElementById("myList");
-    if(!myPersonas.length){
-      const empty=sec.el("div",{class:"p-row",role:"button",tabindex:"0",style:"cursor:pointer"});
-      empty.innerHTML='<div class="ava" style="background:var(--paper-sunken);color:var(--ink-faint)">＋</div>';
-      const info=sec.el("div",{class:"info"});
-      info.appendChild(sec.el("h4",null,"첫 페르소나 만들기"));
-      info.appendChild(sec.el("small",null,"대화를 시작하려면 페르소나가 필요해요"));
-      empty.appendChild(info);
-      empty.addEventListener("click",()=>{location.href="persona-create.html";});
-      box.replaceChildren(empty);
-      return;
-    }
-    box.replaceChildren(...myPersonas.map((p,i)=>{
-      const row=sec.el("div",{class:"p-row",dataset:{id:p.id},role:"button",tabindex:"0"});
-      row.innerHTML=ava(p.name,i);
-      const info=sec.el("div",{class:"info"});
-      info.appendChild(sec.el("h4",null,p.name));
-      info.appendChild(sec.el("small",null,p.desc));
-      const go=sec.el("div",{class:"go"});
-      go.innerHTML='<svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg>';
-      row.append(info,go);
-      const id=p.id;
-      row.addEventListener("click",()=>{
-        location.href=(id&&!String(id).startsWith("d"))
-          ? `chat.html?persona=${encodeURIComponent(id)}` : "chat.html";
-      });
-      return row;
-    }));
-  }
-
-  function renderRecent(rows){
-    const box=document.getElementById("recentStrip");
-    if(!rows.length){
-      const sec2=box.closest("section"); if(sec2) sec2.style.display="none";
-      return;
-    }
-    const sec2=box.closest("section"); if(sec2) sec2.style.display="";
-    box.replaceChildren(...rows.map((p,i)=>{
-      const card=sec.el("div",{class:"pcard",dataset:{pid:p.personaId||""},role:"button",tabindex:"0"});
-      card.innerHTML=ava(p.name,i);
-      card.appendChild(sec.el("h5",null,p.name));
-      card.appendChild(sec.el("small",null,p.sub));
-      const pid=p.personaId;
-      if(pid) card.addEventListener("click",()=>{location.href=`chat.html?persona=${encodeURIComponent(pid)}`;});
-      return card;
-    }));
-  }
-
-  function renderTopics(){
-    const box=document.getElementById("topicList");
-    if(!topics.length){
-      const empty=sec.el("small",{style:"color:var(--ink-faint)"},"아직 활발한 화제가 없어요. 첫 이야기를 시작해 보세요.");
-      box.replaceChildren(empty);
-      return;
-    }
-    box.replaceChildren(...topics.map((t,i)=>{
-      const row=sec.el("div",{class:"topic"});
-      row.appendChild(sec.el("div",{class:"seq"},String(i+1)));
-      const info=sec.el("div",{class:"info"});
-      info.appendChild(sec.el("h4",null,t.name));
-      info.appendChild(sec.el("small",null,t.sub));
-      const heat=sec.el("div",{class:"heat"});
-      heat.innerHTML='<svg viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg>';
-      heat.appendChild(document.createTextNode(t.heat));
-      row.append(info,heat);
-      row.style.cursor="pointer";
-      row.addEventListener("click",()=>{location.href="feed.html";});
-      return row;
-    }));
-  }
-
-  renderMyList(); renderRecent(recent); renderTopics();
-  bdux.stagger(".bd-reveal", 60);
+  const rfeed = document.getElementById("rfeed");
+  const rchips = document.getElementById("rchips");
 
   function relTime(iso){
-    if(!iso) return "";
+    if(!iso) return "방금";
     const s=(Date.now()-new Date(iso).getTime())/1000;
     if(s<60) return "방금";
     if(s<3600) return `${Math.floor(s/60)}분 전`;
     if(s<86400) return `${Math.floor(s/3600)}시간 전`;
     return `${Math.floor(s/86400)}일 전`;
   }
+  function tagName(t){ return (t&&typeof t==="object") ? (t.name||"") : String(t||""); }
 
-  /* Boot — same soft-auth gate + live persona/session wiring as before.
-     Activity metrics stay absent (no API); we light up names + routing only. */
+  // 레딧식 카드 한 장
+  function renderCard(item){
+    const persona = (item.source_persona && item.source_persona.name) || "익명";
+    const text = (item.content_transformed || "").trim();
+    const tags = (item.tags||[]).map(tagName).filter(Boolean);
+    const card = sec.el("div", { class:"rcard" });
+
+    // 헤더: 아바타 · 이름 · 시간
+    const head = sec.el("div", { class:"rc-head" });
+    head.appendChild(sec.el("div", { class:"rc-ava" }, persona.slice(0,1)));
+    const who = sec.el("div", null);
+    who.appendChild(sec.el("span", { class:"rc-who" }, persona));
+    who.appendChild(document.createTextNode(" "));
+    who.appendChild(sec.el("span", { class:"rc-dot" }, "·"));
+    who.appendChild(document.createTextNode(" "));
+    who.appendChild(sec.el("span", { class:"rc-time" }, relTime(item.created_at)));
+    head.appendChild(who);
+    card.appendChild(head);
+
+    // 본문: 글(사진 대신). 없으면 블러 박스.
+    const openDetail = () => { location.href = `feed.html?post=${encodeURIComponent(item.id)}`; };
+    if (text) {
+      const body = sec.el("div", { class:"rc-body" }, text);
+      body.addEventListener("click", openDetail);
+      card.appendChild(body);
+    } else {
+      card.appendChild(sec.el("div", { class:"rc-blur" }));
+    }
+
+    // 태그 칩
+    if (tags.length){
+      const tb = sec.el("div", { class:"rc-tags" });
+      tags.slice(0,4).forEach(t => tb.appendChild(sec.el("span", { class:"rc-tag" }, "#"+t)));
+      card.appendChild(tb);
+    }
+
+    // 푸터: 좋아요 · 댓글 · 토론 버튼(오른쪽)
+    const foot = sec.el("div", { class:"rc-foot" });
+    const likeBtn = sec.el("button", { class:"rc-stat", type:"button" });
+    let liked = false, likeN = item.like_count||0;
+    const paint = () => { likeBtn.innerHTML =
+      `<svg viewBox="0 0 24 24"><path d="M20.8 7.6a5 5 0 0 0-7.1 0L12 9.3l-1.7-1.7a5 5 0 1 0-7.1 7.1L12 23l8.8-8.3a5 5 0 0 0 0-7.1z"/></svg>`;
+      likeBtn.appendChild(document.createTextNode(" "+likeN)); likeBtn.classList.toggle("on", liked); };
+    paint();
+    likeBtn.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      liked = !liked; likeN += liked ? 1 : -1; paint();
+      try { liked ? await buddle.posts.like(item.id) : await buddle.posts.unlike(item.id); }
+      catch(_){ liked = !liked; likeN += liked ? 1 : -1; paint(); }
+    });
+    const cmt = sec.el("button", { class:"rc-stat", type:"button" });
+    cmt.innerHTML = `<svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>`;
+    cmt.appendChild(document.createTextNode(" "+(item.comment_count||0)));
+    cmt.addEventListener("click", openDetail);
+    foot.append(likeBtn, cmt);
+    // 토론 버튼 — 이 글의 주장과 토론
+    const debate = sec.el("a", { class:"rc-debate", href:`argument-chat.html?post=${encodeURIComponent(item.id)}` });
+    debate.innerHTML = `<svg viewBox="0 0 24 24"><path d="M8 10h8M8 14h5"/><path d="M21 12a9 9 0 1 1-4.5-7.8L21 3l-1 4.2A8.9 8.9 0 0 1 21 12z"/></svg>`;
+    debate.appendChild(document.createTextNode("토론"));
+    foot.appendChild(debate);
+    card.appendChild(foot);
+    return card;
+  }
+
+  let nextCursor = null;
+  async function loadFeed(cursor){
+    if(!cursor) rfeed.innerHTML = '<div class="rloading">불러오는 중…</div>';
+    let items = [];
+    try {
+      const page = await buddle.feed.list(cursor);
+      if (page && Array.isArray(page.items)) { items = page.items; nextCursor = page.next_cursor || null; }
+    } catch(_){ nextCursor = null; }
+
+    const frag = document.createDocumentFragment();
+    if(!cursor && !items.length){
+      rfeed.innerHTML = "";
+      rfeed.appendChild(sec.el("div", { class:"rempty" },
+        "아직 도착한 글이 없어요.\n가운데 글쓰기로 첫 생각을 남겨보세요."));
+      return;
+    }
+    if(!cursor) rfeed.innerHTML = "";
+    items.forEach(it => {
+      try { sessionStorage.setItem("buddle.feed.item."+it.id, JSON.stringify(it)); } catch(_){}
+      frag.appendChild(renderCard(it));
+    });
+    rfeed.appendChild(frag);
+    const oldMore = document.getElementById("rmoreBtn"); if(oldMore) oldMore.remove();
+    if(nextCursor){
+      const more = sec.el("button", { class:"rmore", id:"rmoreBtn" }, "더 보기");
+      more.addEventListener("click", () => loadFeed(nextCursor));
+      rfeed.appendChild(more);
+    }
+  }
+
+  // 트렌딩 화제 칩 — 탭하면 관심주제에서 필터
+  function renderChips(rows){
+    const items = Array.isArray(rows) ? rows : [];
+    rchips.replaceChildren();
+    if(!items.length){ rchips.style.display="none"; return; }
+    items.forEach(t => {
+      const a = sec.el("a", { class:"rchip", href:`feed.html?tag=${encodeURIComponent(t.name)}` }, "#"+t.name);
+      rchips.appendChild(a);
+    });
+  }
+
   (async function boot(){
-    const authed=await buddle.requireAuth();
-    if(!authed||!buddle.auth.isAuthed()) return;
-    // 관리자 여부 확인 — is_admin이면 상단 방패 버튼 표시
-    buddle.users.me().then(me=>{
-      if(me&&me.is_admin){
-        const btn=document.getElementById("adminBtn");
-        if(btn) btn.style.display="flex";
-      }
+    const authed = await buddle.requireAuth();
+    if(!authed || !buddle.auth.isAuthed()) return;
+    buddle.users.me().then(me => {
+      if(me && me.is_admin){ const b=document.getElementById("adminBtn"); if(b) b.style.display="flex"; }
     }).catch(()=>{});
-    // 실제 트렌딩 화제 → 화제 목록 + 상단 브리핑 카드 (실데이터만 사용)
-    buddle.tags.trending({days:7,limit:5}).then(rows=>{
-      const items=Array.isArray(rows)?rows:[];
-      topics=items.map(t=>({name:"#"+t.name,sub:`최근 7일 글 ${t.post_count}개`,heat:`${t.post_count}건`}));
-      renderTopics();
-      if(items.length){
-        const d=new Date();
-        document.getElementById("briefDate").textContent=`오늘의 흐름 · ${d.getMonth()+1}월 ${d.getDate()}일`;
-        const top2=items.slice(0,2).map(t=>`‘${t.name}’`).join("와 ");
-        document.getElementById("briefLine").textContent=`지금 가장 활발한 이야기는 ${top2}예요.`;
-        document.getElementById("briefCard").style.display="";
-      }
-    }).catch(()=>{});
-    try{
-      const list=await buddle.personas.list();
-      const items=(Array.isArray(list)?list:(list&&list.items)||[]).filter(p=>p.is_active!==false);
-      if(!items.length) return;
-      myPersonas=items.map(p=>({id:p.id,name:p.name,desc:p.model_key||"기본 대화 모델"}));
-      renderMyList();
-      const nameById=new Map(items.map(p=>[p.id,p.name]));
-      const sessLists=await Promise.allSettled(items.map(p=>buddle.sessions.list(p.id)));
-      const all=[];
-      sessLists.forEach((res,idx)=>{
-        if(res.status==="fulfilled"&&Array.isArray(res.value)){
-          const pid=items[idx].id;
-          res.value.forEach(sess=>all.push({personaId:pid,name:nameById.get(pid)||"",ts:sess.last_active_at||sess.created_at}));
-        }
-      });
-      if(all.length){
-        all.sort((a,b)=>new Date(b.ts)-new Date(a.ts));
-        renderRecent(all.slice(0,5).map(r=>({personaId:r.personaId,name:r.name,sub:relTime(r.ts)})));
-      }
-    }catch(_){/* offline → demo 유지 */}
+    buddle.tags.trending({days:7,limit:8}).then(renderChips).catch(()=>{ rchips.style.display="none"; });
+    loadFeed();
   })();
 </script>
 </body>

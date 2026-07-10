@@ -240,8 +240,13 @@ h2,.bd-h2{font-size:var(--t-h2);font-weight:600;letter-spacing:-.02em;color:var(
 }
 .bd-nav a{display:flex;flex-direction:column;align-items:center;gap:3px;font-size:var(--t-xs);font-weight:600;color:var(--ink-faint);text-decoration:none;padding:6px 4px;transition:color var(--dur) var(--ease);}
 .bd-nav a svg{width:23px;height:23px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;}
-.bd-nav a.on{color:var(--willow);}
+.bd-nav a.on{color:var(--willow-text);}
 .bd-nav a:not(.on):hover{color:var(--ink-soft);}
+/* Instagram식 가운데 만들기(글쓰기) 버튼 — 채워진 액센트 스퀘어로 강조 */
+.bd-nav a.nav-create{gap:5px;color:var(--ink-soft);}
+.bd-nav a.nav-create .plus{display:grid;place-items:center;width:38px;height:30px;border-radius:11px;background:var(--accent-grad);box-shadow:var(--shadow-pop-sm);}
+.bd-nav a.nav-create .plus svg{width:22px;height:22px;stroke:#fff;stroke-width:2.2;}
+.bd-nav a.nav-create.on,.bd-nav a.nav-create{color:var(--ink-soft);}
 
 /* ── Top bar ────────────────────────────────────────────────────────────── */
 .bd-top{display:flex;align-items:center;gap:var(--s3);margin-bottom:var(--s4);}
