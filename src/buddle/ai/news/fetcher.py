@@ -40,6 +40,9 @@ class RawArticle:
     comments: int = 0
     published_at: int = field(default_factory=lambda: int(time.time()))
     summary: str = ""  # RSS <description>/<summary>, tag-stripped (화제 추출 입력)
+    # 해외 기사를 한국어로 번역해 공개할 때 True — 번역 후 텍스트가 한국어라도
+    # 범위 분류는 해외로 남아야 하므로(전국 오분류 방지) 원산지 표식을 남긴다.
+    translated: bool = False
 
     @property
     def url_hash(self) -> str:

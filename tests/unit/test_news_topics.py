@@ -341,3 +341,72 @@ def test_simhash_near_duplicates_are_close():
     assert hamming64(simhash64(base), simhash64(variant)) <= 10
     assert hamming64(simhash64(base), simhash64(other)) > 20
     assert simhash64("") == 0
+
+
+# ── 해외 기사 번역 경로 (fail-open + 분류 승계) ─────────────────────────────
+
+
+def test_needs_translation_detects_foreign_text():
+    from buddle.ai.news.fetcher import RawArticle
+    from buddle.ai.news.translate import needs_translation
+
+    ko = RawArticle(url="u1", title="성남시 버스 개편", source="s")
+    en = RawArticle(url="u2", title="EU passes AI act", source="s", summary="Brussels moves")
+    mixed = RawArticle(url="u3", title="EU, AI 규제 통과", source="s")
+    assert not needs_translation(ko)
+    assert needs_translation(en)
+    assert not needs_translation(mixed)  # 한글이 섞이면 이미 국문 기사
+
+
+def test_translate_articles_fail_open_without_endpoint():
+    # LLM 엔드포인트 미설정 → 원문 그대로, translated=False (파이프라인 무중단)
+    import asyncio
+
+    from buddle.ai.news.fetcher import RawArticle
+    from buddle.ai.news.translate import translate_articles
+
+    class _S:  # persona_endpoint_url 없음
+        persona_endpoint_url = ""
+
+    arts = [RawArticle(url="u", title="Chip export rules tighten", source="BBC")]
+    out = asyncio.run(translate_articles(arts, settings=_S()))
+    assert out[0].title == "Chip export rules tighten"
+    assert out[0].translated is False
+
+
+def test_topic_scope_follows_ingest_hints_for_translated_foreign():
+    # 번역돼 한국어가 된 해외 기사: 텍스트만 보면 '전국'으로 오분류되지만,
+    # 수집 시점 힌트(해외)가 다수결로 승계된다.
+    items = [
+        TopicInput(
+            title="반도체 수출 규제 강화 발표",
+            url="https://ex.am/f1",
+            source="BBC",
+            published_at=int(NOW - 3600),
+            scope="해외",
+            category="기술",
+        ),
+        TopicInput(
+            title="반도체 수출 통제 확대",
+            url="https://ex.am/f2",
+            source="The Guardian",
+            published_at=int(NOW - 7200),
+            scope="해외",
+            category="기술",
+        ),
+    ]
+    topics = build_topics(items, now=NOW)
+    t = next(t for t in topics if "반도체" in t.name)
+    assert t.scope == "해외"
+    assert t.category == "기술"
+
+
+def test_topic_scope_falls_back_to_text_without_hints():
+    # 힌트 없는 기존 경로는 그대로 — 국내 텍스트·지역 단서로 분류.
+    items = [
+        _item("성남시 도서관 확충", source="a"),
+        _item("성남시 도서관 야간 개방", source="b"),
+    ]
+    t = build_topics(items, now=NOW)[0]
+    assert t.scope == "시"
+    assert t.region == "성남"

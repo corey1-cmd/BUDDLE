@@ -896,6 +896,12 @@ class TopicInput:
     summary: str = ""
     published_at: int = 0  # unix seconds; 0 → treated as now
     engagement: int = 0  # upvotes/reactions when the source has them
+    # 수집 시점 분류 힌트(news_items 컬럼) — 번역된 해외 기사는 텍스트가
+    # 한국어라 재분류하면 '전국'으로 오탐하므로, 힌트가 있으면 다수결로
+    # 승계하고 없을 때만 텍스트 분류로 폴백한다.
+    category: str = ""
+    scope: str = ""
+    region: str = ""
 
 
 @dataclass(slots=True)
@@ -1191,9 +1197,21 @@ def build_topics(
         t.name = hangul[0] if hangul else best
         t.count = len(idxs)
         t.sources = sorted({a.source for a in arts})
-        scope, region = classify_region(joined, arts[0].source)
-        t.scope, t.region = scope, region
-        t.category = classify_category(list(t.keywords), joined)
+        # 분류: 수집 시점 힌트의 다수결 우선(원산지 진실 승계), 힌트 없으면
+        # 합산 텍스트 분류로 폴백.
+        scope_votes = [a.scope for a in arts if a.scope]
+        if scope_votes:
+            t.scope = max(set(scope_votes), key=scope_votes.count)
+            region_votes = [a.region for a in arts if a.region and a.scope == t.scope]
+            t.region = max(set(region_votes), key=region_votes.count) if region_votes else ""
+        else:
+            t.scope, t.region = classify_region(joined, arts[0].source)
+        cat_votes = [a.category for a in arts if a.category]
+        t.category = (
+            max(set(cat_votes), key=cat_votes.count)
+            if cat_votes
+            else classify_category(list(t.keywords), joined)
+        )
         t.headlines = [{"title": a.title, "url": a.url, "source": a.source} for a in arts[:4]]
 
         # ── 5) 추세 (M7) ───────────────────────────────────────────────────

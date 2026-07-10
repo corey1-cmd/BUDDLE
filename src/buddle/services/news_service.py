@@ -62,25 +62,26 @@ _TOPIC_WINDOW_H = 72  # 화제 집계 윈도우 (DB 기준)
 # (Techmeme, WSJ, New Yorker, …); the API kinds use their own fixed endpoints.
 _ALLOWED_KINDS = ("rss", "hackernews", "devto")
 
-# 한국 전용 초기 배포: 기본 활성 소스는 한국 정부·공공 RSS만이다(화제는
-# 한국어여야 한다). 해외 소스는 레지스트리에 남겨 admin이 토글로 켤 수 있고,
-# 지자체 RSS는 admin 화면(뉴스 소스 추가)에서 URL만 등록하면 된다.
+# 한국어 서비스 방침: 국내 정부·공공 RSS + 해외 RSS를 함께 수집하되, 해외
+# 기사는 수집 직후 한국어로 배치 번역해 공개한다(NEWS_TRANSLATE_FOREIGN,
+# ai/news/translate.py — 번역 실패 시 원문 공개·해외 분류 유지). 지자체 RSS는
+# admin 화면(뉴스 소스 추가)에서 URL만 등록하면 된다.
 DEFAULT_SOURCES: list[dict[str, object]] = [
     {
         "id": "hackernews",
         "name": "Hacker News",
         "kind": "hackernews",
         "url": "",
-        "enabled": False,
+        "enabled": True,
         "limit": 20,
     },
-    {"id": "devto", "name": "dev.to", "kind": "devto", "url": "", "enabled": False, "limit": 10},
+    {"id": "devto", "name": "dev.to", "kind": "devto", "url": "", "enabled": True, "limit": 10},
     {
         "id": "techmeme",
         "name": "Techmeme",
         "kind": "rss",
         "url": "https://www.techmeme.com/feed.xml",
-        "enabled": False,
+        "enabled": True,
         "limit": 10,
     },
     # Public RSS expansion (beta Phase 2). Official feeds only — the rights
@@ -91,7 +92,7 @@ DEFAULT_SOURCES: list[dict[str, object]] = [
         "name": "The Guardian",
         "kind": "rss",
         "url": "https://www.theguardian.com/world/rss",
-        "enabled": False,
+        "enabled": True,
         "limit": 10,
     },
     {
@@ -99,7 +100,7 @@ DEFAULT_SOURCES: list[dict[str, object]] = [
         "name": "BBC",
         "kind": "rss",
         "url": "https://feeds.bbci.co.uk/news/rss.xml",
-        "enabled": False,
+        "enabled": True,
         "limit": 10,
     },
     {
@@ -107,7 +108,7 @@ DEFAULT_SOURCES: list[dict[str, object]] = [
         "name": "The Verge",
         "kind": "rss",
         "url": "https://www.theverge.com/rss/index.xml",
-        "enabled": False,
+        "enabled": True,
         "limit": 10,
     },
     {
@@ -115,7 +116,7 @@ DEFAULT_SOURCES: list[dict[str, object]] = [
         "name": "Ars Technica",
         "kind": "rss",
         "url": "https://feeds.arstechnica.com/arstechnica/index",
-        "enabled": False,
+        "enabled": True,
         "limit": 10,
     },
     # ── 정부·공공(공공누리 제1유형 = 출처표시 시 상업적 이용·2차 창작 허용) ──
@@ -335,7 +336,12 @@ def _analyse_algorithmic(article: RawArticle) -> dict[str, object]:
     keywords = extract_keywords(text, limit=5)
     gist = extractive_gist(article.title, article.summary)
     category = classify_category(keywords, text)
-    scope, region = classify_region(text, article.source)
+    if article.translated:
+        # 번역 후 텍스트는 한국어지만 원산지는 해외 — 언어 기반 분류가
+        # '전국'으로 오분류하는 것을 원산지 표식으로 차단한다.
+        scope, region = "해외", ""
+    else:
+        scope, region = classify_region(text, article.source)
     # 개방 라이선스(공공누리 1유형)는 인용 추천 우선순위가 높다; 그 외에는
     # 참여도(로그 스케일)를 살짝 반영한 고정 기본값 — 임계 필터(0.3)는 통과.
     relevance = 0.9 if is_open_license(article.source) else min(0.85, 0.6 + article.score / 400)
@@ -400,6 +406,11 @@ async def _rebuild_topics(db: AsyncSession, redis: RedisClient) -> list[Topic]:
             source=r.source,
             summary=r.summary,
             published_at=int(r.published_at.timestamp()),
+            # 수집 시점 분류를 힌트로 승계 — 번역된 해외 기사가 화제 재분류에서
+            # '전국'으로 뒤집히는 것을 막는다(다수결, topics.build_topics).
+            category=r.category,
+            scope=r.scope,
+            region=r.region,
         )
         for r in rows
     ]
@@ -467,6 +478,22 @@ async def news_tick(db: AsyncSession, *, redis: RedisClient) -> dict[str, object
             await redis.expire(_SIMHASH_KEY, _SEEN_TTL)
         if near_dup:
             log.info("news.tick.near_dup", count=near_dup)
+
+    # 해외 기사 배치 번역 — 한국어로 피드에 공개한다. 기사당이 아니라 배치당
+    # 1회 호출(429 fan-out 없음), 실패 시 원문 공개(fail-open).
+    if new_articles and getattr(settings, "news_translate_foreign", True):
+        from buddle.ai.news.translate import needs_translation, translate_articles
+
+        foreign_idx = [i for i, a in enumerate(new_articles) if needs_translation(a)]
+        if foreign_idx:
+            try:
+                translated = await translate_articles(
+                    [new_articles[i] for i in foreign_idx], settings=settings
+                )
+                for i, art in zip(foreign_idx, translated, strict=True):
+                    new_articles[i] = art
+            except Exception as e:
+                log.warning("news.translate_error", error=str(e))
     log.info("news.tick.new", count=len(new_articles))
 
     stored = 0
