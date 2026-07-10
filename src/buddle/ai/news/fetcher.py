@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import html
 import re
 import time
 from dataclasses import dataclass, field
@@ -169,7 +170,9 @@ async def fetch_rss(url: str, *, source_name: str, limit: int = 10) -> list[RawA
                     link_m = re.search(r'<link[^>]+href="(https?://[^"]+)"', raw)
                 if not title_m or not link_m:
                     continue
-                title = re.sub(r"<[^>]+>", "", title_m.group(1)).strip()
+                # 태그 제거 후 엔티티 해제 — RSS 제목의 &apos;/&amp; 류가 그대로
+                # 사용자 화면까지 노출되는 것을 여기서 끊는다 (라이브 실측 버그).
+                title = html.unescape(re.sub(r"<[^>]+>", "", title_m.group(1))).strip()
                 link = link_m.group(1).strip()
                 if not title or not link:
                     continue
@@ -180,7 +183,11 @@ async def fetch_rss(url: str, *, source_name: str, limit: int = 10) -> list[RawA
                     raw,
                     re.DOTALL,
                 )
-                summary = re.sub(r"<[^>]+>", " ", desc_m.group(1)).strip() if desc_m else ""
+                summary = (
+                    html.unescape(re.sub(r"<[^>]+>", " ", desc_m.group(1))).strip()
+                    if desc_m
+                    else ""
+                )
                 articles.append(
                     RawArticle(
                         url=link,

@@ -110,11 +110,11 @@ class _BriefingCard extends StatelessWidget {
                     padding: const EdgeInsets.symmetric(
                         horizontal: 6, vertical: 1),
                     decoration: BoxDecoration(
-                        color: const Color(0x1F4FC98F),
+                        color: const Color(0x1F1E9E67),
                         borderRadius: BorderRadius.circular(8)),
                     child: const Text('공공누리 · 인용/재구성 가능',
                         style: TextStyle(
-                            fontSize: 10, color: Color(0xFF6FD9A6))),
+                            fontSize: 10, color: Color(0xFF1E9E67))),
                   ),
                 const Spacer(),
                 const Icon(Icons.open_in_new, size: 14),

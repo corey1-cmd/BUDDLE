@@ -486,10 +486,10 @@
   *{box-sizing:border-box;margin:0;padding:0;}
   body{
     font-family:var(--body);color:var(--ink);min-height:100vh;
-    background:radial-gradient(900px 600px at 80% -10%, rgba(61,138,107,.06) 0%, transparent 60%),#07080E;-webkit-font-smoothing:antialiased;
+    background:radial-gradient(900px 600px at 80% -10%, rgba(61,138,107,.06) 0%, transparent 60%),#F7F8FD;-webkit-font-smoothing:antialiased;
   }
-  .phone{max-width:460px;margin:0 auto;min-height:100vh;background:rgba(10,11,20,.55);backdrop-filter:blur(22px) saturate(160%);display:flex;flex-direction:column;padding-bottom:84px;}
-  header{display:flex;align-items:center;gap:12px;padding:14px 16px;border-bottom:1px solid var(--line);position:sticky;top:0;background:rgba(10,11,20,.6);backdrop-filter:blur(24px) saturate(160%);z-index:20;}
+  .phone{max-width:460px;margin:0 auto;min-height:100vh;background:rgba(255,255,255,.62);backdrop-filter:blur(22px) saturate(160%);display:flex;flex-direction:column;padding-bottom:84px;}
+  header{display:flex;align-items:center;gap:12px;padding:14px 16px;border-bottom:1px solid var(--line);position:sticky;top:0;background:rgba(255,255,255,.68);backdrop-filter:blur(24px) saturate(160%);z-index:20;}
   .back{width:38px;height:38px;border-radius:14px;border:1px solid var(--line);background:var(--surface);display:grid;place-items:center;cursor:pointer;flex:none;}
   .back svg{width:19px;height:19px;stroke:var(--gold);}
   header h1{font-family:var(--display);font-weight:600;font-size:19px;flex:1;color:var(--ink);}
@@ -597,9 +597,9 @@
   .ctx-kind{flex:none;font-size:10.5px;font-weight:700;color:var(--willow-press);background:var(--willow-wash);border-radius:999px;padding:2px 8px;margin-top:1px;}
   .ctx-body{font-size:13px;line-height:1.5;color:var(--ink-soft);}
 
-  .composer{position:sticky;bottom:0;background:rgba(10,11,20,.65);backdrop-filter:blur(24px) saturate(160%);border-top:1px solid var(--line);padding:12px 16px calc(12px + env(safe-area-inset-bottom));margin:0 -16px -28px;}
+  .composer{position:sticky;bottom:0;background:rgba(255,255,255,.72);backdrop-filter:blur(24px) saturate(160%);border-top:1px solid var(--line);padding:12px 16px calc(12px + env(safe-area-inset-bottom));margin:0 -16px -28px;}
   .kind-row{display:flex;gap:7px;margin-bottom:9px;}
-  .kind{padding:6px 12px;border-radius:999px;border:1px solid var(--line);background:rgba(10,11,20,.62);font-size:12px;font-weight:600;color:var(--ink-soft);cursor:pointer;}
+  .kind{padding:6px 12px;border-radius:999px;border:1px solid var(--line);background:rgba(255,255,255,.7);font-size:12px;font-weight:600;color:var(--ink-soft);cursor:pointer;}
   .kind.on{border-color:var(--coral);background:rgba(110,124,240,.22);color:var(--gold);}
   .c-input-row{display:flex;align-items:flex-end;gap:9px;}
   .c-input-row textarea{flex:1;border:1px solid var(--line);border-radius:16px;padding:11px 14px;font-family:var(--body);font-size:14.5px;resize:none;max-height:100px;line-height:1.4;color:var(--ink);background:var(--paper-sunken);}
@@ -611,7 +611,7 @@
   /* 인스타식 글쓰기 배너 — 피드 하단 sticky, (+)로 만들기 화면 진입 */
   .compose-banner{position:sticky;bottom:0;z-index:15;display:flex;align-items:center;gap:11px;
     margin:0 -16px -28px;padding:12px 16px calc(12px + env(safe-area-inset-bottom));
-    background:rgba(10,11,20,.68);backdrop-filter:saturate(180%) blur(12px);border-top:1px solid var(--line);}
+    background:rgba(255,255,255,.74);backdrop-filter:saturate(180%) blur(12px);border-top:1px solid var(--line);}
   .cb-ava{width:38px;height:38px;border-radius:13px;flex:none;display:grid;place-items:center;
     font-family:var(--display);font-weight:600;font-size:16px;color:#fff;background:var(--accent-grad);box-shadow:var(--shadow-pop-sm);}
   .cb-prompt{flex:1;height:42px;border-radius:21px;border:1px solid var(--line-strong);background:var(--paper-sunken);
@@ -623,7 +623,7 @@
   .cb-plus svg{width:22px;height:22px;stroke:#fff;fill:none;stroke-width:2.4;}
   /* "이어가던 대화" 빠른 진입 줄 — 배너 위 작은 칩들 */
   .cb-resume{position:sticky;bottom:67px;z-index:15;display:flex;gap:8px;overflow-x:auto;margin:0 -16px;
-    padding:10px 16px;scrollbar-width:none;background:linear-gradient(180deg,transparent,rgba(10,11,20,.65) 40%);}
+    padding:10px 16px;scrollbar-width:none;background:linear-gradient(180deg,transparent,rgba(255,255,255,.72) 40%);}
   .cb-resume::-webkit-scrollbar{display:none;}
   .cb-rchip{flex:none;display:flex;align-items:center;gap:7px;padding:7px 13px 7px 7px;border-radius:999px;
     background:var(--paper-raised);border:1px solid var(--line);cursor:pointer;transition:border-color .15s;white-space:nowrap;}
@@ -637,7 +637,7 @@
   /* ── 지금 화제 (뉴스 무-LLM 자동 집계) — 필터로 탐색, 위치 자동 매칭 없음 ── */
   .news-sec{margin:2px 0 16px;padding:14px;border:1px solid var(--line);border-radius:19px;
     background:linear-gradient(158deg,rgba(255,255,255,.05) 0%,rgba(255,255,255,.015) 45%,transparent 65%),var(--paper-raised);
-    box-shadow:0 6px 22px rgba(0,0,0,.28),inset 0 1px 0 rgba(255,255,255,.09);}
+    box-shadow:0 6px 22px rgba(23,26,60,.07),inset 0 1px 0 rgba(255,255,255,.09);}
   .ns-head{display:flex;align-items:baseline;gap:8px;margin-bottom:10px;}
   .ns-head h2{font-family:var(--display);font-size:16px;font-weight:600;color:var(--ink);}
   .ns-head small{font-size:11.5px;color:var(--ink-faint);}

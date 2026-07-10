@@ -162,7 +162,7 @@ class _StanceBar extends StatelessWidget {
             if (pro > 0)
               Expanded(
                   flex: pro,
-                  child: Container(color: const Color(0xFF4FC98F))),
+                  child: Container(color: const Color(0xFF1E9E67))),
             if (neutral > 0)
               Expanded(
                   flex: neutral,
@@ -170,7 +170,7 @@ class _StanceBar extends StatelessWidget {
             if (con > 0)
               Expanded(
                   flex: con,
-                  child: Container(color: const Color(0xFFD98E63))),
+                  child: Container(color: const Color(0xFFC06B3E))),
             if (pro + neutral + con == 0)
               Expanded(child: Container(color: Colors.grey.shade800)),
           ]),

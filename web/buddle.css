@@ -31,25 +31,26 @@
 }
 
 :root{
+  color-scheme:light;
   /* ── 60 / 30 / 10 ─────────────────────────────────────────────────────── */
-  --paper:#07080E;          /* base ground (60) — cosmic blue-black */
-  --paper-raised:rgba(186,197,255,.075); /* frosted card glass (translucent layer) */
-  --paper-sunken:rgba(186,197,255,.11);  /* wells, track backgrounds */
+  --paper:#F7F8FD;          /* base ground (60) — cool near-white */
+  --paper-raised:rgba(255,255,255,.72); /* frosted card glass (translucent layer) */
+  --paper-sunken:rgba(96,102,150,.08);  /* wells, track backgrounds */
 
-  --ink:#EEF0FA;            /* primary text — cool near-white */
-  --ink-soft:#A2A9C2;       /* secondary text — desaturated */
-  --ink-faint:#6A7190;      /* tertiary / captions */
-  --line:rgba(255,255,255,.11);   /* hairline dividers & glass rims */
-  --line-strong:rgba(255,255,255,.20);
+  --ink:#171A2C;            /* primary text — cool near-black */
+  --ink-soft:#4B5169;       /* secondary text — desaturated */
+  --ink-faint:#878DA6;      /* tertiary / captions */
+  --line:rgba(23,26,60,.10);   /* hairline dividers & glass rims */
+  --line-strong:rgba(23,26,60,.18);
 
   /* THE accent (10) — blue-violet. Solid form, for text/icon/border
      contexts where a gradient can't render (color:, border-color:, strokes).
-     Light enough to read on the dark ground, desaturated enough to feel calm. */
-  --willow:#7C82F7;
-  --willow-press:#666CE0;   /* pressed/hover-darken (fills only) */
-  --willow-text:#A6ACFF;    /* text/icon accent — lighter tint for dark ground */
-  --willow-wash:rgba(124,130,247,.13); /* faint accent fill (selected rows, chips) */
-  --willow-ring:rgba(124,130,247,.35); /* focus ring */
+     Dark enough to read on the light ground, desaturated enough to feel calm. */
+  --willow:#6A70E8;
+  --willow-press:#585EDA;   /* pressed/hover-darken (fills only) */
+  --willow-text:#5B60DF;    /* text/icon accent — deeper tint for light ground */
+  --willow-wash:rgba(106,112,232,.11); /* faint accent fill (selected rows, chips) */
+  --willow-ring:rgba(106,112,232,.32); /* focus ring */
 
   /* THE signature gradient — filled surfaces only (buttons, avatars, active
      pills, wordmark via background-clip:text). Blue → violet → cosmic shadow,
@@ -57,16 +58,16 @@
   --accent-grad:linear-gradient(135deg,#6D8CFF 0%,#7C6FF2 55%,#3A3480 100%);
   --accent-grad-2:linear-gradient(135deg,#6D8CFF 0%,#6F5FD8 100%);
   --accent-grad-press:linear-gradient(135deg,#5A78E8 0%,#6A5CD4 55%,#2E2966 100%);
-  --shadow-pop:0 10px 30px rgba(104,96,255,.30),0 2px 8px rgba(0,0,0,.5),inset 0 1px 0 rgba(255,255,255,.16);
-  --shadow-pop-sm:0 5px 18px rgba(104,96,255,.26),inset 0 1px 0 rgba(255,255,255,.16);
+  --shadow-pop:0 10px 30px rgba(104,96,255,.22),0 2px 8px rgba(23,26,60,.10),inset 0 1px 0 rgba(255,255,255,.55);
+  --shadow-pop-sm:0 5px 18px rgba(104,96,255,.18),inset 0 1px 0 rgba(255,255,255,.55);
 
   /* Semantic data pair — used ONLY for debate stance (찬성/반대), deliberately
      DECOUPLED from the brand accent so position-taking reads as data, not
      brand chrome. Desaturated, never the old red/blue trading dichotomy. */
-  --pos:#4FC98F;            /* 찬성 — growth green (dark-ground tuned) */
-  --pos-wash:rgba(79,201,143,.12);
-  --caution:#D98E63;        /* 반대 — muted clay, never alarm-red */
-  --caution-wash:rgba(217,142,99,.12);
+  --pos:#1E9E67;            /* 찬성 — growth green (light-ground tuned) */
+  --pos-wash:rgba(30,158,103,.11);
+  --caution:#C06B3E;        /* 반대 — muted clay, never alarm-red */
+  --caution-wash:rgba(192,107,62,.11);
 
   /* ── type — one face everywhere (Latin+Hangul unified), headlines by
      weight not by face ──────────────────────────────────────────────────── */
@@ -87,10 +88,10 @@
 
   /* ── form ─────────────────────────────────────────────────────────────── */
   --r-sm:10px; --r:14px; --r-lg:20px; --r-pill:999px;
-  /* deep black depth + a faint blue-violet bloom so elevation reads as light */
-  --shadow-sm:0 1px 2px rgba(0,0,0,.35), 0 1px 3px rgba(0,0,0,.28);
-  --shadow:0 2px 8px rgba(0,0,0,.4), 0 12px 32px rgba(84,86,200,.10);
-  --shadow-lg:0 12px 40px rgba(0,0,0,.5), 0 18px 60px rgba(84,86,200,.14);
+  /* soft cool depth + a faint blue-violet bloom so elevation reads as light */
+  --shadow-sm:0 1px 2px rgba(23,26,60,.08), 0 1px 3px rgba(23,26,60,.06);
+  --shadow:0 2px 8px rgba(23,26,60,.08), 0 12px 32px rgba(84,86,200,.10);
+  --shadow-lg:0 12px 40px rgba(23,26,60,.12), 0 18px 60px rgba(84,86,200,.12);
 
   /* ── motion — calm, never bouncy ──────────────────────────────────────── */
   --ease:cubic-bezier(.22,.61,.36,1);
@@ -109,14 +110,14 @@ body{
   line-height:1.55;
   letter-spacing:-.01em;    /* tight tracking, everywhere */
   color:var(--ink);
-  /* volumetric haze — vivid blue-violet glows the frosted layers refract.
-     Strong on purpose: glassmorphism only reads when there is light BEHIND
-     the glass to blur. */
+  /* volumetric haze — pastel blue-violet glows the frosted layers refract.
+     Softer than the dark theme: on a white ground the glass reads from the
+     tinted light behind it, not from darkness. */
   background:
-    radial-gradient(1000px 640px at 82% -12%, rgba(129,108,255,.30), transparent 64%),
-    radial-gradient(760px 520px at -10% 16%, rgba(84,140,255,.20), transparent 58%),
-    radial-gradient(520px 420px at 30% 42%, rgba(150,96,255,.12), transparent 60%),
-    radial-gradient(900px 700px at 58% 115%, rgba(96,88,230,.20), transparent 62%),
+    radial-gradient(1000px 640px at 82% -12%, rgba(129,108,255,.14), transparent 64%),
+    radial-gradient(760px 520px at -10% 16%, rgba(84,140,255,.10), transparent 58%),
+    radial-gradient(520px 420px at 30% 42%, rgba(150,96,255,.06), transparent 60%),
+    radial-gradient(900px 700px at 58% 115%, rgba(96,88,230,.10), transparent 62%),
     var(--paper);
   background-attachment:fixed;
   -webkit-font-smoothing:antialiased;
@@ -185,7 +186,7 @@ h2,.bd-h2{font-size:var(--t-h2);font-weight:600;letter-spacing:-.02em;color:var(
     linear-gradient(158deg, rgba(255,255,255,.10) 0%, rgba(255,255,255,.03) 34%, rgba(255,255,255,0) 55%),
     var(--paper-raised);
   border:1px solid var(--line);border-radius:var(--r-lg);padding:var(--s4);
-  box-shadow:0 8px 32px rgba(0,0,0,.45), inset 0 1px 0 rgba(255,255,255,.14);
+  box-shadow:0 8px 32px rgba(23,26,60,.12), inset 0 1px 0 rgba(255,255,255,.14);
   backdrop-filter:blur(28px) saturate(170%);-webkit-backdrop-filter:blur(28px) saturate(170%);
 }
 .bd-card--quiet{box-shadow:inset 0 1px 0 rgba(255,255,255,.14);}
@@ -234,7 +235,7 @@ h2,.bd-h2{font-size:var(--t-h2);font-weight:600;letter-spacing:-.02em;color:var(
   position:fixed;left:50%;transform:translateX(-50%);bottom:0;z-index:40;
   width:100%;max-width:var(--phone-max);
   display:flex;justify-content:space-around;align-items:center;
-  background:rgba(8,9,16,.6);backdrop-filter:saturate(180%) blur(18px);
+  background:rgba(255,255,255,.66);backdrop-filter:saturate(180%) blur(18px);
   border-top:1px solid var(--line);
   padding:var(--s2) var(--s2) calc(var(--s2) + env(safe-area-inset-bottom));
 }
@@ -281,7 +282,7 @@ body .card{
   background:
     linear-gradient(158deg, rgba(255,255,255,.10) 0%, rgba(255,255,255,.03) 34%, rgba(255,255,255,0) 55%),
     var(--paper-raised);
-  box-shadow:0 8px 32px rgba(0,0,0,.4), inset 0 1px 0 rgba(255,255,255,.13);
+  box-shadow:0 8px 32px rgba(23,26,60,.10), inset 0 1px 0 rgba(255,255,255,.13);
   backdrop-filter:blur(28px) saturate(170%);-webkit-backdrop-filter:blur(28px) saturate(170%);
 }
 

@@ -434,11 +434,11 @@
   *{box-sizing:border-box;margin:0;padding:0;}
   body{
     font-family:var(--body);color:var(--ink);min-height:100vh;
-    background:radial-gradient(900px 600px at 80% -10%, rgba(61,138,107,.06) 0%, transparent 60%),#07080E;-webkit-font-smoothing:antialiased;
+    background:radial-gradient(900px 600px at 80% -10%, rgba(61,138,107,.06) 0%, transparent 60%),#F7F8FD;-webkit-font-smoothing:antialiased;
   }
-  .phone{max-width:460px;margin:0 auto;min-height:100vh;background:rgba(10,11,20,.55);backdrop-filter:blur(22px) saturate(160%);display:flex;flex-direction:column;}
+  .phone{max-width:460px;margin:0 auto;min-height:100vh;background:rgba(255,255,255,.62);backdrop-filter:blur(22px) saturate(160%);display:flex;flex-direction:column;}
 
-  header{display:flex;align-items:center;gap:12px;padding:14px 16px;border-bottom:1px solid var(--line);position:sticky;top:0;background:rgba(10,11,20,.6);backdrop-filter:blur(24px) saturate(160%);z-index:20;}
+  header{display:flex;align-items:center;gap:12px;padding:14px 16px;border-bottom:1px solid var(--line);position:sticky;top:0;background:rgba(255,255,255,.68);backdrop-filter:blur(24px) saturate(160%);z-index:20;}
   .back{width:38px;height:38px;border-radius:14px;border:1px solid var(--line);background:var(--surface);display:grid;place-items:center;cursor:pointer;flex:none;}
   .back svg{width:19px;height:19px;stroke:var(--gold);}
   header h1{font-family:var(--display);font-weight:600;font-size:19px;flex:1;color:var(--ink);}
@@ -452,7 +452,7 @@
 
   .inp{width:100%;border:1px solid var(--line);border-radius:16px;padding:13px 15px;font-family:var(--body);font-size:16px;color:var(--ink);background:var(--paper-sunken);}
   .inp::placeholder{color:var(--ink-faint);}
-  .inp:focus{outline:none;border-color:var(--coral);background:rgba(10,11,20,.6);}
+  .inp:focus{outline:none;border-color:var(--coral);background:rgba(255,255,255,.68);}
   .char{font-size:11.5px;color:var(--ink-faint);text-align:right;margin-top:5px;}
 
   /* model cards */
@@ -474,7 +474,7 @@
   .loc-row .txt small{display:block;margin-top:3px;font-size:12px;color:var(--ink-soft);line-height:1.45;}
   .toggle{position:relative;flex:none;width:46px;height:27px;}
   .toggle input{position:absolute;opacity:0;width:0;height:0;}
-  .track{position:absolute;inset:0;border-radius:999px;background:rgba(10,11,20,.6);transition:background .22s;cursor:pointer;border:1px solid var(--line);}
+  .track{position:absolute;inset:0;border-radius:999px;background:rgba(255,255,255,.68);transition:background .22s;cursor:pointer;border:1px solid var(--line);}
   .track::before{content:"";position:absolute;top:3px;left:3px;width:21px;height:21px;border-radius:50%;background:var(--ink-soft);box-shadow:0 1px 3px rgba(124,130,247,.07);transition:transform .22s,background .22s;}
   .toggle input:checked + .track{background:linear-gradient(135deg,#6D8CFF 0%,#7C6FF2 55%,#3A3480 100%);border:1px solid rgba(255,255,255,.18);box-shadow:0 6px 16px rgba(104,96,255,.26),inset 0 1px 0 rgba(255,255,255,.08);}
   .toggle input:checked + .track::before{transform:translateX(19px);background:#fff;}
