@@ -217,7 +217,9 @@ def simhash64(text: str) -> int:
         return 0
     v = [0] * 64
     for tok in tokens:
-        h = int.from_bytes(hashlib.md5(tok.encode("utf-8")).digest()[:8], "big")
+        # blake2b: 비암호 지문 용도 — md5는 보안 린트(S324)에 걸리고,
+        # blake2b(digest_size=8)가 같은 일을 더 빠르고 깨끗하게 한다.
+        h = int.from_bytes(hashlib.blake2b(tok.encode("utf-8"), digest_size=8).digest(), "big")
         for i in range(64):
             v[i] += 1 if (h >> i) & 1 else -1
     out = 0
