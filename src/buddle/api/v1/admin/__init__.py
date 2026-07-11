@@ -475,7 +475,7 @@ async def news_sources(_: CurrentAdmin, redis: Redis) -> list[dict[str, object]]
 
 @admin_router.post(
     "/news/sources/reset",
-    summary="Reset sources to defaults (한국 전용 기본값 — 해외 소스 비활성)",
+    summary="Reset sources to defaults (국내 공공 RSS + 해외 RSS 번역 공개 방침)",
 )
 async def news_sources_reset(_: CurrentAdmin, redis: Redis) -> list[dict[str, object]]:
     from buddle.services.news_service import reset_news_sources

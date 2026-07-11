@@ -309,7 +309,10 @@
     <div class="section-grid">
       <!-- 뉴스 소스 설정: 어디서 글을 찾아올지 -->
       <div class="card" style="grid-column:1/-1">
-        <div class="card-title">뉴스 소스 설정 <span style="font-size:12px;color:var(--muted);font-weight:400">— 글을 어디서 찾아올지 (수집 시 이 목록을 참조)</span></div>
+        <div class="card-title" style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap">
+          <span>뉴스 소스 설정 <span style="font-size:12px;color:var(--muted);font-weight:400">— 글을 어디서 찾아올지 (수집 시 이 목록을 참조)</span></span>
+          <button id="srcResetBtn" class="btn-sm" style="font-size:12px;padding:5px 12px;border-radius:8px;cursor:pointer">기본값으로 초기화</button>
+        </div>
         <div id="newsSourceList" style="display:flex;flex-direction:column;gap:6px;margin-bottom:12px">로딩 중…</div>
         <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;border-top:1px solid var(--border);padding-top:12px">
           <input id="srcName" placeholder="이름 (예: 월스트리트저널)" style="flex:1;min-width:140px;padding:7px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px">
@@ -829,6 +832,16 @@
       msg.textContent = (e && e.message) ? e.message : "추가 실패 (URL/종류를 확인하세요).";
     }
     this.disabled = false;
+  };
+
+  // 레지스트리는 Redis에 영속되므로, 코드의 기본 소스가 바뀌어도 배포만으로는
+  // 라이브에 반영되지 않는다 — 이 버튼이 기본값을 덮어쓰는 유일한 1클릭 경로.
+  document.getElementById("srcResetBtn").onclick = async function () {
+    if (!confirm("소스 목록을 기본값으로 되돌릴까요? 직접 추가한 소스는 사라집니다.")) return;
+    this.disabled = true; this.textContent = "초기화 중…";
+    try { await api("POST", "/v1/admin/news/sources/reset"); await loadNewsSources(); }
+    catch (e) { console.warn("sources reset 오류:", e); }
+    this.disabled = false; this.textContent = "기본값으로 초기화";
   };
 
   // RSS일 때만 URL 입력칸 강조
