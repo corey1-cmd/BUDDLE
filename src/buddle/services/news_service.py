@@ -53,7 +53,9 @@ _DIGEST_KEY = "buddle:news:digest"  # combined briefing (the 'combination' stage
 _SOURCES_KEY = "buddle:news:sources"  # admin-configured fetch sources (where to search)
 _TOPICS_KEY = "buddle:news:topics"  # algorithmic 화제 cache (홈·관심주제 노출용)
 _SIMHASH_KEY = "buddle:news:simhash"  # 최근 기사 내용 지문(준중복 탐지, 48h)
-_BRIEFINGS_TTL = 60 * 60 * 25  # 25 hours
+# 파생 캐시(브리핑/다이제스트/상태) 보존 — 실제 콘텐츠(글)는 DB에 영구 저장되고
+# 이 캐시는 매 틱 갱신된다. 스케줄러가 잠시 멈춰도 화면이 비지 않도록 7일 보존.
+_BRIEFINGS_TTL = 60 * 60 * 24 * 7  # 7 days
 _SEEN_TTL = 60 * 60 * 48  # 48 hours (dedup window)
 _MAX_STORED = 60  # max articles kept in cache
 _TOPIC_WINDOW_H = 72  # 화제 집계 윈도우 (DB 기준)
@@ -440,15 +442,15 @@ async def _backfill_translations(db: AsyncSession, *, settings: object, limit: i
 
 
 async def _prune_topic_posts(db: AsyncSession, redis: RedisClient, topics: list[Topic]) -> int:
-    """유효하지 않은 화제 글을 정리한다 — 단, 참여가 있으면 절대 지우지 않는다.
+    """빈 껍데기 화제 글만 정리한다 — 콘텐츠는 원칙적으로 영구 보존한다.
 
-    삭제 조건(모두 충족): author_label='지금 화제' + 좋아요 0 + 댓글 0 +
-    (태그가 현재 화제 집합에 없음 또는 72h 초과). 알고리즘이 오탐 화제
-    (#bloomberg류)를 만들었다가 고쳐졌을 때 그 잔재가 피드에 남지 않게 한다.
-    사용자 참여가 붙은 글은 화제가 사라져도 대화 기록으로 보존된다.
+    사용자 방침(영구 저장): 사람은 기억보다 저장을 선호한다. 과거의 시간 만료
+    ('7일 초과'/'25시간')와 '영문 잔재 삭제'는 폐지했다 — 한 번 올라온 화제
+    글과 사용자 글은 시간이 지나도 사라지지 않는다(무한 스크롤로 과거 화제까지
+    이어진다). 유일한 삭제 대상은 자동 생성 글(author_label='지금 화제')이면서
+    참여가 전혀 없고 본문이 사실상 비어 있는(머리표를 뺀 실내용 없음) 퇴행 글
+    뿐이다. 참여가 붙었거나 실내용이 있으면 무조건 보존한다.
     """
-    import re as _re
-
     from sqlalchemy import func as sa_func
 
     from buddle.db.models.comment import Comment
@@ -456,23 +458,20 @@ async def _prune_topic_posts(db: AsyncSession, redis: RedisClient, topics: list[
     from buddle.db.models.post_like import PostLike
     from buddle.db.models.tag import PostTag, Tag
 
-    cutoff = dt.datetime.now(dt.UTC) - dt.timedelta(days=7)
     rows = (
         await db.execute(
-            select(Post.id, Post.created_at, Tag.name, Post.content_transformed)
+            select(Post.id, Tag.name, Post.content_transformed)
             .join(PostTag, PostTag.post_id == Post.id)
             .join(Tag, Tag.id == PostTag.tag_id)
             .where(Post.author_label == NEWS_AUTHOR_LABEL)
         )
     ).all()
     pruned = 0
-    for post_id, created_at, tag_name, content in rows:
-        # 잡음 판정: 머리표를 뺀 본문에 한글이 없다 = 번역 이전 시대의 영문
-        # 잔재. 활성 화제라면 삭제해도 다음 틱이 한국어 문안으로 재생성한다.
-        body = (content or "").replace("[지금 화제]", "", 1)
-        junk = not _re.search(r"[가-힣]", body)
-        stale = junk or created_at < cutoff
-        if not stale:
+    for post_id, tag_name, content in rows:
+        # 실내용이 있으면(머리표 제거 후 텍스트가 남으면) 영구 보존. 영문이든
+        # 국문이든 삭제하지 않는다 — 번역은 콘텐츠 삭제가 아니라 재생성으로 개선.
+        body = (content or "").replace("[지금 화제]", "", 1).strip()
+        if body:
             continue
         likes = (
             await db.execute(
@@ -494,7 +493,7 @@ async def _prune_topic_posts(db: AsyncSession, redis: RedisClient, topics: list[
             await redis.delete(_TOPICPOST_KEY + tag_name)
     if pruned:
         await db.commit()
-        log.info("news.topic_post.pruned", count=pruned)
+        log.info("news.topic_post.pruned_empty", count=pruned)
     return pruned
 
 

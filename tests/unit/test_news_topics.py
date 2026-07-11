@@ -506,6 +506,21 @@ def test_trailing_attribution_stripped():
     assert strip_trailing_attribution("") == ""
 
 
+def test_generic_english_verb_never_bridges_unrelated_articles():
+    # 라이브 실측 오탐: 'contain' 하나가 "스페인 산불 진화" 기사와 "I Contain
+    # Multitudes (and Also Three Git Repos)"라는 개발 잡담을 한 화제로 묶어
+    # 신뢰도를 훼손했다. 일반 영어 동사는 화제 후보(스톱워드)에서 제외돼
+    # 무관한 기사를 엮지 못한다.
+    items = [
+        _item("Spain battles to contain one of its deadliest wildfires", source="bbc-news"),
+        _item("I Contain Multitudes (and Also Three Git Repos)", source="devto", age_h=2),
+    ]
+    topics = build_topics(items, now=NOW, min_count=2)
+    assert all(t.name.lower() != "contain" for t in topics), [t.name for t in topics]
+    # 두 기사가 하나의 화제로 병합되지 않는다(공유 일반동사가 사라졌으므로).
+    assert all(not ({"bbc-news", "devto"} <= set(t.sources)) for t in topics)
+
+
 def test_media_names_never_become_topics():
     # 애그리게이터 제목의 매체 토큰이 화제가 되지 않는다 (#bloomberg 실측 오탐).
     items = [

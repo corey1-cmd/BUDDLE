@@ -1462,70 +1462,25 @@
     const text = sec.el("div", { class: "post-text", id: "postText" }, textFor(post, curLang));
     view.appendChild(text);
 
-    // actions
+    // actions — 좋아요 · 댓글 · 토론 (인스타식 3버튼). 저장/신고와 대화 진입
+    // 버튼들은 제거했다: 댓글은 바로 아래 입력창으로, 토론은 토론장으로 이어진다.
     const actions = sec.el("div", { class: "actions" });
     const likeBtn = sec.el("button", { class: "act" });
     likeBtn.innerHTML = '<svg viewBox="0 0 24 24"><path stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M19 14c1.5-1.5 3-3.3 3-5.5A4.5 4.5 0 0 0 12 5 4.5 4.5 0 0 0 2 8.5C2 10.7 3.5 12.5 5 14l7 7z"/></svg>';
     likeBtn.appendChild(sec.el("span", null, "좋아요" + (post.like_count != null ? ` ${post.like_count}` : "")));
     likeBtn.addEventListener("click", () => toggleLike(post, likeBtn));
-    const saveBtn = sec.el("button", { class: "act", id: "saveBtn" });
-    saveBtn.innerHTML = '<svg viewBox="0 0 24 24"><path stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>';
-    saveBtn.appendChild(sec.el("span", null, "저장"));
-    saveBtn.addEventListener("click", () => toggleBookmark(post, saveBtn));
-    const reportBtn = sec.el("button", { class: "act" });
-    reportBtn.innerHTML = '<svg viewBox="0 0 24 24"><path stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><path stroke-width="1.8" stroke-linecap="round" d="M4 22v-7"/></svg>';
-    reportBtn.appendChild(sec.el("span", null, "신고"));
-    reportBtn.addEventListener("click", () => alert("신고가 접수되었습니다. 검토 후 조치됩니다."));
-    actions.appendChild(likeBtn); actions.appendChild(saveBtn); actions.appendChild(reportBtn);
+    // 댓글 — (기존 저장 자리) 누르면 하단 입력창으로 부드럽게 내려가 바로 쓴다.
+    const commentBtn = sec.el("button", { class: "act" });
+    commentBtn.innerHTML = '<svg viewBox="0 0 24 24"><path stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>';
+    commentBtn.appendChild(sec.el("span", null, "댓글" + (comments.length ? ` ${comments.length}` : "")));
+    commentBtn.addEventListener("click", focusComposer);
+    // 토론 — (기존 신고 자리) 이 화제를 토론장으로 발전시킨다.
+    const debateActBtn = sec.el("button", { class: "act" });
+    debateActBtn.innerHTML = '<svg viewBox="0 0 24 24"><path stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M3 12h4l3-8 4 16 3-8h4"/></svg>';
+    debateActBtn.appendChild(sec.el("span", null, "토론"));
+    debateActBtn.addEventListener("click", () => openDebateFromPost(post));
+    actions.appendChild(likeBtn); actions.appendChild(commentBtn); actions.appendChild(debateActBtn);
     view.appendChild(actions);
-
-    // argument-AI entry points: talk to this post's claim, or its author's AI.
-    const aiRow = sec.el("div", { class: "ai-row" });
-    const claimBtn = sec.el("button", { class: "ai-act" });
-    claimBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>';
-    claimBtn.appendChild(sec.el("span", null, "이 글의 주장과 대화"));
-    claimBtn.addEventListener("click", () => {
-      location.href = "argument-chat.html?post=" + encodeURIComponent(post.id) + "&mode=claim";
-    });
-    const authorBtn = sec.el("button", { class: "ai-act" });
-    authorBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 4-6 8-6s8 2 8 6"/></svg>';
-    authorBtn.appendChild(sec.el("span", null, "이 사람의 생각과 대화"));
-    authorBtn.addEventListener("click", () => {
-      location.href = "argument-chat.html?post=" + encodeURIComponent(post.id) + "&mode=author";
-    });
-    aiRow.appendChild(claimBtn); aiRow.appendChild(authorBtn);
-    view.appendChild(aiRow);
-
-    // "토론으로 발전" — develop a topic from the post into the debate space.
-    // Light participation (like/comment) stays above; this turns a post's topic
-    // into structured public discourse (공론장). Two cases:
-    //   - post has tags → chips to those topics + "새 화제로 시작"
-    //   - post has no tags → "이 글로 토론 시작하기" (name the topic, then seed)
-    const postTags = Array.isArray(post.tags) ? post.tags : [];
-    const debateWrap = sec.el("div", { class: "debate-entry" });
-    const head = sec.el("div", { class: "de-head" });
-    head.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg>';
-    head.appendChild(sec.el("span", null, postTags.length ? "이 화제를 토론으로 발전시키기" : "이 글로 토론 시작하기"));
-    debateWrap.appendChild(head);
-
-    const chips = sec.el("div", { class: "de-chips" });
-    postTags.slice(0, 4).forEach(t => {
-      const name = tagName(t);
-      const tid = (t && typeof t === "object") ? t.id : null;
-      const chip = sec.el("button", { class: "de-chip", type: "button" });
-      chip.appendChild(sec.el("span", null, "#" + name));
-      chip.innerHTML += '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>';
-      chip.addEventListener("click", () => openDebateForTag(name, tid));
-      chips.appendChild(chip);
-    });
-    // "+ 새 화제로 시작" (always) / for an untagged post this is the only path.
-    const seedChip = sec.el("button", { class: "de-chip de-seed", type: "button" });
-    seedChip.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>';
-    seedChip.appendChild(sec.el("span", null, postTags.length ? "새 화제로 시작" : "화제를 정해 시작"));
-    seedChip.addEventListener("click", () => startDebateFromPost(post));
-    chips.appendChild(seedChip);
-    debateWrap.appendChild(chips);
-    view.appendChild(debateWrap);
 
     // 화제 글([지금 화제])이면 관련 기사 출처 목록 — 언론사·제목·발행일과
     // 원문 링크를 절대 생략하지 않는다(즉시 원문 이동 가능해야 한다).
@@ -1586,7 +1541,7 @@
       kindRow.appendChild(chip);
     });
     const row = sec.el("div", { class: "c-input-row" });
-    const ta = sec.el("textarea", { rows: "1", placeholder: "댓글을 남겨보세요…" });
+    const ta = sec.el("textarea", { id: "commentInput", rows: "1", placeholder: "댓글을 남겨보세요…" });
     ta.addEventListener("input", () => {
       ta.style.height = "auto"; ta.style.height = Math.min(ta.scrollHeight, 100) + "px";
       sendBtn.disabled = ta.value.trim() === "";
@@ -1621,6 +1576,26 @@
         if (span) span.textContent = "좋아요 " + res.like_count;
       }
     } catch (_) { /* offline preview no-op */ }
+  }
+
+  // 댓글 버튼 → 하단 입력창으로 부드럽게 이동 + 포커스(반응형 글쓰기).
+  function focusComposer() {
+    const ta = document.getElementById("commentInput");
+    if (!ta) return;
+    ta.scrollIntoView({ behavior: "smooth", block: "center" });
+    setTimeout(() => { try { ta.focus({ preventScroll: true }); } catch (_) { ta.focus(); } }, 320);
+  }
+
+  // 토론 버튼 → 이 글의 화제를 토론장으로. 태그가 있으면 그 화제의 토론
+  // 대시보드로 바로, 없으면 화제 이름을 정해 토론을 시작한다.
+  function openDebateFromPost(post) {
+    const tags = Array.isArray(post.tags) ? post.tags : [];
+    if (tags.length) {
+      const t = tags[0];
+      openDebateForTag(tagName(t), (t && typeof t === "object") ? t.id : null);
+    } else {
+      startDebateFromPost(post);
+    }
   }
 
   let saved = false;

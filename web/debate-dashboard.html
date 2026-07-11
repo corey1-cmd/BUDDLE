@@ -139,6 +139,38 @@
   .btn-ghost{flex:1;padding:13px;border-radius:var(--r);border:1px solid var(--line-strong);background:var(--paper-raised);font-family:var(--body);font-size:14.5px;font-weight:600;color:var(--ink-soft);cursor:pointer;}
   .btn-fill{flex:2;padding:13px;border-radius:var(--r);border:0;background:var(--accent-grad);color:#fff;font-family:var(--body);font-size:14.5px;font-weight:600;cursor:pointer;box-shadow:var(--shadow-pop-sm);}
   .btn-fill:disabled{opacity:.5;}
+
+  /* ── 관계도 (MARBLE식 힘-방향 그래프 · 다크 스타맵) ───────────── */
+  .map-stage{position:relative;width:100%;aspect-ratio:1/1.12;max-height:76vh;
+    background:radial-gradient(125% 90% at 50% 4%, #16183200 0%, #0c0d1a 46%, #07070f 100%),#080810;
+    border:1px solid #1c1f3d;border-radius:var(--r-lg);overflow:hidden;
+    box-shadow:inset 0 0 70px rgba(0,0,0,.55),var(--shadow-sm);touch-action:none;cursor:grab;}
+  .map-stage.dragging{cursor:grabbing;}
+  .map-stage canvas{display:block;width:100%;height:100%;}
+  .map-hint{position:absolute;left:13px;bottom:12px;font-size:11px;color:rgba(255,255,255,.4);
+    pointer-events:none;letter-spacing:.01em;max-width:64%;line-height:1.5;}
+  .map-legend{position:absolute;left:13px;top:12px;display:flex;flex-direction:column;gap:5px;pointer-events:none;}
+  .map-legend .lg{display:flex;align-items:center;gap:7px;font-size:10.5px;font-weight:600;color:rgba(255,255,255,.6);}
+  .map-legend .lg i{width:9px;height:9px;border-radius:99px;box-shadow:0 0 9px currentColor;flex:none;}
+  .map-panel{position:absolute;right:11px;top:11px;width:min(70%,262px);
+    background:rgba(15,17,32,.9);backdrop-filter:blur(12px);border:1px solid rgba(124,130,247,.34);
+    border-radius:14px;padding:14px 14px 13px;color:#eef;box-shadow:0 14px 44px rgba(0,0,0,.55);animation:mpIn .18s ease;}
+  @keyframes mpIn{from{opacity:0;transform:translateY(-6px);}to{opacity:1;transform:translateY(0);}}
+  .map-panel .mp-kind{display:inline-block;font-size:10px;font-weight:700;letter-spacing:.05em;
+    text-transform:uppercase;padding:2px 8px;border-radius:99px;}
+  .map-panel .mp-text{font-size:13.5px;line-height:1.5;color:#f3f4ff;margin:9px 0 9px;font-weight:600;}
+  .map-panel .mp-meta{font-size:11px;color:rgba(255,255,255,.5);margin-bottom:11px;line-height:1.5;}
+  .map-panel .mp-acts{display:flex;flex-direction:column;gap:7px;}
+  .map-panel .mp-act{display:flex;align-items:center;justify-content:center;gap:6px;padding:9px;
+    border-radius:10px;border:1px solid rgba(124,130,247,.42);background:rgba(124,130,247,.15);
+    color:#d3d6ff;font-family:var(--body);font-size:12.5px;font-weight:600;cursor:pointer;transition:background .14s;}
+  .map-panel .mp-act:hover{background:rgba(124,130,247,.28);}
+  .map-panel .mp-act.solid{background:var(--accent-grad);border-color:transparent;color:#fff;}
+  .map-panel .mp-act svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2;}
+  .map-panel .mp-close{position:absolute;right:8px;top:8px;width:22px;height:22px;border:0;
+    background:rgba(255,255,255,.09);color:#cfd2ec;border-radius:7px;cursor:pointer;font-size:14px;line-height:1;}
+  .map-panel .mp-close:hover{background:rgba(255,255,255,.16);}
+  .map-summary{font-size:var(--t-body);font-weight:500;color:var(--ink);line-height:1.5;margin:var(--s4) 0 var(--s3);text-align:center;}
 </style>
 </head>
 <body>
@@ -612,15 +644,36 @@
     <!-- topic summary -->
     <div class="summary" id="summary"><!-- stats --></div>
 
-    <!-- view tabs: 대화 축 / 대립 보기 -->
+    <!-- view tabs: 관계도 / 대화 축 / 대립 보기 / 논증 그래프 -->
     <div class="tabs" id="tabs">
-      <button class="tab on" id="tabAxes" type="button">대화 축</button>
+      <button class="tab on" id="tabMap" type="button">관계도</button>
+      <button class="tab" id="tabAxes" type="button">대화 축</button>
       <button class="tab" id="tabOpp" type="button">대립 보기</button>
       <button class="tab" id="tabGraph" type="button">논증 그래프</button>
     </div>
 
+    <!-- view: 관계도 (MARBLE식 힘-방향 그래프) — 기본 화면 -->
+    <div id="viewMap">
+      <div class="sec-label">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><circle cx="5" cy="6" r="2"/><circle cx="19" cy="7" r="2"/><circle cx="6" cy="18" r="2"/><circle cx="18" cy="17" r="2"/><path d="M12 12 5 6M12 12l7-5M12 12l-6 6M12 12l6 5"/></svg>
+        관계도 — 화제를 중심으로 생각이 이어져요
+      </div>
+      <div class="map-stage" id="mapStage">
+        <canvas id="mapCanvas"></canvas>
+        <div class="map-legend" id="mapLegend"></div>
+        <div class="map-hint" id="mapHint">점을 끌어 옮기고, 눌러서 살펴보세요 · 스크롤·핀치로 확대</div>
+        <div class="map-panel" id="mapPanel" hidden></div>
+      </div>
+      <p class="map-summary" id="mapSummary"></p>
+      <p class="note">
+        이 화제를 중심으로 주장·근거·반박·질문이 별자리처럼 이어져 있어요. 선으로
+        묶인 점일수록 서로를 떠받치거나 반박하는 생각입니다. 점을 누르면 내용을
+        보고, 그 자리에서 근거나 반박을 더할 수 있어요.
+      </p>
+    </div>
+
     <!-- view: conversation axes -->
-    <div id="viewAxes">
+    <div id="viewAxes" style="display:none">
       <div class="sec-label">
         <svg viewBox="0 0 24 24"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg>
         대화 축 — 이 화제가 갈라진 갈래
@@ -807,15 +860,17 @@
     if (!tagId || !authed) {
       demoMode = true; $("demoBadge").style.display = "";
       render(demoDashboard());
-      return;
+    } else {
+      try {
+        const d = await buddle.debate.dashboard(tagId);
+        render(d);
+      } catch (_) {
+        demoMode = true; $("demoBadge").style.display = "";
+        render(demoDashboard());
+      }
     }
-    try {
-      const d = await buddle.debate.dashboard(tagId);
-      render(d);
-    } catch (_) {
-      demoMode = true; $("demoBadge").style.display = "";
-      render(demoDashboard());
-    }
+    // 기본 탭(관계도) 렌더는 스크립트 맨 끝에서 호출한다 — 여기서 부르면 아직
+    // 선언 전인 MAP/graphLoaded(TDZ)를 건드려 그래프가 그려지지 않는다.
   })();
 
   /* ── Opposition geometry view ──────────────────────────── */
@@ -950,17 +1005,21 @@
     } catch (_) { renderOpposition(demoOpposition()); }
   }
 
-  // tab switching (3-way: 대화 축 / 대립 보기 / 논증 그래프)
+  // tab switching (4-way: 관계도 / 대화 축 / 대립 보기 / 논증 그래프)
   function switchTab(which) {
+    $("tabMap").classList.toggle("on", which === "map");
     $("tabAxes").classList.toggle("on", which === "axes");
     $("tabOpp").classList.toggle("on", which === "opp");
     $("tabGraph").classList.toggle("on", which === "graph");
+    $("viewMap").style.display = which === "map" ? "" : "none";
     $("viewAxes").style.display = which === "axes" ? "" : "none";
     $("viewOpp").style.display = which === "opp" ? "" : "none";
     $("viewGraph").style.display = which === "graph" ? "" : "none";
+    if (which === "map") loadMap();
     if (which === "opp") loadOpposition();
     if (which === "graph") loadGraph();
   }
+  $("tabMap").addEventListener("click", () => switchTab("map"));
   $("tabAxes").addEventListener("click", () => switchTab("axes"));
   $("tabOpp").addEventListener("click", () => switchTab("opp"));
   $("tabGraph").addEventListener("click", () => switchTab("graph"));
@@ -989,16 +1048,19 @@
     };
   }
 
-  async function loadGraph() {
-    if (graphLoaded) return;
+  async function ensureGraphData() {
+    if (graphLoaded) return graphData;
     graphLoaded = true;
-    if (demoMode || !tagId) { graphData = demoGraph(); renderGraph(); return; }
+    if (demoMode || !tagId) { graphData = demoGraph(); return graphData; }
     try {
       const g = await buddle.debate.graph(tagId);
       graphData = (g.nodes && g.nodes.length) ? g : demoGraph();
     } catch (_) { graphData = demoGraph(); }
-    renderGraph();
+    return graphData;
   }
+
+  async function loadGraph() { await ensureGraphData(); renderGraph(); }
+  async function loadMap() { await ensureGraphData(); startMap(graphData); }
 
   function renderGraphFilters() {
     const dims = ["all", "problem", "cause", "solution"];
@@ -1113,6 +1175,257 @@
     location.href = "compose.html?" + q.toString();
   }
   $("addStanceBtn").addEventListener("click", () => goComposeStance());
+
+  /* ── 관계도 엔진 — 자체 힘-방향 시뮬레이션(외부 라이브러리 없음, CSP 안전) ──
+     화제를 중심 노드로, 주장·근거·반박·증거·질문을 위성 노드로 두고 부모-자식
+     관계를 스프링으로, 노드 간에는 반발력을 준다. MARBLE식 다크 스타맵 렌더링:
+     노드마다 방사형 글로우 + 코어, 반박 엣지는 붉은 점선. 끌기·클릭·확대 지원. */
+  const MAP = {
+    KIND: {
+      topic:     { c: "#c9b6ff", label: "화제", r: 21 },
+      claim:     { c: "#8b8cf8", label: "주장", r: 13 },
+      ground:    { c: "#5b8bef", label: "근거", r: 10 },
+      evidence:  { c: "#4fc98f", label: "증거", r: 9  },
+      rebuttal:  { c: "#e0805f", label: "반박", r: 10 },
+      question:  { c: "#9aa0bd", label: "질문", r: 9  },
+      dimension: { c: "#b98cf0", label: "차원", r: 11 },
+    },
+    nodes: [], edges: [], view: { s: 1, ox: 0, oy: 0 },
+    sel: null, hover: -1, built: false, raf: null,
+    W: 0, H: 0, dpr: 1, drag: null, pan: null,
+  };
+  const kindMeta = (k) => MAP.KIND[k] || MAP.KIND.claim;
+  const hexA = (hex, a) => {
+    const m = hex.replace("#", "");
+    return `rgba(${parseInt(m.slice(0,2),16)},${parseInt(m.slice(2,4),16)},${parseInt(m.slice(4,6),16)},${a})`;
+  };
+  const clip = (s, n) => { s = (s || "").trim(); return s.length > n ? s.slice(0, n - 1) + "…" : s; };
+  const w2s = (wx, wy) => [MAP.W/2 + wx*MAP.view.s + MAP.view.ox, MAP.H/2 + wy*MAP.view.s + MAP.view.oy];
+  const s2w = (sx, sy) => [(sx - MAP.W/2 - MAP.view.ox)/MAP.view.s, (sy - MAP.H/2 - MAP.view.oy)/MAP.view.s];
+
+  function startMap(g) {
+    if (!MAP.built) buildMapModel(g);
+    fitMapCanvas();
+    renderMapLegend();
+    $("mapSummary").textContent = g.summary || "";
+    bindMapPointer();
+    if (!MAP.raf) tickMap();
+    if (!MAP._resize) {
+      MAP._resize = true;
+      window.addEventListener("resize", fitMapCanvas);
+    }
+  }
+
+  function buildMapModel(g) {
+    const nodes = [], edges = [], idx = {};
+    const topicText = $("topicName").textContent.trim() || tagName;
+    nodes.push({ id: "__topic__", kind: "topic", text: topicText, stance: "thesis", weight: 4 });
+    (g.nodes || []).forEach((n) => nodes.push({
+      id: n.id, kind: n.kind, text: n.text, stance: n.stance || "neutral",
+      dimension: n.dimension, weight: n.weight || 1, parent_id: n.parent_id || null,
+    }));
+    nodes.forEach((n, i) => { idx[n.id] = i; });
+    nodes.forEach((n, i) => {
+      if (i === 0) { n.x = 0; n.y = 0; }
+      else {
+        const a = (i / Math.max(1, nodes.length - 1)) * Math.PI * 2;
+        const rad = 110 + (i % 5) * 24;
+        n.x = Math.cos(a) * rad + (Math.random() - 0.5) * 22;
+        n.y = Math.sin(a) * rad + (Math.random() - 0.5) * 22;
+      }
+      n.vx = 0; n.vy = 0;
+    });
+    (g.nodes || []).forEach((n) => {
+      const from = idx[n.id];
+      const to = (n.parent_id != null && idx[n.parent_id] != null) ? idx[n.parent_id] : 0;
+      if (from != null) edges.push({ a: from, b: to, kind: n.kind });
+    });
+    MAP.nodes = nodes; MAP.edges = edges; MAP.built = true; MAP.sel = null;
+    MAP.view = { s: 1, ox: 0, oy: 0 };
+  }
+
+  function fitMapCanvas() {
+    const cv = $("mapCanvas"), rect = $("mapStage").getBoundingClientRect();
+    if (!rect.width) return;
+    MAP.dpr = Math.min(window.devicePixelRatio || 1, 2);
+    MAP.W = rect.width; MAP.H = rect.height;
+    cv.width = Math.round(rect.width * MAP.dpr);
+    cv.height = Math.round(rect.height * MAP.dpr);
+    cv.style.width = rect.width + "px"; cv.style.height = rect.height + "px";
+  }
+
+  function tickMap() {
+    MAP.raf = requestAnimationFrame(tickMap);
+    if (!MAP.built) return;
+    if ($("viewMap").style.display === "none") return;  // 탭 숨김 시 시뮬 정지
+    stepMapForces();
+    drawMap();
+  }
+
+  function stepMapForces() {
+    const ns = MAP.nodes, n = ns.length;
+    const REPULSE = 1500, SPRING = 0.016, LEN = 66, CENTER = 0.013, DAMP = 0.82, MAXV = 26;
+    for (let i = 0; i < n; i++) { ns[i].fx = 0; ns[i].fy = 0; }
+    for (let i = 0; i < n; i++) {
+      const a = ns[i];
+      for (let j = i + 1; j < n; j++) {
+        const b = ns[j];
+        let dx = a.x - b.x, dy = a.y - b.y, d2 = dx*dx + dy*dy;
+        if (d2 < 0.02) { d2 = 0.02; dx = Math.random() - 0.5; dy = Math.random() - 0.5; }
+        const d = Math.sqrt(d2), f = (REPULSE * (1 + (a.weight + b.weight) * 0.12)) / d2;
+        const ux = dx/d, uy = dy/d;
+        a.fx += ux*f; a.fy += uy*f; b.fx -= ux*f; b.fy -= uy*f;
+      }
+      a.fx += -a.x * CENTER; a.fy += -a.y * CENTER;
+    }
+    MAP.edges.forEach((e) => {
+      const a = ns[e.a], b = ns[e.b];
+      let dx = b.x - a.x, dy = b.y - a.y;
+      const d = Math.sqrt(dx*dx + dy*dy) || 0.01;
+      const target = LEN + kindMeta(a.kind).r + kindMeta(b.kind).r;
+      const f = SPRING * (d - target), ux = dx/d, uy = dy/d;
+      a.fx += ux*f; a.fy += uy*f; b.fx -= ux*f; b.fy -= uy*f;
+    });
+    const dragNode = MAP.drag && MAP.drag.node;
+    for (let i = 0; i < n; i++) {
+      const a = ns[i];
+      if (a === dragNode) { a.vx = 0; a.vy = 0; continue; }
+      a.vx = Math.max(-MAXV, Math.min(MAXV, (a.vx + a.fx) * DAMP));
+      a.vy = Math.max(-MAXV, Math.min(MAXV, (a.vy + a.fy) * DAMP));
+      a.x += a.vx; a.y += a.vy;
+    }
+  }
+
+  function drawMap() {
+    const cv = $("mapCanvas"), ctx = cv.getContext("2d");
+    ctx.setTransform(MAP.dpr, 0, 0, MAP.dpr, 0, 0);
+    ctx.clearRect(0, 0, MAP.W, MAP.H);
+    ctx.lineCap = "round";
+    MAP.edges.forEach((e) => {
+      const a = MAP.nodes[e.a], b = MAP.nodes[e.b];
+      const p = w2s(a.x, a.y), q = w2s(b.x, b.y), reb = e.kind === "rebuttal";
+      ctx.strokeStyle = reb ? "rgba(224,128,95,0.5)" : "rgba(140,150,240,0.3)";
+      ctx.lineWidth = Math.max(0.6, (reb ? 1.5 : 1.1) * MAP.view.s);
+      ctx.setLineDash(reb ? [5, 5] : []);
+      ctx.beginPath(); ctx.moveTo(p[0], p[1]); ctx.lineTo(q[0], q[1]); ctx.stroke();
+    });
+    ctx.setLineDash([]);
+    MAP.nodes.forEach((nd, i) => {
+      const meta = kindMeta(nd.kind), p = w2s(nd.x, nd.y);
+      const r = (meta.r + (nd.weight || 1) * 1.3) * MAP.view.s;
+      const sel = MAP.sel === i, hov = MAP.hover === i;
+      const glow = ctx.createRadialGradient(p[0], p[1], 0, p[0], p[1], r * 3);
+      glow.addColorStop(0, hexA(meta.c, sel ? 0.6 : 0.32));
+      glow.addColorStop(1, hexA(meta.c, 0));
+      ctx.fillStyle = glow;
+      ctx.beginPath(); ctx.arc(p[0], p[1], r * 3, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(p[0], p[1], r, 0, Math.PI * 2);
+      ctx.fillStyle = meta.c; ctx.fill();
+      if (sel || hov) { ctx.lineWidth = 2; ctx.strokeStyle = "rgba(255,255,255,0.92)"; ctx.stroke(); }
+      if (nd.kind === "topic" || nd.kind === "claim" || sel || hov) {
+        const big = nd.kind === "topic";
+        ctx.font = (big ? "700 " : "600 ") + (big ? 13 : 11) + "px Pretendard, sans-serif";
+        ctx.textAlign = "center"; ctx.textBaseline = "top";
+        ctx.shadowColor = "rgba(0,0,0,0.75)"; ctx.shadowBlur = 4;
+        ctx.fillStyle = "rgba(240,242,255,0.94)";
+        ctx.fillText(clip(nd.text, big ? 16 : 22), p[0], p[1] + r + 5);
+        ctx.shadowBlur = 0;
+      }
+    });
+  }
+
+  function renderMapLegend() {
+    const items = [["claim","주장"],["ground","근거"],["rebuttal","반박"],["evidence","증거"],["question","질문"]];
+    $("mapLegend").replaceChildren(...items.map(([k, label]) => {
+      const row = document.createElement("div"); row.className = "lg";
+      const dot = document.createElement("i"); const c = kindMeta(k).c;
+      dot.style.background = c; dot.style.color = c;
+      row.appendChild(dot); row.appendChild(document.createTextNode(label));
+      return row;
+    }));
+  }
+
+  function hitTestMap(sx, sy) {
+    for (let i = MAP.nodes.length - 1; i >= 0; i--) {
+      const nd = MAP.nodes[i], p = w2s(nd.x, nd.y);
+      const r = (kindMeta(nd.kind).r + (nd.weight || 1) * 1.3) * MAP.view.s + 6;
+      if ((sx - p[0]) ** 2 + (sy - p[1]) ** 2 <= r * r) return i;
+    }
+    return -1;
+  }
+
+  function bindMapPointer() {
+    if (MAP._ptr) return; MAP._ptr = true;
+    const stage = $("mapStage"), cv = $("mapCanvas");
+    const local = (ev) => { const r = cv.getBoundingClientRect(); return [ev.clientX - r.left, ev.clientY - r.top]; };
+    let downAt = null, moved = false, downIdx = -1;
+    cv.addEventListener("pointerdown", (ev) => {
+      cv.setPointerCapture(ev.pointerId);
+      const [sx, sy] = local(ev); downAt = [sx, sy]; moved = false;
+      downIdx = hitTestMap(sx, sy);
+      if (downIdx >= 0) MAP.drag = { node: MAP.nodes[downIdx] };
+      else MAP.pan = { x: sx, y: sy, ox: MAP.view.ox, oy: MAP.view.oy };
+      stage.classList.add("dragging");
+    });
+    cv.addEventListener("pointermove", (ev) => {
+      const [sx, sy] = local(ev);
+      if (downAt && (Math.abs(sx - downAt[0]) > 4 || Math.abs(sy - downAt[1]) > 4)) moved = true;
+      if (MAP.drag) { const w = s2w(sx, sy); MAP.drag.node.x = w[0]; MAP.drag.node.y = w[1]; MAP.drag.node.vx = 0; MAP.drag.node.vy = 0; }
+      else if (MAP.pan) { MAP.view.ox = MAP.pan.ox + (sx - MAP.pan.x); MAP.view.oy = MAP.pan.oy + (sy - MAP.pan.y); }
+      else { MAP.hover = hitTestMap(sx, sy); cv.style.cursor = MAP.hover >= 0 ? "pointer" : ""; }
+    });
+    const end = () => {
+      if (!moved && downIdx >= 0) selectMapNode(downIdx);
+      else if (!moved && downIdx < 0) deselectMapNode();
+      MAP.drag = null; MAP.pan = null; downAt = null; downIdx = -1;
+      stage.classList.remove("dragging");
+    };
+    cv.addEventListener("pointerup", end);
+    cv.addEventListener("pointercancel", end);
+    cv.addEventListener("wheel", (ev) => {
+      ev.preventDefault();
+      const [sx, sy] = local(ev), w = s2w(sx, sy);
+      MAP.view.s = Math.max(0.4, Math.min(3.2, MAP.view.s * (ev.deltaY < 0 ? 1.12 : 0.89)));
+      MAP.view.ox = (sx - MAP.W/2) - w[0] * MAP.view.s;
+      MAP.view.oy = (sy - MAP.H/2) - w[1] * MAP.view.s;
+    }, { passive: false });
+  }
+
+  function selectMapNode(i) { MAP.sel = i; renderMapPanel(MAP.nodes[i]); }
+  function deselectMapNode() { MAP.sel = null; $("mapPanel").hidden = true; }
+
+  function renderMapPanel(nd) {
+    const panel = $("mapPanel"); panel.replaceChildren();
+    const close = sec.el("button", { class: "mp-close", type: "button" }, "✕");
+    close.addEventListener("click", deselectMapNode);
+    panel.appendChild(close);
+    const meta = kindMeta(nd.kind);
+    const kind = sec.el("span", { class: "mp-kind" }, meta.label);
+    kind.style.background = hexA(meta.c, 0.22); kind.style.color = meta.c;
+    panel.appendChild(kind);
+    panel.appendChild(sec.el("div", { class: "mp-text" }, nd.text || meta.label));
+    const stanceLabel = { pro: "찬성 쪽", con: "반대 쪽", neutral: "중립" }[nd.stance] || "";
+    if (nd.kind !== "topic" && stanceLabel) panel.appendChild(sec.el("div", { class: "mp-meta" }, "입장 · " + stanceLabel));
+    const acts = sec.el("div", { class: "mp-acts" });
+    if (nd.kind === "topic") {
+      acts.appendChild(mkMapAct("편을 정해 주장 더하기", true, () => goComposeStance()));
+    } else if (nd.kind === "claim") {
+      acts.appendChild(mkMapAct("이 주장에 근거 더하기", true, () => goComposeStance("pro")));
+      acts.appendChild(mkMapAct("이 주장에 반박 더하기", false, () => goComposeStance("con")));
+    } else {
+      acts.appendChild(mkMapAct("이 갈래에 생각 더하기", true, () => goComposeStance()));
+    }
+    panel.appendChild(acts);
+    panel.hidden = false;
+  }
+  function mkMapAct(label, solid, fn) {
+    const b = sec.el("button", { class: "mp-act" + (solid ? " solid" : ""), type: "button" }, label);
+    b.addEventListener("click", fn);
+    return b;
+  }
+
+  // 기본 탭 렌더 — 모든 선언(MAP·graphLoaded·startMap…)이 끝난 뒤에 호출한다.
+  loadMap();
 
 </script>
 </body>
