@@ -447,6 +447,8 @@ async def _prune_topic_posts(db: AsyncSession, redis: RedisClient, topics: list[
     (#bloomberg류)를 만들었다가 고쳐졌을 때 그 잔재가 피드에 남지 않게 한다.
     사용자 참여가 붙은 글은 화제가 사라져도 대화 기록으로 보존된다.
     """
+    import re as _re
+
     from sqlalchemy import func as sa_func
 
     from buddle.db.models.comment import Comment
@@ -454,19 +456,22 @@ async def _prune_topic_posts(db: AsyncSession, redis: RedisClient, topics: list[
     from buddle.db.models.post_like import PostLike
     from buddle.db.models.tag import PostTag, Tag
 
-    current = {t.name[:64] for t in topics}
-    cutoff = dt.datetime.now(dt.UTC) - dt.timedelta(hours=_TOPIC_WINDOW_H)
+    cutoff = dt.datetime.now(dt.UTC) - dt.timedelta(days=7)
     rows = (
         await db.execute(
-            select(Post.id, Post.created_at, Tag.name)
+            select(Post.id, Post.created_at, Tag.name, Post.content_transformed)
             .join(PostTag, PostTag.post_id == Post.id)
             .join(Tag, Tag.id == PostTag.tag_id)
             .where(Post.author_label == NEWS_AUTHOR_LABEL)
         )
     ).all()
     pruned = 0
-    for post_id, created_at, tag_name in rows:
-        stale = tag_name not in current or created_at < cutoff
+    for post_id, created_at, tag_name, content in rows:
+        # 잡음 판정: 머리표를 뺀 본문에 한글이 없다 = 번역 이전 시대의 영문
+        # 잔재. 활성 화제라면 삭제해도 다음 틱이 한국어 문안으로 재생성한다.
+        body = (content or "").replace("[지금 화제]", "", 1)
+        junk = not _re.search(r"[가-힣]", body)
+        stale = junk or created_at < cutoff
         if not stale:
             continue
         likes = (
@@ -516,7 +521,7 @@ async def _rebuild_topics(db: AsyncSession, redis: RedisClient) -> list[Topic]:
         )
         for r in rows
     ]
-    topics = build_topics(inputs)
+    topics = build_topics(inputs, max_topics=24)
     await _cache_topics(redis, topics)
     return topics
 
@@ -1026,8 +1031,9 @@ def rank_topics_for_user(
         )
     return sorted(
         topics,
-        key=lambda t: float(t.get("score") or 0.0)
-        * (1.0 + 0.3 * min(_topic_affinity(terms, t), 3)),
+        key=lambda t: (
+            float(t.get("score") or 0.0) * (1.0 + 0.3 * min(_topic_affinity(terms, t), 3))
+        ),
         reverse=True,
     )
 

@@ -623,8 +623,73 @@
   }
   function tagName(t){ return (t&&typeof t==="object") ? (t.name||"") : String(t||""); }
 
+  // 화제 글([지금 화제]) 파싱 — 본문 구조에서 제목·유형을 뽑는다.
+  function parseTopicPost(text){
+    const lines = (text || "").split("\n");
+    const title = (lines[0] || "").replace(/^\[지금 화제\]\s*/, "").trim();
+    let badge = "";
+    for (const ln of lines){ if (ln.startsWith("유형:")) { badge = ln.slice(3).trim(); break; } }
+    return { title, badge };
+  }
+
+  // 피드에 흐르는 화제 글은 텍스트 덩어리가 아니라 화제 카드 형식으로.
+  function topicPostCard(item){
+    const { title, badge } = parseTopicPost(item.content_transformed);
+    const card = sec.el("div", { class:"nt-card" });
+    if (badge){
+      const top = sec.el("div", { class:"nt-top" });
+      badge.split("·").map(b => b.trim()).filter(Boolean).slice(0, 3)
+        .forEach(b => top.appendChild(sec.el("span", { class:"nt-badge" }, b)));
+      card.appendChild(top);
+    }
+    card.appendChild(sec.el("b", { class:"nt-title" }, title || "지금 화제"));
+    const tags = (item.tags || []).map(tagName).filter(Boolean);
+    if (tags.length){
+      const kb = sec.el("div", { class:"nt-kws" });
+      tags.slice(0, 5).forEach(t => kb.appendChild(sec.el("span", { class:"nt-kw" }, "#" + t)));
+      card.appendChild(kb);
+    }
+    const openDetail = () => {
+      try { sessionStorage.setItem("buddle.feed.item." + item.id, JSON.stringify(item)); } catch(_){}
+      const qs = new URLSearchParams({ post: item.id });
+      if (tags[0]) qs.set("tag", tags[0]);
+      location.href = "feed.html?" + qs.toString();
+    };
+    const acts = sec.el("div", { class:"nt-acts" });
+    let liked = false, likeN = item.like_count || 0;
+    const likeBtn = sec.el("button", { class:"nt-act", type:"button" });
+    const paintLike = () => {
+      likeBtn.innerHTML = '<svg viewBox="0 0 24 24"><path d="M20.8 7.6a5 5 0 0 0-7.1 0L12 9.3l-1.7-1.7a5 5 0 1 0-7.1 7.1L12 23l8.8-8.3a5 5 0 0 0 0-7.1z"/></svg>';
+      likeBtn.appendChild(document.createTextNode(" 좋아요 " + likeN));
+      likeBtn.classList.toggle("on", liked);
+    };
+    paintLike();
+    likeBtn.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      liked = !liked; likeN += liked ? 1 : -1; paintLike();
+      try { liked ? await buddle.posts.like(item.id) : await buddle.posts.unlike(item.id); }
+      catch(_){ liked = !liked; likeN += liked ? 1 : -1; paintLike(); }
+    });
+    const cmtBtn = sec.el("button", { class:"nt-act", type:"button" });
+    cmtBtn.innerHTML = '<svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>';
+    cmtBtn.appendChild(document.createTextNode(" 댓글 " + (item.comment_count || 0)));
+    cmtBtn.addEventListener("click", (e) => { e.stopPropagation(); openDetail(); });
+    const debateBtn = sec.el("button", { class:"nt-act debate", type:"button" });
+    debateBtn.innerHTML = '<svg viewBox="0 0 24 24"><path d="M8 10h8M8 14h5"/><path d="M21 12a9 9 0 1 1-4.5-7.8L21 3l-1 4.2A8.9 8.9 0 0 1 21 12z"/></svg>';
+    debateBtn.appendChild(document.createTextNode(" 토론"));
+    debateBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      location.href = "argument-chat.html?post=" + encodeURIComponent(item.id);
+    });
+    acts.append(likeBtn, cmtBtn, debateBtn);
+    card.appendChild(acts);
+    card.addEventListener("click", openDetail);
+    return card;
+  }
+
   // 레딧식 카드 한 장
   function renderCard(item){
+    if ((item.author_label || "") === "지금 화제") return topicPostCard(item);
     const persona = (item.source_persona && item.source_persona.name) || item.author_label || "익명";
     const text = (item.content_transformed || "").trim();
     const tags = (item.tags||[]).map(tagName).filter(Boolean);
@@ -709,12 +774,28 @@
       frag.appendChild(renderCard(it));
     });
     rfeed.appendChild(frag);
-    const oldMore = document.getElementById("rmoreBtn"); if(oldMore) oldMore.remove();
-    if(nextCursor){
-      const more = sec.el("button", { class:"rmore", id:"rmoreBtn" }, "더 보기");
-      more.addEventListener("click", () => loadFeed(nextCursor));
-      rfeed.appendChild(more);
+    ensureFeedSentinel();
+  }
+
+  // 인스타식 무한 스크롤 — 하단 800px 전에 다음 페이지를 자동 로드.
+  let feedIO = null, loadingMore = false;
+  function ensureFeedSentinel(){
+    let sn = document.getElementById("feedSentinel");
+    if (!nextCursor){ if (sn) sn.remove(); return; }
+    if (!sn){
+      sn = sec.el("div", { id:"feedSentinel" });
+      sn.style.height = "1px";
+      if (!feedIO){
+        feedIO = new IntersectionObserver((es) => {
+          if (es.some(e => e.isIntersecting) && nextCursor && !loadingMore){
+            loadingMore = true;
+            loadFeed(nextCursor).finally(() => { loadingMore = false; });
+          }
+        }, { rootMargin: "800px 0px" });
+      }
+      feedIO.observe(sn);
     }
+    rfeed.appendChild(sn);  // 항상 목록 끝으로
   }
 
   // 지금 화제 — 피드와 동일한 카드 형식. 홈은 추천 정렬(점수+내 관심 가산).
