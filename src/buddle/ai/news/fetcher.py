@@ -175,7 +175,9 @@ async def fetch_rss(url: str, *, source_name: str, limit: int = 10) -> list[RawA
                     continue
                 # 태그 제거 후 엔티티 해제 — RSS 제목의 &apos;/&amp; 류가 그대로
                 # 사용자 화면까지 노출되는 것을 여기서 끊는다 (라이브 실측 버그).
-                title = html.unescape(re.sub(r"<[^>]+>", "", title_m.group(1))).strip()
+                title = strip_trailing_attribution(
+                    html.unescape(re.sub(r"<[^>]+>", "", title_m.group(1))).strip()
+                )
                 link = link_m.group(1).strip()
                 if not title or not link:
                     continue
@@ -203,6 +205,26 @@ async def fetch_rss(url: str, *, source_name: str, limit: int = 10) -> list[RawA
     except Exception as e:
         log.warning("rss.fetch_error", source=source_name, url=url, error=str(e))
     return articles
+
+
+# Techmeme류 애그리게이터 제목 말미의 출처 표기 "(Bloomberg)", "(Ina Fried/
+# Axios)" — 토큰이 되면 매체명이 가짜 화제가 된다(라이브 실측: #bloomberg,
+# #verge). 꼬리의 짧은 괄호 표기를 반복 제거한다(한글 없는 ≤6단어 괄호만 —
+# 본문 중간의 의미 있는 괄호는 건드리지 않는다).
+_TRAILING_ATTR_RE = re.compile(r"\s*\(([^()]{1,60})\)\s*$")
+
+
+def strip_trailing_attribution(title: str) -> str:
+    t = (title or "").strip()
+    for _ in range(3):  # "(Bloomberg) (techmeme)" 같은 다중 꼬리
+        m = _TRAILING_ATTR_RE.search(t)
+        if not m:
+            break
+        inner = m.group(1)
+        if re.search(r"[가-힣]", inner) or len(inner.split()) > 6:
+            break
+        t = t[: m.start()].rstrip()
+    return t or (title or "").strip()
 
 
 _SIMHASH_TOKEN_RE = re.compile(r"[0-9A-Za-z가-힣]{2,}")

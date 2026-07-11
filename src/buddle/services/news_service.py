@@ -391,6 +391,108 @@ async def _persist_items(
     return int(result.rowcount or 0)
 
 
+async def _backfill_translations(db: AsyncSession, *, settings: object, limit: int = 20) -> int:
+    """저장돼 있는 미번역(한글 없는) 기사를 소급 번역해 DB를 치유한다.
+
+    번역은 원래 수집 시점에만 돌기 때문에 (a) 번역 기능 배포 이전에 저장된
+    기사와 (b) fail-open으로 원문이 저장된 기사가 72시간 화제 윈도우 안에
+    영어로 남는다(라이브 실측: 화제 카드가 통째로 영어). 틱마다 최신순으로
+    최대 limit건을 배치 번역해 UPDATE — 시스템이 스스로 낫는다.
+    """
+    from buddle.ai.news.translate import translate_articles
+
+    since = dt.datetime.now(dt.UTC) - dt.timedelta(hours=_TOPIC_WINDOW_H)
+    rows = (
+        (
+            await db.execute(
+                select(NewsItem)
+                .where(NewsItem.published_at >= since, ~NewsItem.title.regexp_match("[가-힣]"))
+                .order_by(NewsItem.published_at.desc())
+                .limit(limit)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    if not rows:
+        return 0
+    pseudo = [
+        RawArticle(
+            url=r.url,
+            title=r.title,
+            source=r.source,
+            summary=r.summary,
+            published_at=int(r.published_at.timestamp()),
+        )
+        for r in rows
+    ]
+    translated = await translate_articles(pseudo, settings=settings)
+    healed = 0
+    for row, art in zip(rows, translated, strict=True):
+        if art.translated:
+            row.title = art.title[:500]
+            row.summary = art.summary
+            healed += 1
+    if healed:
+        await db.commit()
+        log.info("news.backfill_translate", scanned=len(rows), healed=healed)
+    return healed
+
+
+async def _prune_topic_posts(db: AsyncSession, redis: RedisClient, topics: list[Topic]) -> int:
+    """유효하지 않은 화제 글을 정리한다 — 단, 참여가 있으면 절대 지우지 않는다.
+
+    삭제 조건(모두 충족): author_label='지금 화제' + 좋아요 0 + 댓글 0 +
+    (태그가 현재 화제 집합에 없음 또는 72h 초과). 알고리즘이 오탐 화제
+    (#bloomberg류)를 만들었다가 고쳐졌을 때 그 잔재가 피드에 남지 않게 한다.
+    사용자 참여가 붙은 글은 화제가 사라져도 대화 기록으로 보존된다.
+    """
+    from sqlalchemy import func as sa_func
+
+    from buddle.db.models.comment import Comment
+    from buddle.db.models.post import Post
+    from buddle.db.models.post_like import PostLike
+    from buddle.db.models.tag import PostTag, Tag
+
+    current = {t.name[:64] for t in topics}
+    cutoff = dt.datetime.now(dt.UTC) - dt.timedelta(hours=_TOPIC_WINDOW_H)
+    rows = (
+        await db.execute(
+            select(Post.id, Post.created_at, Tag.name)
+            .join(PostTag, PostTag.post_id == Post.id)
+            .join(Tag, Tag.id == PostTag.tag_id)
+            .where(Post.author_label == NEWS_AUTHOR_LABEL)
+        )
+    ).all()
+    pruned = 0
+    for post_id, created_at, tag_name in rows:
+        stale = tag_name not in current or created_at < cutoff
+        if not stale:
+            continue
+        likes = (
+            await db.execute(
+                select(sa_func.count()).select_from(PostLike).where(PostLike.post_id == post_id)
+            )
+        ).scalar_one()
+        comments = (
+            await db.execute(
+                select(sa_func.count()).select_from(Comment).where(Comment.post_id == post_id)
+            )
+        ).scalar_one()
+        if likes or comments:
+            continue
+        post = await db.get(Post, post_id)
+        if post is not None:
+            await db.delete(post)
+            pruned += 1
+        with contextlib.suppress(Exception):
+            await redis.delete(_TOPICPOST_KEY + tag_name)
+    if pruned:
+        await db.commit()
+        log.info("news.topic_post.pruned", count=pruned)
+    return pruned
+
+
 async def _rebuild_topics(db: AsyncSession, redis: RedisClient) -> list[Topic]:
     """최근 윈도우의 DB 아이템으로 화제를 재계산하고 Redis에 캐시한다."""
     since = dt.datetime.now(tz=dt.UTC) - dt.timedelta(hours=_TOPIC_WINDOW_H)
@@ -419,12 +521,21 @@ async def _rebuild_topics(db: AsyncSession, redis: RedisClient) -> list[Topic]:
     return topics
 
 
+# 캐시 포맷 버전 — 필드가 늘 때 올린다. 구버전 캐시(title 없음 등)는 배포
+# 직후 그대로 서빙되면 "#키워드" 카드가 뜨므로(라이브 실측) 재계산으로 우회.
+_TOPICS_CACHE_V = 2
+
+
 async def _cache_topics(redis: RedisClient, topics: list[Topic]) -> None:
     await redis.setex(
         _TOPICS_KEY,
         _BRIEFINGS_TTL,
         json.dumps(
-            {"topics": [t.to_dict() for t in topics], "ts": int(time.time())},
+            {
+                "v": _TOPICS_CACHE_V,
+                "topics": [t.to_dict() for t in topics],
+                "ts": int(time.time()),
+            },
             ensure_ascii=False,
         ),
     )
@@ -551,6 +662,16 @@ async def news_tick(db: AsyncSession, *, redis: RedisClient) -> dict[str, object
     except Exception as e:
         log.warning("news.topics_error", error=str(e))
 
+    # 저장돼 있는 미번역 기사 소급 번역 — 배포 이전/실패분을 매 틱 치유.
+    if getattr(settings, "news_translate_foreign", True):
+        try:
+            healed = await _backfill_translations(db, settings=settings)
+            if healed:
+                # 번역된 텍스트로 화제를 다시 계산해야 한국어 카드가 나온다.
+                topics = await _rebuild_topics(db, redis)
+        except Exception as e:
+            log.warning("news.backfill_error", error=str(e))
+
     # 카드 문안 정제(틱당 배치 1회): 키워드 이름 대신 "무슨 일이 일어났는가"
     # 문장형 제목·요약·한국어 키워드. 실패해도 결정론 폴백(대표 헤드라인)이
     # 이미 채워져 있어 서빙은 계속된다.
@@ -569,6 +690,12 @@ async def news_tick(db: AsyncSession, *, redis: RedisClient) -> dict[str, object
         await _ensure_topic_posts(db, redis, topics)
     except Exception as e:
         log.warning("news.topic_post_error", error=str(e))
+
+    # 잔재 화제 글 정리 — 참여 없는 오탐/만료 화제 글만 삭제(참여 글은 보존).
+    try:
+        await _prune_topic_posts(db, redis, topics)
+    except Exception as e:
+        log.warning("news.topic_post_prune_error", error=str(e))
 
     try:
         digest_text = compose_digest(topics)
@@ -766,7 +893,9 @@ async def get_news_topics(
     raw = await redis.get(_TOPICS_KEY)
     if raw:
         with contextlib.suppress(json.JSONDecodeError):
-            topics = json.loads(raw).get("topics") or []
+            payload = json.loads(raw)
+            if payload.get("v") == _TOPICS_CACHE_V:
+                topics = payload.get("topics") or []
     if not topics:
         with contextlib.suppress(Exception):
             topics = [t.to_dict() for t in await _rebuild_topics(db, redis)]

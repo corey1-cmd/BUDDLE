@@ -481,3 +481,36 @@ def test_apply_refinement_fail_open_on_garbage():
         == 0
     )
     assert topics[0].title == before  # 폴백 유지
+
+
+# ── 매체 표기 제거 + 매체명 차단 (라이브 오탐 수정) ─────────────────────────
+
+
+def test_trailing_attribution_stripped():
+    from buddle.ai.news.fetcher import strip_trailing_attribution
+
+    assert (
+        strip_trailing_attribution(
+            "Filing: Polymarket is seeking CFTC approval to offer margin trading (Bloomberg)"
+        )
+        == "Filing: Polymarket is seeking CFTC approval to offer margin trading"
+    )
+    # 다중 꼬리 표기도 제거
+    assert strip_trailing_attribution("Meta risks $12B EU fine (Reuters) (techmeme)") == (
+        "Meta risks $12B EU fine"
+    )
+    # 본문 중간 괄호·긴 괄호·한글 괄호는 보존
+    assert strip_trailing_attribution(
+        "삼성전자(005930) 주가 상승 (지난 분기 실적 발표 이후 이어진 흐름)"
+    ).startswith("삼성전자(005930)")
+    assert strip_trailing_attribution("") == ""
+
+
+def test_media_names_never_become_topics():
+    # 애그리게이터 제목의 매체 토큰이 화제가 되지 않는다 (#bloomberg 실측 오탐).
+    items = [
+        _item("Polymarket seeks CFTC approval Bloomberg", source="techmeme"),
+        _item("CXMT amassing tech funding Bloomberg", source="techmeme"),
+    ]
+    topics = build_topics(items, now=NOW)
+    assert all(t.name.lower() != "bloomberg" for t in topics), [t.name for t in topics]
