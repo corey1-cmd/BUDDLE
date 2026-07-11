@@ -928,6 +928,110 @@ async def _attach_topic_posts(
     return topics
 
 
+_UINTEREST_KEY = "buddle:news:uinterest:"  # + user_id → 관심 용어 캐시 (10분)
+_UINTEREST_TTL = 600
+
+
+async def _user_interest_terms(db: AsyncSession, redis: RedisClient, user_id: object) -> set[str]:
+    """사용자의 관심 용어 집합 — 전부 사용자의 명시적 행동에서 나온다.
+
+    원천: ① 페르소나 관심 태그 ② 좋아요한 글의 태그 ③ 저장한 글의 태그
+    ④ 내가 쓴 글의 태그. 프로파일링 추론이 아니라 행동 기록의 태그 합집합이라
+    설명 가능하고, opt-out 개념도 불필요(자기 행동 그 자체). 10분 캐시.
+    """
+    key = _UINTEREST_KEY + str(user_id)
+    cached = await redis.get(key)
+    if cached:
+        with contextlib.suppress(json.JSONDecodeError):
+            return {str(x) for x in json.loads(cached)}
+
+    from buddle.db.models.persona import Persona
+    from buddle.db.models.post import Post
+    from buddle.db.models.post_bookmark import PostBookmark
+    from buddle.db.models.post_like import PostLike
+    from buddle.db.models.tag import PersonaInterestTag, PostTag, Tag
+
+    terms: set[str] = set()
+    my_personas = select(Persona.id).where(Persona.user_id == user_id)
+    for row in (
+        await db.execute(
+            select(Tag.name)
+            .join(PersonaInterestTag, PersonaInterestTag.tag_id == Tag.id)
+            .where(PersonaInterestTag.persona_id.in_(my_personas))
+        )
+    ).all():
+        terms.add(row[0])
+    for model, cond in (
+        (PostLike, PostLike.user_id == user_id),
+        (PostBookmark, PostBookmark.user_id == user_id),
+    ):
+        for row in (
+            await db.execute(
+                select(Tag.name)
+                .join(PostTag, PostTag.tag_id == Tag.id)
+                .join(model, model.post_id == PostTag.post_id)
+                .where(cond)
+                .limit(200)
+            )
+        ).all():
+            terms.add(row[0])
+    for row in (
+        await db.execute(
+            select(Tag.name)
+            .join(PostTag, PostTag.tag_id == Tag.id)
+            .join(Post, Post.id == PostTag.post_id)
+            .where(Post.source_persona_id.in_(my_personas))
+            .limit(200)
+        )
+    ).all():
+        terms.add(row[0])
+
+    terms = {t.lower() for t in terms if t}
+    with contextlib.suppress(Exception):
+        await redis.setex(key, _UINTEREST_TTL, json.dumps(sorted(terms), ensure_ascii=False))
+    return terms
+
+
+def _topic_affinity(terms: set[str], t: dict[str, object]) -> int:
+    """화제와 관심 용어의 겹침 수 — 이름·키워드·표시 키워드·카테고리 기준."""
+    if not terms:
+        return 0
+    topic_terms: set[str] = {str(t.get("category") or "").lower()}
+    for field_name in ("keywords", "display_keywords"):
+        v = t.get(field_name)
+        if isinstance(v, list):
+            topic_terms.update(str(k).lower() for k in v)
+    name = str(t.get("name") or "").lower()
+    if name:
+        topic_terms.add(name)
+        topic_terms.update(name.split())
+    return len(terms & topic_terms)
+
+
+def rank_topics_for_user(
+    topics: list[dict[str, object]], terms: set[str], mode: str
+) -> list[dict[str, object]]:
+    """개인화 정렬 (순수 함수 — 단위테스트 대상).
+
+    - recommend(홈): 전체 화제 점수가 주도하되 관심 일치가 가산 —
+      score × (1 + 0.3·min(affinity, 3)). "지금 뜨는 것 + 당신 취향".
+    - interest(피드): 관심 일치 우선, 동률은 점수순 — "당신이 관심 가질 것".
+      일치 0인 화제도 뒤에 남긴다(콜드스타트에도 빈 화면이 없다).
+    """
+    if mode == "interest":
+        return sorted(
+            topics,
+            key=lambda t: (_topic_affinity(terms, t), float(t.get("score") or 0.0)),
+            reverse=True,
+        )
+    return sorted(
+        topics,
+        key=lambda t: float(t.get("score") or 0.0)
+        * (1.0 + 0.3 * min(_topic_affinity(terms, t), 3)),
+        reverse=True,
+    )
+
+
 async def get_news_topics(
     db: AsyncSession,
     redis: RedisClient,
@@ -936,6 +1040,8 @@ async def get_news_topics(
     category: str | None = None,
     region: str | None = None,
     limit: int = 12,
+    mode: str = "score",
+    user_id: object | None = None,
 ) -> list[dict[str, object]]:
     """화제 읽기 경로 — 필터(범위·주제·위치)로 좁힌다. 위치 자동 매칭은 없다:
     사용자가 명시적으로 고른 필터만 적용된다(전국/해외 이슈는 위치 불필요).
@@ -960,6 +1066,12 @@ async def get_news_topics(
     if region:
         needle = region.strip()
         topics = [t for t in topics if needle and needle in str(t.get("region") or "")]
+    # 개인화: recommend(홈)=점수 주도+취향 가산 / interest(피드)=관심 일치 우선.
+    # 실패해도 점수순으로 서빙(개인화는 품질 레이어, 가용성 의존성 아님).
+    if user_id is not None and mode in ("recommend", "interest"):
+        with contextlib.suppress(Exception):
+            terms = await _user_interest_terms(db, redis, user_id)
+            topics = rank_topics_for_user(topics, terms, mode)
     with contextlib.suppress(Exception):
         topics = await _attach_topic_posts(db, redis, topics)
     return topics[:limit]

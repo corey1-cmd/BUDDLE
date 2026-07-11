@@ -87,7 +87,7 @@ _TOPIC_CATEGORIES = ("환경", "교육", "경제", "정치", "기술", "사회")
     summary="알고리즘 집계 화제 — 범위/주제/위치 필터로 탐색 (위치 자동 매칭 없음)",
 )
 async def list_topics(
-    _: CurrentUser,
+    user: CurrentUser,
     db: DB,
     redis: Redis,
     scope: str | None = Query(default=None, description="동네|시|도|전국|해외"),
@@ -98,13 +98,26 @@ async def list_topics(
         description="선택 — 지역 이슈를 좁힐 때만 (예: 성남). 전국/해외엔 불필요",
     ),
     limit: int = Query(default=12, ge=1, le=24),
+    mode: str = Query(
+        default="score",
+        description="score=전체 점수순 | recommend=홈 추천(점수+취향 가산) | interest=관심 일치 우선",
+    ),
 ) -> list[NewsTopicOut]:
     if scope and scope not in _TOPIC_SCOPES:
         scope = None
     if category and category not in _TOPIC_CATEGORIES:
         category = None
+    if mode not in ("score", "recommend", "interest"):
+        mode = "score"
     topics = await news_service.get_news_topics(
-        db, redis, scope=scope, category=category, region=region, limit=limit
+        db,
+        redis,
+        scope=scope,
+        category=category,
+        region=region,
+        limit=limit,
+        mode=mode,
+        user_id=user.id,
     )
     out: list[NewsTopicOut] = []
     for t in topics:

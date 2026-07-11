@@ -404,11 +404,12 @@
   /* ── News topics (무-LLM 화제 집계) ────────────────────── */
   const news = {
     // GET /v1/news/topics — 범위(동네|시|도|전국|해외)·주제·위치(선택) 필터.
-    topics({ scope = null, category = null, region = null, limit = 12 } = {}) {
+    topics({ scope = null, category = null, region = null, limit = 12, mode = null } = {}) {
       const qs = new URLSearchParams({ limit: String(limit) });
       if (scope) qs.set("scope", scope);
       if (category) qs.set("category", category);
       if (region) qs.set("region", region);
+      if (mode) qs.set("mode", mode);
       return request("GET", `/v1/news/topics?${qs.toString()}`);
     },
   };
@@ -1008,6 +1009,7 @@
         category: nsFilter.category || null,
         region: nsFilter.region || null,
         limit: 8,
+        mode: "interest",  // 피드 = 사용자가 관심 가질 화제 우선
       });
     } catch (_) {
       // 뉴스 파이프라인이 없는(구버전/오프라인) 서버 → 섹션 자체를 숨긴다.

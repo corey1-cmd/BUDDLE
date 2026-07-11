@@ -92,16 +92,28 @@
   .rmore{width:100%;margin-top:4px;padding:12px;border:1px solid var(--line);border-radius:14px;background:var(--surface);color:var(--willow-text);font-family:var(--body);font-size:14px;font-weight:600;cursor:pointer;}
   .rempty{text-align:center;color:var(--ink-faint);font-size:14px;line-height:1.6;padding:48px 24px;}
 
-  /* ── 지금 화제 스트립 — 뉴스 무-LLM 집계 미리보기 (탭→관심주제의 화제 탐색) ── */
-  .ntstrip{display:flex;gap:10px;overflow-x:auto;padding-bottom:6px;margin-bottom:14px;scrollbar-width:none;-webkit-overflow-scrolling:touch;}
-  .ntstrip::-webkit-scrollbar{display:none;}
-  .ntcard{flex:none;width:190px;padding:12px 13px;border:1px solid var(--line);border-radius:16px;text-decoration:none;
-    background:linear-gradient(158deg,rgba(255,255,255,.055) 0%,rgba(255,255,255,.02) 40%,transparent 62%),var(--paper-raised);
-    box-shadow:0 6px 22px rgba(23,26,60,.08),inset 0 1px 0 rgba(255,255,255,.10);backdrop-filter:blur(20px) saturate(150%);-webkit-backdrop-filter:blur(20px) saturate(150%);}
-  .ntcard b{display:block;font-size:14px;font-weight:700;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-  .ntcard small{display:block;margin-top:3px;font-size:11px;color:var(--ink-faint);}
-  .ntcard .hl{margin-top:7px;font-size:12px;line-height:1.45;color:var(--ink-soft);
-    display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
+  /* ── 지금 화제 — 피드와 동일한 카드 형식(제목·태그·버튼), 추천 정렬 ── */
+  .nt-sec{margin-bottom:16px;}
+  .nt-head{display:flex;align-items:baseline;gap:8px;margin-bottom:10px;}
+  .nt-head h2{font-family:var(--display);font-size:16px;font-weight:600;color:var(--ink);}
+  .nt-head small{font-size:11.5px;color:var(--ink-faint);}
+  .nt-head a{margin-left:auto;font-size:12.5px;font-weight:600;color:var(--willow-text);text-decoration:none;}
+  .nt-card{padding:12px 13px;border:1px solid var(--line);border-radius:16px;background:var(--paper-sunken);margin-bottom:10px;cursor:pointer;transition:border-color .15s,transform .12s;}
+  .nt-card:hover{border-color:var(--line-strong);}
+  .nt-card:active{transform:scale(.99);}
+  .nt-top{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin-bottom:6px;}
+  .nt-badge{font-size:10.5px;font-weight:700;padding:2px 8px;border-radius:999px;background:var(--willow-wash);color:var(--willow-text);}
+  .nt-title{display:block;font-size:15px;font-weight:700;line-height:1.45;color:var(--ink);}
+  .nt-kws{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;}
+  .nt-kw{font-size:11px;font-weight:600;color:var(--willow-text);background:var(--willow-wash);border-radius:999px;padding:2px 9px;}
+  .nt-acts{display:flex;align-items:center;gap:14px;margin-top:10px;}
+  .nt-act{display:flex;align-items:center;gap:6px;font-size:12.5px;font-weight:600;color:var(--ink-soft);
+    background:none;border:0;cursor:pointer;padding:4px 2px;font-family:var(--body);}
+  .nt-act svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:1.9;}
+  .nt-act.on{color:var(--willow-text);}
+  .nt-act.debate{margin-left:auto;color:#fff;background:var(--accent-grad);border-radius:999px;
+    padding:7px 14px;box-shadow:var(--shadow-pop-sm);}
+  .nt-act.debate svg{stroke:#fff;}
 </style>
 </head>
 <body>
@@ -498,11 +510,12 @@
   /* ── News topics (무-LLM 화제 집계) ────────────────────── */
   const news = {
     // GET /v1/news/topics — 범위(동네|시|도|전국|해외)·주제·위치(선택) 필터.
-    topics({ scope = null, category = null, region = null, limit = 12 } = {}) {
+    topics({ scope = null, category = null, region = null, limit = 12, mode = null } = {}) {
       const qs = new URLSearchParams({ limit: String(limit) });
       if (scope) qs.set("scope", scope);
       if (category) qs.set("category", category);
       if (region) qs.set("region", region);
+      if (mode) qs.set("mode", mode);
       return request("GET", `/v1/news/topics?${qs.toString()}`);
     },
   };
@@ -571,8 +584,14 @@
   <!-- 트렌딩 화제 칩 (탭하면 관심주제에서 필터) -->
   <div class="rchips" id="rchips"></div>
 
-  <!-- 지금 화제 — 뉴스 헤드라인 무-LLM 집계 (탭하면 관심주제의 화제 탐색으로) -->
-  <div class="ntstrip" id="ntstrip" style="display:none"></div>
+  <!-- 지금 화제 — 추천 정렬(전체 점수 + 내 관심 가산), 피드와 동일한 카드 형식 -->
+  <section class="nt-sec" id="ntSec" style="display:none">
+    <div class="nt-head">
+      <h2>지금 화제</h2><small>추천</small>
+      <a href="feed.html">전체 보기 →</a>
+    </div>
+    <div id="ntList"></div>
+  </section>
 
   <!-- 레딧식 개별 피드 -->
   <div class="rfeed" id="rfeed"><div class="rloading">불러오는 중…</div></div>
@@ -698,27 +717,72 @@
     }
   }
 
-  // 지금 화제 — 뉴스 무-LLM 집계 미리보기. 탭하면 관심주제의 화제 탐색으로.
-  function renderNewsTopics(topics){
-    const strip = document.getElementById("ntstrip");
-    const items = Array.isArray(topics) ? topics : [];
-    if(!items.length){ strip.style.display = "none"; return; }
-    strip.replaceChildren();
-    items.forEach(t => {
-      // 관심주제로 넘어가되 '그 화제'가 최상단 하이라이트로 뜨게 이름을 넘긴다.
-      // (화제 카드를 다시 탭하면 화제 글 — 좋아요·댓글·토론 — 로 진입)
-      const card = sec.el("a", {
-        class:"ntcard",
-        href:"feed.html?news_topic=" + encodeURIComponent(t.name || ""),
-      });
-      // 문장형 제목(정제/폴백) 우선 — 키워드 해시태그는 최후 폴백.
-      card.appendChild(sec.el("b", null, t.title || ("#" + (t.name || ""))));
-      const region = t.region ? ` · ${t.region}` : "";
-      card.appendChild(sec.el("small", null,
-        `${t.category||"사회"} · ${t.scope||""}${region} · 기사 ${t.count||0}건`));
-      strip.appendChild(card);
+  // 지금 화제 — 피드와 동일한 카드 형식. 홈은 추천 정렬(점수+내 관심 가산).
+  function ntOpenTopic(t){
+    if (t.post_id) {
+      const qs = new URLSearchParams({ post: t.post_id });
+      if (t.name) qs.set("tag", t.name);
+      location.href = "feed.html?" + qs.toString();
+    } else if (t.name) {
+      location.href = "feed.html?news_topic=" + encodeURIComponent(t.name);
+    }
+  }
+  function ntCard(t){
+    const card = sec.el("div", { class:"nt-card" });
+    const top = sec.el("div", { class:"nt-top" });
+    top.appendChild(sec.el("span", { class:"nt-badge" }, t.category || "사회"));
+    const scopeLabel = t.region ? `${t.scope} · ${t.region}` : (t.scope || "");
+    if (scopeLabel) top.appendChild(sec.el("span", { class:"nt-badge" }, scopeLabel));
+    if (t.trend === "상승") top.appendChild(sec.el("span", { class:"nt-badge" }, "↑ 상승"));
+    card.appendChild(top);
+    card.appendChild(sec.el("b", { class:"nt-title" }, t.title || ("#" + (t.name || ""))));
+    const kws = Array.isArray(t.keywords) ? t.keywords : [];
+    if (kws.length){
+      const kb = sec.el("div", { class:"nt-kws" });
+      kws.slice(0, 5).forEach(k => kb.appendChild(sec.el("span", { class:"nt-kw" }, "#" + k)));
+      card.appendChild(kb);
+    }
+    const acts = sec.el("div", { class:"nt-acts" });
+    let liked = false, likeN = t.like_count || 0;
+    const likeBtn = sec.el("button", { class:"nt-act", type:"button" });
+    const paintLike = () => {
+      likeBtn.innerHTML = '<svg viewBox="0 0 24 24"><path d="M20.8 7.6a5 5 0 0 0-7.1 0L12 9.3l-1.7-1.7a5 5 0 1 0-7.1 7.1L12 23l8.8-8.3a5 5 0 0 0 0-7.1z"/></svg>';
+      likeBtn.appendChild(document.createTextNode(" 좋아요 " + likeN));
+      likeBtn.classList.toggle("on", liked);
+    };
+    paintLike();
+    likeBtn.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      if (!t.post_id) { ntOpenTopic(t); return; }
+      liked = !liked; likeN += liked ? 1 : -1; paintLike();
+      try { liked ? await buddle.posts.like(t.post_id) : await buddle.posts.unlike(t.post_id); }
+      catch(_){ liked = !liked; likeN += liked ? 1 : -1; paintLike(); }
     });
-    strip.style.display = "";
+    const cmtBtn = sec.el("button", { class:"nt-act", type:"button" });
+    cmtBtn.innerHTML = '<svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>';
+    cmtBtn.appendChild(document.createTextNode(" 댓글 " + (t.comment_count || 0)));
+    cmtBtn.addEventListener("click", (e) => { e.stopPropagation(); ntOpenTopic(t); });
+    const debateBtn = sec.el("button", { class:"nt-act debate", type:"button" });
+    debateBtn.innerHTML = '<svg viewBox="0 0 24 24"><path d="M8 10h8M8 14h5"/><path d="M21 12a9 9 0 1 1-4.5-7.8L21 3l-1 4.2A8.9 8.9 0 0 1 21 12z"/></svg>';
+    debateBtn.appendChild(document.createTextNode(" 토론"));
+    debateBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      if (t.post_id) location.href = "argument-chat.html?post=" + encodeURIComponent(t.post_id);
+      else ntOpenTopic(t);
+    });
+    acts.append(likeBtn, cmtBtn, debateBtn);
+    card.appendChild(acts);
+    card.addEventListener("click", () => ntOpenTopic(t));
+    return card;
+  }
+  function renderNewsTopics(topics){
+    const box = document.getElementById("ntSec");
+    const list = document.getElementById("ntList");
+    const items = Array.isArray(topics) ? topics : [];
+    if(!items.length){ box.style.display = "none"; return; }
+    list.replaceChildren();
+    items.forEach(t => list.appendChild(ntCard(t)));
+    box.style.display = "";
   }
 
   // 트렌딩 화제 칩 — 탭하면 관심주제에서 필터
@@ -740,7 +804,7 @@
     }).catch(()=>{});
     buddle.tags.trending({days:7,limit:8}).then(renderChips).catch(()=>{ rchips.style.display="none"; });
     // 뉴스 화제 스트립 — 파이프라인이 없는 서버에선 조용히 생략(빈 상태 유지).
-    buddle.news.topics({limit:8}).then(renderNewsTopics).catch(()=>{});
+    buddle.news.topics({limit:3, mode:"recommend"}).then(renderNewsTopics).catch(()=>{});
     loadFeed();
   })();
 </script>

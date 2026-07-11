@@ -561,3 +561,35 @@ def test_fallback_interpretation_fields():
     assert t.event == "전기차 보조금 신청 폭주"
     assert t.question  # 템플릿 질문 존재
     assert t.forecast == "" and t.problem == ""
+
+
+# ── 개인화 정렬 (홈=recommend, 피드=interest) ───────────────────────────────
+
+
+def test_rank_topics_interest_puts_matching_first():
+    from buddle.services.news_service import rank_topics_for_user
+
+    topics = [
+        {"name": "폭염 전력", "score": 0.9, "keywords": ["폭염 전력"], "category": "환경"},
+        {"name": "전기차 보조금", "score": 0.4, "keywords": ["전기차 보조금"], "category": "경제"},
+    ]
+    terms = {"전기차 보조금"}
+    ranked = rank_topics_for_user(topics, terms, "interest")
+    assert ranked[0]["name"] == "전기차 보조금"  # 점수가 낮아도 관심 일치 우선
+    # 일치 0인 화제도 뒤에 남는다(콜드스타트에도 빈 화면 없음)
+    assert ranked[1]["name"] == "폭염 전력"
+
+
+def test_rank_topics_recommend_is_score_led_with_affinity_boost():
+    from buddle.services.news_service import rank_topics_for_user
+
+    topics = [
+        {"name": "폭염 전력", "score": 0.9, "keywords": ["폭염 전력"], "category": "환경"},
+        {"name": "전기차 보조금", "score": 0.8, "keywords": ["전기차 보조금"], "category": "경제"},
+    ]
+    # 취향 가산으로 근소한 점수 차는 뒤집힌다: 0.8×1.3 > 0.9
+    ranked = rank_topics_for_user(topics, {"전기차 보조금"}, "recommend")
+    assert ranked[0]["name"] == "전기차 보조금"
+    # 취향 없으면 순수 점수순
+    ranked = rank_topics_for_user(topics, set(), "recommend")
+    assert ranked[0]["name"] == "폭염 전력"
