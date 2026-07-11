@@ -968,9 +968,21 @@ class Topic:
     # 사람이 읽는 화제 카드 문안 — "무슨 일이 일어났는가"를 담은 문장형 제목과
     # 한 문장 요약. 기본값은 결정론 폴백(대표 헤드라인·발췌)이고, 틱의 LLM
     # 배치 정제(ai/news/refine.py)가 성공하면 그 문안으로 교체된다.
+    # 원칙: Entity(회사·인물·제품)는 화제가 아니다 — 화제는 사건·문제·변화·
+    # 질문을 서술해야 한다. 폴백 제목이 헤드라인(사건 서술문)인 이유.
     title: str = ""
     summary: str = ""
     display_keywords: list[str] = field(default_factory=list)
+    # 화제 해석(상세 페이지 전용) — 유형/핵심 사건/핵심 문제/핵심 질문/전망/
+    # 핵심 기술/관련 기업. 결정론 층은 발췌·템플릿만 채우고(추측 금지 —
+    # 전망은 비움), LLM 정제가 성공하면 해석으로 교체된다.
+    type_label: str = ""
+    event: str = ""
+    problem: str = ""
+    question: str = ""
+    forecast: str = ""
+    technologies: list[str] = field(default_factory=list)
+    entities: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -990,8 +1002,26 @@ class Topic:
             "title": self.title,
             "summary": self.summary,
             "display_keywords": self.display_keywords,
+            "type_label": self.type_label,
+            "event": self.event,
+            "problem": self.problem,
+            "question": self.question,
+            "forecast": self.forecast,
+            "technologies": self.technologies,
+            "entities": self.entities,
         }
 
+
+# 폴백용 핵심 질문 — "독자가 클릭하고 싶은 질문" 원칙의 결정론 버전.
+# LLM 정제가 클러스터 맞춤 질문으로 교체하며, 이것은 최후의 안전값이다.
+_QUESTION_TEMPLATES: dict[str, str] = {
+    "환경": "이 변화는 우리 일상과 환경에 어떤 영향을 줄까요?",
+    "교육": "학생과 학부모에게는 어떤 변화가 생길까요?",
+    "경제": "내 지갑과 우리 경제에는 어떤 영향이 있을까요?",
+    "정치": "이 결정은 앞으로 어떤 변화로 이어질까요?",
+    "기술": "이 기술 변화는 앞으로 어떤 방향으로 확산될까요?",
+    "사회": "이 이슈, 우리는 어떻게 봐야 할까요?",
+}
 
 _RECENCY_HALF_LIFE_H = 24.0
 _MERGE_OVERLAP = 0.6  # two keywords sharing ≥60% of articles form one topic
@@ -1293,6 +1323,11 @@ def build_topics(
         t.summary = gist
         ko_kws = [kw for kw in t.keywords if re.search(r"[가-힣]", kw)]
         t.display_keywords = (ko_kws or list(t.keywords))[:5]
+        # 해석 폴백 — 사건은 발췌(대표 헤드라인), 질문은 주제별 템플릿.
+        # 문제/전망은 결정론 층에서 만들지 않는다(추측 금지) — LLM 정제 전용.
+        t.event = rep.title[:120]
+        t.question = _QUESTION_TEMPLATES.get(t.category, _QUESTION_TEMPLATES["사회"])
+        t.type_label = f"{t.category} 이슈"
 
         # ── 5) 추세 (M7) ───────────────────────────────────────────────────
         t.p_rise, t.p_hold, t.p_fall, t.trend = topic_trend(

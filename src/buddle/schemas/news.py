@@ -66,3 +66,6 @@ class NewsTopicOut(BaseModel):
     title: str = ""
     summary: str = ""
     keywords: list[str] = []
+    # 카드 상호작용 버튼용 — 화제 글의 실카운트(글 미생성 시 0).
+    like_count: int = 0
+    comment_count: int = 0

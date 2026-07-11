@@ -672,6 +672,15 @@
   .nt-kw{font-size:11px;font-weight:600;color:var(--willow-text);background:var(--willow-wash);border-radius:999px;padding:2px 9px;}
   .nt-srcrow{display:flex;align-items:center;gap:6px;margin-top:9px;font-size:12px;font-weight:600;color:var(--ink-faint);}
   .nt-srcrow svg{width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:2;}
+  /* 카드 액션 줄 — 좋아요(카드 내 토글)·댓글(상세)·토론(논증 대화) */
+  .nt-acts{display:flex;align-items:center;gap:14px;margin-top:10px;}
+  .nt-act{display:flex;align-items:center;gap:6px;font-size:12.5px;font-weight:600;color:var(--ink-soft);
+    background:none;border:0;cursor:pointer;padding:4px 2px;font-family:var(--body);}
+  .nt-act svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:1.9;}
+  .nt-act.on{color:var(--willow-text);}
+  .nt-act.debate{margin-left:auto;color:#fff;background:var(--accent-grad);border-radius:999px;
+    padding:7px 14px;box-shadow:var(--shadow-pop-sm);}
+  .nt-act.debate svg{stroke:#fff;}
   /* 상세의 "관련 기사" 출처 목록 (화제 글 전용) */
   .src-box{margin:14px 0;padding:13px 14px;background:var(--paper-sunken);border:1px solid var(--line);border-radius:14px;}
   .src-box .sb-head{font-size:13px;font-weight:700;color:var(--ink-soft);margin-bottom:9px;}
@@ -1025,8 +1034,8 @@
   }
 
   function nsTopicCard(t, highlight) {
-    // Ground News식 문안 카드: 문장형 제목 → 요약 → 관련 키워드 → 기사 N건.
-    // 헤드라인 원문 링크는 카드가 아니라 상세(화제 글)에서 제공한다.
+    // 피드 카드는 화제와 태그만 — 요약·관련 보도는 상세 페이지 전용.
+    // 액션: 좋아요(카드에서 바로) · 댓글(상세) · 토론(논증 대화).
     const card = sec.el("div", { class: "nt-card" + (highlight ? " hl" : "") });
     const top = sec.el("div", { class: "nt-top" });
     top.appendChild(sec.el("span", { class: "nt-badge" }, t.category || "사회"));
@@ -1036,24 +1045,48 @@
     card.appendChild(top);
 
     card.appendChild(sec.el("b", { class: "nt-title" }, t.title || ("#" + (t.name || ""))));
-    if (t.summary) card.appendChild(sec.el("div", { class: "nt-sum" }, t.summary));
-    const kws = Array.isArray(t.keywords) && t.keywords.length ? t.keywords
-      : (Array.isArray(t.headlines) ? [] : []);
+    const kws = Array.isArray(t.keywords) ? t.keywords : [];
     if (kws.length) {
       const kb = sec.el("div", { class: "nt-kws" });
       kws.slice(0, 5).forEach(k => kb.appendChild(sec.el("span", { class: "nt-kw" }, "#" + k)));
       card.appendChild(kb);
     }
-    const src = sec.el("div", { class: "nt-srcrow" });
-    src.innerHTML = '<svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"/></svg>';
-    src.appendChild(document.createTextNode(
-      `관련 기사 ${t.count || 0}건 · 매체 ${(t.sources || []).length}곳 — 눌러서 자세히`));
-    card.appendChild(src);
-    const join = sec.el("div", { class: "nt-join" });
-    join.innerHTML = '<svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>';
-    join.appendChild(document.createTextNode("이 화제에 참여하기 — 좋아요·댓글·토론"));
-    card.appendChild(join);
-    // 카드 탭 = 화제 글(상호작용)로. 뉴스로 바로 넘기지 않는다(레딧식).
+
+    const acts = sec.el("div", { class: "nt-acts" });
+    // 좋아요 — 화제 글에 바로 토글(글이 아직 없으면 상세 폴백과 동일하게 이동)
+    let liked = false, likeN = t.like_count || 0;
+    const likeBtn = sec.el("button", { class: "nt-act", type: "button" });
+    const paintLike = () => {
+      likeBtn.innerHTML = '<svg viewBox="0 0 24 24"><path d="M20.8 7.6a5 5 0 0 0-7.1 0L12 9.3l-1.7-1.7a5 5 0 1 0-7.1 7.1L12 23l8.8-8.3a5 5 0 0 0 0-7.1z"/></svg>';
+      likeBtn.appendChild(document.createTextNode(" 좋아요 " + likeN));
+      likeBtn.classList.toggle("on", liked);
+    };
+    paintLike();
+    likeBtn.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      if (!t.post_id) { nsOpenTopic(t); return; }
+      liked = !liked; likeN += liked ? 1 : -1; paintLike();
+      try { liked ? await buddle.posts.like(t.post_id) : await buddle.posts.unlike(t.post_id); }
+      catch (_) { liked = !liked; likeN += liked ? 1 : -1; paintLike(); }
+    });
+    // 댓글 — 상세(화제 글)로
+    const cmtBtn = sec.el("button", { class: "nt-act", type: "button" });
+    cmtBtn.innerHTML = '<svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>';
+    cmtBtn.appendChild(document.createTextNode(" 댓글 " + (t.comment_count || 0)));
+    cmtBtn.addEventListener("click", (e) => { e.stopPropagation(); nsOpenTopic(t); });
+    // 토론 — 논증 대화로 직행
+    const debateBtn = sec.el("button", { class: "nt-act debate", type: "button" });
+    debateBtn.innerHTML = '<svg viewBox="0 0 24 24"><path d="M8 10h8M8 14h5"/><path d="M21 12a9 9 0 1 1-4.5-7.8L21 3l-1 4.2A8.9 8.9 0 0 1 21 12z"/></svg>';
+    debateBtn.appendChild(document.createTextNode(" 토론"));
+    debateBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      if (t.post_id) location.href = "argument-chat.html?post=" + encodeURIComponent(t.post_id);
+      else nsOpenTopic(t);
+    });
+    acts.append(likeBtn, cmtBtn, debateBtn);
+    card.appendChild(acts);
+
+    // 카드 탭 = 상세 페이지(요약·해석·관련 보도·전체 상호작용)로.
     card.addEventListener("click", () => nsOpenTopic(t));
     return card;
   }

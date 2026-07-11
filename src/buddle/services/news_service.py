@@ -757,26 +757,38 @@ NEWS_AUTHOR_LABEL = "지금 화제"
 
 
 def compose_topic_post(t: Topic) -> str:
-    """화제 글 본문 — 카드 문안(제목·요약·키워드) + 출처 표기로 조립한다.
+    """화제 글 본문 — 새 출력 형식: 화제/유형/핵심 사건/핵심 문제/핵심 기술/
+    관련 기업/핵심 질문/미래 전망 + 관련 기사(출처 무생략).
 
-    이 텍스트가 논증 대화(argument-chat)와 댓글의 시드가 되므로 사실 진술과
-    참여 유도 한 줄로 구성하고, 출처(언론사·제목·발행일)는 절대 생략하지
-    않는다. 문안은 정제(LLM 배치) 결과 또는 결정론 폴백 — 둘 다 여기선 구분
-    없이 t.title/t.summary로 들어온다.
+    채워진 필드만 표기한다: 결정론 폴백은 사건·질문까지만 만들고(추측 금지),
+    문제·전망은 LLM 정제가 성공했을 때만 존재한다. 이 텍스트가 논증 대화와
+    댓글의 시드가 된다.
     """
     title = t.title or t.name
-    where = f"{t.region} · " if t.region else ""
     lines = [f"[지금 화제] {title}", ""]
     if t.summary:
         lines += [t.summary, ""]
+    meta_bits = [
+        t.type_label or f"{t.category} 이슈",
+        t.scope + (f" · {t.region}" if t.region else ""),
+    ]
+    lines.append("유형: " + " · ".join(b for b in meta_bits if b))
+    if t.event and t.event != title:
+        lines.append(f"핵심 사건: {t.event}")
+    if t.problem:
+        lines.append(f"핵심 문제: {t.problem}")
+    if t.technologies:
+        lines.append("핵심 기술: " + ", ".join(t.technologies))
+    if t.entities:
+        lines.append("관련 기업·인물: " + ", ".join(t.entities))
+    if t.question:
+        lines.append(f"핵심 질문: {t.question}")
+    if t.forecast:
+        lines.append(f"미래 전망: {t.forecast}")
     if t.display_keywords:
-        lines += ["관련 키워드: " + ", ".join(t.display_keywords), ""]
-    lines.append(
-        f"{where}{t.category} · {t.scope} — 관련 기사 {t.count}건, 매체 {len(t.sources)}곳"
-        f" · 추세 {t.trend}"
-    )
+        lines.append("관련 키워드: " + ", ".join(t.display_keywords))
     lines.append("")
-    lines.append("관련 기사:")
+    lines.append(f"관련 기사 {t.count}건 · 매체 {len(t.sources)}곳 · 추세 {t.trend}:")
     for h in t.headlines[:4]:
         date = f", {h['date']}" if h.get("date") else ""
         lines.append(f"· {h.get('title', '')} ({h.get('source', '')}{date})")
@@ -862,16 +874,57 @@ async def _ensure_topic_posts(
 
 
 async def _attach_topic_posts(
-    redis: RedisClient, topics: list[dict[str, object]]
+    db: AsyncSession, redis: RedisClient, topics: list[dict[str, object]]
 ) -> list[dict[str, object]]:
-    """서빙 직전에 화제 dict에 post_id를 붙인다(Redis 매핑 일괄 조회)."""
+    """서빙 직전에 화제 dict에 post_id + 좋아요/댓글 수를 붙인다.
+
+    카드의 상호작용 버튼(좋아요·댓글·토론)이 실카운트를 보여야 하므로,
+    Redis 매핑 일괄 조회 후 카운트는 그룹 집계 2쿼리로 끝낸다.
+    """
+    import uuid as _uuid
+
+    from sqlalchemy import func as sa_func
+
+    from buddle.db.models.comment import Comment
+    from buddle.db.models.post_like import PostLike
+
     if not topics:
         return topics
     keys = [_TOPICPOST_KEY + str(t.get("name") or "")[:64] for t in topics]
     values = await redis.mget(keys)
+    post_ids: list[_uuid.UUID] = []
     for t, v in zip(topics, values, strict=True):
         if v:
             t["post_id"] = str(v)
+            with contextlib.suppress(ValueError):
+                post_ids.append(_uuid.UUID(str(v)))
+    if post_ids:
+        like_map = {
+            pid: int(n)
+            for pid, n in (
+                await db.execute(
+                    select(PostLike.post_id, sa_func.count())
+                    .where(PostLike.post_id.in_(post_ids))
+                    .group_by(PostLike.post_id)
+                )
+            ).all()
+        }
+        cmt_map = {
+            pid: int(n)
+            for pid, n in (
+                await db.execute(
+                    select(Comment.post_id, sa_func.count())
+                    .where(Comment.post_id.in_(post_ids))
+                    .group_by(Comment.post_id)
+                )
+            ).all()
+        }
+        for t in topics:
+            if t.get("post_id"):
+                with contextlib.suppress(ValueError):
+                    pid = _uuid.UUID(str(t["post_id"]))
+                    t["like_count"] = like_map.get(pid, 0)
+                    t["comment_count"] = cmt_map.get(pid, 0)
     return topics
 
 
@@ -908,7 +961,7 @@ async def get_news_topics(
         needle = region.strip()
         topics = [t for t in topics if needle and needle in str(t.get("region") or "")]
     with contextlib.suppress(Exception):
-        topics = await _attach_topic_posts(redis, topics)
+        topics = await _attach_topic_posts(db, redis, topics)
     return topics[:limit]
 
 

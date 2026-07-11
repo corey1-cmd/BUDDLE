@@ -138,6 +138,8 @@ async def list_topics(
                 title=str(t.get("title") or ""),
                 summary=str(t.get("summary") or ""),
                 keywords=[str(k) for k in kws_list],
+                like_count=int(t.get("like_count") or 0),  # type: ignore[call-overload]
+                comment_count=int(t.get("comment_count") or 0),  # type: ignore[call-overload]
             )
         )
     return out

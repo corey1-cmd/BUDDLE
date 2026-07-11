@@ -514,3 +514,50 @@ def test_media_names_never_become_topics():
     ]
     topics = build_topics(items, now=NOW)
     assert all(t.name.lower() != "bloomberg" for t in topics), [t.name for t in topics]
+
+
+def test_refinement_rejects_entity_only_title_and_applies_interpretation():
+    from buddle.ai.news.refine import apply_refinement
+
+    items = [
+        _item("Apple sues OpenAI over hardware secrets", source="Reuters"),
+        _item("Apple lawsuit targets OpenAI device team", source="Verge"),
+    ]
+    topics = build_topics(items, now=NOW, min_count=2)
+    assert topics
+    fallback = topics[0].title
+    # Entity 단독 제목("애플")은 기각 — 화제는 사건을 서술해야 한다
+    rejected = '{"items": [{"i": 0, "topic": "애플", "summary": "애플과 오픈AI 사이의 소송전이 시작되며 업계의 관심이 쏠리고 있습니다.", "keywords": ["애플", "AI"]}]}'
+    assert apply_refinement(topics, rejected) == 0
+    assert topics[0].title == fallback
+    # 사건 서술형 + 해석 필드는 반영
+    ok = (
+        '{"items": [{"i": 0, "topic": "AI 하드웨어 기술 유출과 지식재산권 경쟁", '
+        '"type": "산업 동향", '
+        '"summary": "애플이 오픈AI를 상대로 하드웨어 기술 유출을 주장하며 소송을 제기해 기술 자산 보호 경쟁이 격화되고 있다.", '
+        '"event": "애플이 오픈AI를 상대로 기술 유출 소송 제기", '
+        '"problem": "생성형 AI 기업 간 기술 자산 보호 경쟁", '
+        '"question": "AI 기업 간 기술 경쟁은 어떤 방향으로 확산될 것인가?", '
+        '"forecast": "AI 하드웨어 시장에서 특허·영업비밀 분쟁이 증가할 가능성이 높다.", '
+        '"keywords": ["애플", "오픈AI", "지식재산권"], '
+        '"technologies": ["AI Hardware", "Trade Secret"], '
+        '"entities": ["Apple", "OpenAI"]}]}'
+    )
+    assert apply_refinement(topics, ok) == 1
+    t = topics[0]
+    assert t.title == "AI 하드웨어 기술 유출과 지식재산권 경쟁"
+    assert t.type_label == "산업 동향"
+    assert t.problem and t.question and t.forecast
+    assert t.entities == ["Apple", "OpenAI"]
+
+
+def test_fallback_interpretation_fields():
+    # 결정론 층: 사건=대표 헤드라인, 질문=주제 템플릿, 전망/문제는 비움(추측 금지)
+    items = [
+        _item("전기차 보조금 지급 기준 변경", source="a"),
+        _item("전기차 보조금 신청 폭주", source="b", age_h=0.5),
+    ]
+    t = build_topics(items, now=NOW)[0]
+    assert t.event == "전기차 보조금 신청 폭주"
+    assert t.question  # 템플릿 질문 존재
+    assert t.forecast == "" and t.problem == ""

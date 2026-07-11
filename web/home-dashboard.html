@@ -716,7 +716,6 @@
       const region = t.region ? ` · ${t.region}` : "";
       card.appendChild(sec.el("small", null,
         `${t.category||"사회"} · ${t.scope||""}${region} · 기사 ${t.count||0}건`));
-      if (t.summary) card.appendChild(sec.el("span", { class:"hl" }, t.summary));
       strip.appendChild(card);
     });
     strip.style.display = "";
