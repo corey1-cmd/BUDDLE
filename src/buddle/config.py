@@ -76,6 +76,9 @@ class Settings(BaseSettings):
     # 해외 RSS 한국어 배치 번역(틱당 1~2회 호출, 기사당 아님) — 실패 시 원문
     # 공개(fail-open). 끄면 해외 기사가 원문(영문)으로 공개된다.
     news_translate_foreign: bool = True
+    # 화제 카드 문안 정제(틱당 배치 1회): 키워드 대신 문장형 한국어 제목·요약·
+    # 키워드를 생성. 실패 시 결정론 폴백(대표 헤드라인=제목)으로 서빙 계속.
+    news_topic_refine_enabled: bool = True
     # Minimum relevance score (0-1) for an article to be stored after AI analysis.
     news_relevance_threshold: float = 0.3
     # Per-article LLM analysis in the news pipeline. Default OFF: it made one

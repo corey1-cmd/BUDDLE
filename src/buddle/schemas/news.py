@@ -37,11 +37,12 @@ class NewsDigestOut(BaseModel):
 
 
 class NewsTopicHeadline(BaseModel):
-    """제목+링크+출처만 — 권리엔진 default-deny 하에서 안전한 최소 표면."""
+    """제목+링크+출처+발행일 — 권리엔진 default-deny 하에서 안전한 최소 표면."""
 
     title: str
     url: str
     source: str
+    date: str = ""  # YYYY-MM-DD (발행일 표기 — 출처는 절대 생략하지 않는다)
 
 
 class NewsTopicOut(BaseModel):
@@ -60,3 +61,8 @@ class NewsTopicOut(BaseModel):
     # 화제 글(광장) id — 카드 탭 시 뉴스 링크가 아니라 좋아요·댓글·토론이 있는
     # 글 상세로 이동한다(레딧식). tick이 화제마다 멱등 생성.
     post_id: str | None = None
+    # 사람이 읽는 카드 문안 — 문장형 제목("무슨 일이 일어났는가")·한 문장
+    # 요약·표시 키워드(한국어). LLM 정제 또는 결정론 폴백(대표 헤드라인).
+    title: str = ""
+    summary: str = ""
+    keywords: list[str] = []

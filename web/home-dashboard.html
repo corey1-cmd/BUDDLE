@@ -711,12 +711,12 @@
         class:"ntcard",
         href:"feed.html?news_topic=" + encodeURIComponent(t.name || ""),
       });
-      card.appendChild(sec.el("b", null, "#"+(t.name||"")));
+      // 문장형 제목(정제/폴백) 우선 — 키워드 해시태그는 최후 폴백.
+      card.appendChild(sec.el("b", null, t.title || ("#" + (t.name || ""))));
       const region = t.region ? ` · ${t.region}` : "";
       card.appendChild(sec.el("small", null,
-        `${t.category||"사회"} · ${t.scope||""}${region} · ${t.count||0}건`));
-      const h = Array.isArray(t.headlines) ? t.headlines[0] : null;
-      if (h && h.title) card.appendChild(sec.el("span", { class:"hl" }, h.title));
+        `${t.category||"사회"} · ${t.scope||""}${region} · 기사 ${t.count||0}건`));
+      if (t.summary) card.appendChild(sec.el("span", { class:"hl" }, t.summary));
       strip.appendChild(card);
     });
     strip.style.display = "";

@@ -112,6 +112,8 @@ async def list_topics(
         heads = heads_raw if isinstance(heads_raw, list) else []
         sources_raw = t.get("sources")
         sources_list = sources_raw if isinstance(sources_raw, list) else []
+        kws_raw = t.get("display_keywords")
+        kws_list = kws_raw if isinstance(kws_raw, list) else []
         out.append(
             NewsTopicOut(
                 name=str(t.get("name") or ""),
@@ -125,6 +127,7 @@ async def list_topics(
                         title=str(h.get("title") or ""),
                         url=str(h.get("url") or ""),
                         source=str(h.get("source") or ""),
+                        date=str(h.get("date") or ""),
                     )
                     for h in heads
                     if isinstance(h, dict)
@@ -132,6 +135,9 @@ async def list_topics(
                 trend=str(t.get("trend") or "유지"),
                 p_rise=float(t.get("p_rise") or 0.0),  # type: ignore[arg-type]
                 post_id=(str(t["post_id"]) if t.get("post_id") else None),
+                title=str(t.get("title") or ""),
+                summary=str(t.get("summary") or ""),
+                keywords=[str(k) for k in kws_list],
             )
         )
     return out

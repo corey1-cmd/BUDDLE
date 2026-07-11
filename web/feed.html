@@ -666,6 +666,20 @@
   .nt-name{font-size:14.5px;font-weight:700;color:var(--ink);}
   .nt-badge{font-size:10.5px;font-weight:700;padding:2px 8px;border-radius:999px;background:var(--willow-wash);color:var(--willow-text);}
   .nt-meta{font-size:11.5px;color:var(--ink-faint);margin-left:auto;}
+  .nt-title{display:block;font-size:15px;font-weight:700;line-height:1.45;color:var(--ink);}
+  .nt-sum{margin-top:6px;font-size:13px;line-height:1.55;color:var(--ink-soft);}
+  .nt-kws{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;}
+  .nt-kw{font-size:11px;font-weight:600;color:var(--willow-text);background:var(--willow-wash);border-radius:999px;padding:2px 9px;}
+  .nt-srcrow{display:flex;align-items:center;gap:6px;margin-top:9px;font-size:12px;font-weight:600;color:var(--ink-faint);}
+  .nt-srcrow svg{width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:2;}
+  /* 상세의 "관련 기사" 출처 목록 (화제 글 전용) */
+  .src-box{margin:14px 0;padding:13px 14px;background:var(--paper-sunken);border:1px solid var(--line);border-radius:14px;}
+  .src-box .sb-head{font-size:13px;font-weight:700;color:var(--ink-soft);margin-bottom:9px;}
+  .src-item{display:block;padding:7px 0;border-top:1px solid var(--line);text-decoration:none;}
+  .src-item:first-of-type{border-top:none;padding-top:0;}
+  .src-item b{display:block;font-size:13px;font-weight:600;line-height:1.45;color:var(--ink);}
+  .src-item small{font-size:11.5px;color:var(--ink-faint);}
+  .src-item:hover b{color:var(--willow-text);}
   .nt-heads{margin-top:7px;display:flex;flex-direction:column;gap:4px;}
   .nt-heads a{font-size:12.5px;line-height:1.45;color:var(--ink-soft);text-decoration:none;display:block;
     white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
@@ -1011,30 +1025,30 @@
   }
 
   function nsTopicCard(t, highlight) {
+    // Ground News식 문안 카드: 문장형 제목 → 요약 → 관련 키워드 → 기사 N건.
+    // 헤드라인 원문 링크는 카드가 아니라 상세(화제 글)에서 제공한다.
     const card = sec.el("div", { class: "nt-card" + (highlight ? " hl" : "") });
     const top = sec.el("div", { class: "nt-top" });
-    top.appendChild(sec.el("span", { class: "nt-name" }, "#" + (t.name || "")));
     top.appendChild(sec.el("span", { class: "nt-badge" }, t.category || "사회"));
     const scopeLabel = t.region ? `${t.scope} · ${t.region}` : (t.scope || "");
     if (scopeLabel) top.appendChild(sec.el("span", { class: "nt-badge" }, scopeLabel));
     if (t.trend === "상승") top.appendChild(sec.el("span", { class: "nt-badge" }, "↑ 상승"));
-    top.appendChild(sec.el("span", { class: "nt-meta" },
-      `기사 ${t.count || 0}건 · 매체 ${(t.sources || []).length}곳`));
     card.appendChild(top);
-    const heads = Array.isArray(t.headlines) ? t.headlines.slice(0, 3) : [];
-    if (heads.length) {
-      const hbox = sec.el("div", { class: "nt-heads" });
-      heads.forEach(h => {
-        const a = sec.el("a", {
-          href: sec.safeUrl(h && h.url), target: "_blank", rel: "noopener noreferrer",
-          title: (h && h.source) || "",
-        }, (h && h.title) || "");
-        // 원문 링크는 부가 정보 — 카드 클릭(화제 참여)과 분리한다.
-        a.addEventListener("click", (e) => e.stopPropagation());
-        hbox.appendChild(a);
-      });
-      card.appendChild(hbox);
+
+    card.appendChild(sec.el("b", { class: "nt-title" }, t.title || ("#" + (t.name || ""))));
+    if (t.summary) card.appendChild(sec.el("div", { class: "nt-sum" }, t.summary));
+    const kws = Array.isArray(t.keywords) && t.keywords.length ? t.keywords
+      : (Array.isArray(t.headlines) ? [] : []);
+    if (kws.length) {
+      const kb = sec.el("div", { class: "nt-kws" });
+      kws.slice(0, 5).forEach(k => kb.appendChild(sec.el("span", { class: "nt-kw" }, "#" + k)));
+      card.appendChild(kb);
     }
+    const src = sec.el("div", { class: "nt-srcrow" });
+    src.innerHTML = '<svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"/></svg>';
+    src.appendChild(document.createTextNode(
+      `관련 기사 ${t.count || 0}건 · 매체 ${(t.sources || []).length}곳 — 눌러서 자세히`));
+    card.appendChild(src);
     const join = sec.el("div", { class: "nt-join" });
     join.innerHTML = '<svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>';
     join.appendChild(document.createTextNode("이 화제에 참여하기 — 좋아요·댓글·토론"));
@@ -1251,6 +1265,31 @@
     renderDetail(post, Array.isArray(comments) ? comments : []);
   }
 
+  // 화제 글의 관련 기사 목록: 화제 캐시에서 태그명으로 매칭해 출처를 그린다.
+  async function loadTopicSources(post, wrap) {
+    const tags = Array.isArray(post.tags) ? post.tags.map(tagName) : [];
+    const nameHint = (params.get("tag") || "").trim() || tags[0] || "";
+    if (!nameHint) return;
+    let topics = [];
+    try { topics = await buddle.news.topics({ limit: 24 }); } catch (_) { return; }
+    const t = (topics || []).find(x => (x.name || "") === nameHint)
+      || (topics || []).find(x => tags.includes(x.name || ""));
+    if (!t || !Array.isArray(t.headlines) || !t.headlines.length) return;
+    const box = sec.el("div", { class: "src-box" });
+    box.appendChild(sec.el("div", { class: "sb-head" }, `관련 기사 ${t.count || t.headlines.length}건`));
+    t.headlines.forEach(h => {
+      const a = sec.el("a", {
+        class: "src-item",
+        href: sec.safeUrl(h && h.url), target: "_blank", rel: "noopener noreferrer",
+      });
+      a.appendChild(sec.el("b", null, (h && h.title) || ""));
+      const meta = [(h && h.source) || "", (h && h.date) || ""].filter(Boolean).join(" · ");
+      if (meta) a.appendChild(sec.el("small", null, meta));
+      box.appendChild(a);
+    });
+    wrap.appendChild(box);
+  }
+
   // "이 글의 부가 맥락" — notes saved from argument-AI conversations.
   async function loadContextNotes(postId, wrap) {
     const authed = buddle.auth && buddle.auth.isAuthed && buddle.auth.isAuthed();
@@ -1370,6 +1409,14 @@
     chips.appendChild(seedChip);
     debateWrap.appendChild(chips);
     view.appendChild(debateWrap);
+
+    // 화제 글([지금 화제])이면 관련 기사 출처 목록 — 언론사·제목·발행일과
+    // 원문 링크를 절대 생략하지 않는다(즉시 원문 이동 가능해야 한다).
+    if (post.author_label === "지금 화제") {
+      const srcWrap = sec.el("div", { id: "topicSources" });
+      view.appendChild(srcWrap);
+      loadTopicSources(post, srcWrap);
+    }
 
     // "이 글의 부가 맥락" — context notes saved from argument-AI chats.
     const notesWrap = sec.el("div", { id: "ctxNotes" });

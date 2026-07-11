@@ -415,6 +415,11 @@ async def _rebuild_topics(db: AsyncSession, redis: RedisClient) -> list[Topic]:
         for r in rows
     ]
     topics = build_topics(inputs)
+    await _cache_topics(redis, topics)
+    return topics
+
+
+async def _cache_topics(redis: RedisClient, topics: list[Topic]) -> None:
     await redis.setex(
         _TOPICS_KEY,
         _BRIEFINGS_TTL,
@@ -423,7 +428,6 @@ async def _rebuild_topics(db: AsyncSession, redis: RedisClient) -> list[Topic]:
             ensure_ascii=False,
         ),
     )
-    return topics
 
 
 async def news_tick(db: AsyncSession, *, redis: RedisClient) -> dict[str, object]:
@@ -547,6 +551,19 @@ async def news_tick(db: AsyncSession, *, redis: RedisClient) -> dict[str, object
     except Exception as e:
         log.warning("news.topics_error", error=str(e))
 
+    # 카드 문안 정제(틱당 배치 1회): 키워드 이름 대신 "무슨 일이 일어났는가"
+    # 문장형 제목·요약·한국어 키워드. 실패해도 결정론 폴백(대표 헤드라인)이
+    # 이미 채워져 있어 서빙은 계속된다.
+    if topics and getattr(settings, "news_topic_refine_enabled", True):
+        try:
+            from buddle.ai.news.refine import refine_topics
+
+            applied = await refine_topics(topics, settings=settings)
+            if applied:
+                await _cache_topics(redis, topics)
+        except Exception as e:
+            log.warning("news.refine_error", error=str(e))
+
     # 화제 → 광장 글 승격(멱등) — 상호작용(좋아요·댓글·토론)의 대상을 만든다.
     try:
         await _ensure_topic_posts(db, redis, topics)
@@ -613,22 +630,29 @@ NEWS_AUTHOR_LABEL = "지금 화제"
 
 
 def compose_topic_post(t: Topic) -> str:
-    """화제 글 본문 — 전부 집계값·발췌로 조립한다(생성 없음, 환각 불가).
+    """화제 글 본문 — 카드 문안(제목·요약·키워드) + 출처 표기로 조립한다.
 
-    이 텍스트가 논증 대화(argument-chat)와 댓글의 시드가 되므로, 사실 진술
-    (보도 건수·매체 수·헤드라인)과 참여 유도 한 줄로 구성한다.
+    이 텍스트가 논증 대화(argument-chat)와 댓글의 시드가 되므로 사실 진술과
+    참여 유도 한 줄로 구성하고, 출처(언론사·제목·발행일)는 절대 생략하지
+    않는다. 문안은 정제(LLM 배치) 결과 또는 결정론 폴백 — 둘 다 여기선 구분
+    없이 t.title/t.summary로 들어온다.
     """
+    title = t.title or t.name
     where = f"{t.region} · " if t.region else ""
-    lines = [
-        f"[지금 화제] {t.name}",
-        "",
-        f"{where}{t.category} · {t.scope} — 최근 보도 {t.count}건, 매체 {len(t.sources)}곳"
-        f" · 추세 {t.trend}",
-        "",
-        "관련 보도:",
-    ]
-    for h in t.headlines[:3]:
-        lines.append(f"· {h.get('title', '')} ({h.get('source', '')})")
+    lines = [f"[지금 화제] {title}", ""]
+    if t.summary:
+        lines += [t.summary, ""]
+    if t.display_keywords:
+        lines += ["관련 키워드: " + ", ".join(t.display_keywords), ""]
+    lines.append(
+        f"{where}{t.category} · {t.scope} — 관련 기사 {t.count}건, 매체 {len(t.sources)}곳"
+        f" · 추세 {t.trend}"
+    )
+    lines.append("")
+    lines.append("관련 기사:")
+    for h in t.headlines[:4]:
+        date = f", {h['date']}" if h.get("date") else ""
+        lines.append(f"· {h.get('title', '')} ({h.get('source', '')}{date})")
     lines += ["", "이 화제, 어떻게 생각하세요? 댓글이나 토론으로 생각을 나눠보세요."]
     return "\n".join(lines)
 

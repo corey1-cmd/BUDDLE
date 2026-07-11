@@ -410,3 +410,74 @@ def test_topic_scope_falls_back_to_text_without_hints():
     t = build_topics(items, now=NOW)[0]
     assert t.scope == "시"
     assert t.region == "성남"
+
+
+# ── 화제 카드 문안 (폴백 + LLM 정제 검증) ───────────────────────────────────
+
+
+def test_card_copy_fallback_uses_headline_not_keyword():
+    # 제목은 키워드가 아니라 "무슨 일이 일어났는가" — 폴백은 최신 헤드라인.
+    items = [
+        _item(
+            "성남시 버스 노선 대규모 개편 확정",
+            source="a",
+            age_h=5,
+            summary="성남시가 시내버스 노선을 대규모로 개편한다.",
+        ),
+        _item(
+            "성남시 버스 개편 두고 주민 설명회",
+            source="b",
+            age_h=1,
+            summary="일부 노선 폐지에 반대 의견도 나왔다.",
+        ),
+    ]
+    t = build_topics(items, now=NOW)[0]
+    assert t.title == "성남시 버스 개편 두고 주민 설명회"  # 최신 기사 헤드라인
+    assert t.summary and not t.summary.startswith("#")
+    assert t.display_keywords  # 한국어 키워드
+    assert all(h.get("date") for h in t.headlines)  # 발행일 동반
+
+
+def test_apply_refinement_accepts_valid_and_rejects_junk():
+    from buddle.ai.news.refine import apply_refinement
+
+    items = [
+        _item("Instagram CEO comments on AI spread", source="Reuters", age_h=1),
+        _item("Instagram chief defends AI features", source="Verge", age_h=2),
+    ]
+    topics = build_topics(items, now=NOW, min_count=2)
+    assert topics
+    fallback_title = topics[0].title
+    raw = (
+        '{"items": ['
+        '{"i": 0, "topic": "인스타그램 CEO AI 발언 논란", '
+        '"summary": "AI를 싫어하면 사용하지 말라는 발언이 확산되며 이용자들의 찬반 의견이 이어지고 있습니다.", '
+        '"keywords": ["#인스타그램", "메타", "AI"]},'
+        '{"i": 1, "topic": "#tech", "summary": "짧음", "keywords": []}'
+        "]}"
+    )
+    applied = apply_refinement(topics, raw)
+    assert applied == 1
+    assert topics[0].title == "인스타그램 CEO AI 발언 논란"
+    assert "인스타그램" in topics[0].display_keywords  # '#' 제거됨
+    assert topics[0].title != fallback_title
+
+
+def test_apply_refinement_fail_open_on_garbage():
+    from buddle.ai.news.refine import apply_refinement
+
+    items = [
+        _item("전기차 보조금 개편안", source="a"),
+        _item("전기차 보조금 축소", source="b"),
+    ]
+    topics = build_topics(items, now=NOW)
+    before = topics[0].title
+    assert apply_refinement(topics, "not-json{{") == 0
+    assert (
+        apply_refinement(
+            topics,
+            '{"items": [{"i": 99, "topic": "범위 밖 항목입니다", "summary": "인덱스가 범위를 벗어나 기각되어야 하는 요약 문장입니다.", "keywords": ["가", "나"]}]}',
+        )
+        == 0
+    )
+    assert topics[0].title == before  # 폴백 유지

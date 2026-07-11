@@ -358,6 +358,31 @@ _EN_STOPWORDS = frozenset(
         "launched",
         "report",
         "reports",
+        # 라이브 실측 오탐: 축약형 잔재('don't'→don)와 동사·일반어가 화제
+        # 이름이 되어 무관한 기사를 묶었다 (#like, #don, #dies, #looking).
+        "like",
+        "likes",
+        "liked",
+        "look",
+        "looking",
+        "looks",
+        "dies",
+        "died",
+        "don",
+        "didn",
+        "doesn",
+        "isn",
+        "wasn",
+        "aren",
+        "couldn",
+        "wouldn",
+        "shouldn",
+        "won",
+        "people",
+        "thing",
+        "things",
+        "way",
+        "really",
         "year",
         "years",
         "week",
@@ -920,6 +945,12 @@ class Topic:
     p_hold: float = 1.0
     p_fall: float = 0.0
     trend: str = "유지"
+    # 사람이 읽는 화제 카드 문안 — "무슨 일이 일어났는가"를 담은 문장형 제목과
+    # 한 문장 요약. 기본값은 결정론 폴백(대표 헤드라인·발췌)이고, 틱의 LLM
+    # 배치 정제(ai/news/refine.py)가 성공하면 그 문안으로 교체된다.
+    title: str = ""
+    summary: str = ""
+    display_keywords: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -936,6 +967,9 @@ class Topic:
             "p_hold": round(self.p_hold, 3),
             "p_fall": round(self.p_fall, 3),
             "trend": self.trend,
+            "title": self.title,
+            "summary": self.summary,
+            "display_keywords": self.display_keywords,
         }
 
 
@@ -1212,7 +1246,33 @@ def build_topics(
             if cat_votes
             else classify_category(list(t.keywords), joined)
         )
-        t.headlines = [{"title": a.title, "url": a.url, "source": a.source} for a in arts[:4]]
+        # 헤드라인은 최신순 + 발행일 동반(출처 표기: 언론사·제목·날짜·원문 링크).
+        arts_recent = sorted(arts, key=lambda a: a.published_at, reverse=True)
+        t.headlines = [
+            {
+                "title": a.title,
+                "url": a.url,
+                "source": a.source,
+                "date": (
+                    time.strftime("%Y-%m-%d", time.gmtime(a.published_at))
+                    if a.published_at > 0
+                    else ""
+                ),
+            }
+            for a in arts_recent[:4]
+        ]
+
+        # 카드 문안 결정론 폴백 — 제목은 키워드가 아니라 "무슨 일이 일어났는가":
+        # 가장 최신 기사의 헤드라인을 그대로 쓴다(발췌라 환각 불가). 요약은
+        # 그 기사의 발췌 요약, 표시 키워드는 클러스터 키워드(한국어 우선).
+        rep = arts_recent[0]
+        t.title = rep.title[:80]
+        gist = extractive_gist(rep.title, rep.summary, max_len=120)
+        if gist == rep.title.strip():
+            gist = f"{t.category} 분야에서 관련 보도 {len(arts)}건이 이어지고 있습니다."
+        t.summary = gist
+        ko_kws = [kw for kw in t.keywords if re.search(r"[가-힣]", kw)]
+        t.display_keywords = (ko_kws or list(t.keywords))[:5]
 
         # ── 5) 추세 (M7) ───────────────────────────────────────────────────
         t.p_rise, t.p_hold, t.p_fall, t.trend = topic_trend(
