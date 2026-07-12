@@ -62,7 +62,8 @@ _TOPIC_WINDOW_H = 72  # 화제 집계 윈도우 (DB 기준)
 
 # Source kinds the fetcher can dispatch. 'rss' takes an arbitrary feed url
 # (Techmeme, WSJ, New Yorker, …); the API kinds use their own fixed endpoints.
-_ALLOWED_KINDS = ("rss", "hackernews", "devto")
+# 'govapi' = 공공데이터포털(data.go.kr) OpenAPI — 채널 우선순위 1순위(정형 JSON).
+_ALLOWED_KINDS = ("rss", "hackernews", "devto", "govapi")
 
 # 한국어 서비스 방침: 국내 정부·공공 RSS + 해외 RSS를 함께 수집하되, 해외
 # 기사는 수집 직후 한국어로 배치 번역해 공개한다(NEWS_TRANSLATE_FOREIGN,
@@ -150,6 +151,67 @@ DEFAULT_SOURCES: list[dict[str, object]] = [
         "url": "https://www.korea.kr/rss/fact.xml",
         "enabled": True,
         "limit": 5,
+        "rights": "kogl_type1",
+    },
+    # ── 부처·지자체 공식 RSS 확대(정부_및_지자체_공지_수집.docx 검증 채널) ──
+    # 채널 우선순위: OpenAPI > RSS > (스크래핑 미도입 — CONTENT_TRUST_UPGRADE.md).
+    # URL은 기관 개편으로 바뀔 수 있다 — 소스별 fetch 실패는 무중단 처리되고
+    # admin 화면에서 URL만 고치면 된다(하드코딩 아님, 레지스트리 기반).
+    {
+        "id": "mois-press",
+        "name": "행정안전부",
+        "kind": "rss",
+        "url": "https://www.mois.go.kr/gpms/view/jsp/rss/rss.jsp?ctxCd=1012",
+        "enabled": True,
+        "limit": 8,
+        "rights": "kogl_type1",
+    },
+    {
+        "id": "mcst-press",
+        "name": "문화체육관광부",
+        "kind": "rss",
+        "url": "https://www.mcst.go.kr/common/rss/press.jsp",
+        "enabled": True,
+        "limit": 8,
+        "rights": "kogl_type1",
+    },
+    {
+        "id": "kisa-notice",
+        "name": "한국인터넷진흥원",
+        "kind": "rss",
+        "url": "https://www.kisa.or.kr/rss/401",
+        "enabled": True,
+        "limit": 5,
+        "rights": "kogl_type1",
+    },
+    {
+        "id": "mss-press",
+        "name": "중소벤처기업부",
+        "kind": "rss",
+        "url": "https://www.mss.go.kr/rss/smba/board/86.do",
+        "enabled": True,
+        "limit": 8,
+        "rights": "kogl_type1",
+    },
+    {
+        "id": "gg-news",
+        "name": "경기도 뉴스포털",
+        "kind": "rss",
+        "url": "https://gnews.gg.go.kr/rss/gnews_rss_main.do",
+        "enabled": True,
+        "limit": 8,
+        "rights": "kogl_type1",
+    },
+    # 공공데이터포털 OpenAPI 자리 — DATA_GO_KR_SERVICE_KEY 발급 후 admin 화면에서
+    # 원하는 오퍼레이션 URL을 등록하고 켠다(키 미설정 시 자동 스킵). 예시로
+    # 과기정통부 보도자료 오퍼레이션을 꺼진 상태로 심어 둔다(발급 후 활성화).
+    {
+        "id": "msit-press-api",
+        "name": "과학기술정보통신부",
+        "kind": "govapi",
+        "url": "https://apis.data.go.kr/1721000/msitpressexplaininfo/getPressList",
+        "enabled": False,
+        "limit": 10,
         "rights": "kogl_type1",
     },
 ]
@@ -383,6 +445,7 @@ async def _persist_items(
             "category": str(meta["category"]),
             "scope": str(meta["scope"]),
             "region": str(meta["region"]),
+            "rights": a.rights,
             "published_at": dt.datetime.fromtimestamp(a.published_at, tz=dt.UTC),
         }
         for a, meta in zip(articles, analysed, strict=True)
@@ -393,7 +456,9 @@ async def _persist_items(
     return int(result.rowcount or 0)
 
 
-async def _backfill_translations(db: AsyncSession, *, settings: object, limit: int = 20) -> int:
+async def _backfill_translations(
+    db: AsyncSession, *, settings: object, redis: RedisClient | None = None, limit: int = 20
+) -> int:
     """저장돼 있는 미번역(한글 없는) 기사를 소급 번역해 DB를 치유한다.
 
     번역은 원래 수집 시점에만 돌기 때문에 (a) 번역 기능 배포 이전에 저장된
@@ -428,7 +493,7 @@ async def _backfill_translations(db: AsyncSession, *, settings: object, limit: i
         )
         for r in rows
     ]
-    translated = await translate_articles(pseudo, settings=settings)
+    translated = await translate_articles(pseudo, settings=settings, redis=redis)
     healed = 0
     for row, art in zip(rows, translated, strict=True):
         if art.translated:
@@ -595,7 +660,9 @@ async def news_tick(db: AsyncSession, *, redis: RedisClient) -> dict[str, object
     log.info("news.tick.start")
     # Where to search: consult the admin-configured source store first.
     sources = await get_news_sources(redis)
-    articles = await fetch_configured(sources)
+    articles = await fetch_configured(
+        sources, govapi_key=str(getattr(settings, "data_go_kr_service_key", "") or "")
+    )
     fetched = len(articles)
     log.info("news.tick.fetched", count=fetched, sources=len(sources))
 
@@ -636,13 +703,19 @@ async def news_tick(db: AsyncSession, *, redis: RedisClient) -> dict[str, object
     # 해외 기사 배치 번역 — 한국어로 피드에 공개한다. 기사당이 아니라 배치당
     # 1회 호출(429 fan-out 없음), 실패 시 원문 공개(fail-open).
     if new_articles and getattr(settings, "news_translate_foreign", True):
+        from buddle.ai.news.rights import may_transform
         from buddle.ai.news.translate import needs_translation, translate_articles
 
-        foreign_idx = [i for i, a in enumerate(new_articles) if needs_translation(a)]
+        # 공공누리 3유형(변경 금지) 문서는 번역(=원문 변형) 대상에서 제외한다.
+        foreign_idx = [
+            i
+            for i, a in enumerate(new_articles)
+            if needs_translation(a) and may_transform(a.rights)
+        ]
         if foreign_idx:
             try:
                 translated = await translate_articles(
-                    [new_articles[i] for i in foreign_idx], settings=settings
+                    [new_articles[i] for i in foreign_idx], settings=settings, redis=redis
                 )
                 for i, art in zip(foreign_idx, translated, strict=True):
                     new_articles[i] = art
@@ -704,7 +777,7 @@ async def news_tick(db: AsyncSession, *, redis: RedisClient) -> dict[str, object
     # 저장돼 있는 미번역 기사 소급 번역 — 배포 이전/실패분을 매 틱 치유.
     if getattr(settings, "news_translate_foreign", True):
         try:
-            healed = await _backfill_translations(db, settings=settings)
+            healed = await _backfill_translations(db, settings=settings, redis=redis)
             if healed:
                 # 번역된 텍스트로 화제를 다시 계산해야 한국어 카드가 나온다.
                 topics = await _rebuild_topics(db, redis)
@@ -723,6 +796,18 @@ async def news_tick(db: AsyncSession, *, redis: RedisClient) -> dict[str, object
                 await _cache_topics(redis, topics)
         except Exception as e:
             log.warning("news.refine_error", error=str(e))
+
+    # Wikipedia 배경지식 보강 — refine이 확보한 entities에 한국어 위키백과
+    # 요약을 붙인다(캐시 우선, 틱당 신규 조회 ≤12). 실패는 보강 없이 진행.
+    if topics and getattr(settings, "news_wiki_enrich_enabled", True):
+        try:
+            from buddle.ai.news.wiki import enrich_topics
+
+            enriched = await enrich_topics(redis, list(topics))
+            if enriched:
+                await _cache_topics(redis, topics)
+        except Exception as e:
+            log.warning("news.wiki_enrich_error", error=str(e))
 
     # 화제 → 광장 글 승격(멱등) — 상호작용(좋아요·댓글·토론)의 대상을 만든다.
     try:
@@ -818,6 +903,7 @@ def compose_topic_post(t: Topic) -> str:
     if t.summary:
         lines += [t.summary, ""]
     meta_bits = [
+        *(["긴급"] if t.urgent else []),  # 재난·안전 — 카드 뱃지로 분리 표시된다
         t.type_label or f"{t.category} 이슈",
         t.scope + (f" · {t.region}" if t.region else ""),
     ]

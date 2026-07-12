@@ -43,6 +43,9 @@ class NewsItem(Base):
     category: Mapped[str] = mapped_column(String(20), nullable=False, default="사회")
     scope: Mapped[str] = mapped_column(String(10), nullable=False, default="해외")
     region: Mapped[str] = mapped_column(String(40), nullable=False, default="")
+    # 문서 단위 권리 등급(ai/news/rights.py: public_domain/kogl_type1/kogl_type3/
+    # default_deny) — 공공누리 유형별 가공 허용 범위를 하류가 강제하는 근거.
+    rights: Mapped[str] = mapped_column(String(20), nullable=False, server_default="default_deny")
     published_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

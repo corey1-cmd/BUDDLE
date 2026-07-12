@@ -36,6 +36,18 @@ class NewsDigestOut(BaseModel):
     ts: int
 
 
+class NewsEntityBrief(BaseModel):
+    """화제 등장 인물·기관의 위키백과 배경지식 — 상세 페이지 전용.
+
+    노출 시 위키백과 링크와 CC BY-SA 4.0 표기를 생략하지 않는다.
+    """
+
+    name: str
+    summary: str
+    url: str = ""
+    thumbnail: str = ""
+
+
 class NewsTopicHeadline(BaseModel):
     """제목+링크+출처+발행일 — 권리엔진 default-deny 하에서 안전한 최소 표면."""
 
@@ -69,3 +81,7 @@ class NewsTopicOut(BaseModel):
     # 카드 상호작용 버튼용 — 화제 글의 실카운트(글 미생성 시 0).
     like_count: int = 0
     comment_count: int = 0
+    # 재난·안전 긴급 공지 — 카드 '긴급' 뱃지.
+    urgent: bool = False
+    # 위키백과 배경지식(상세 페이지 '배경지식' 박스 전용).
+    entity_briefs: list[NewsEntityBrief] = []

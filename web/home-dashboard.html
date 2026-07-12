@@ -80,6 +80,7 @@
   #ntList > *{margin-bottom:0;}
 
   /* 카드 하단 '주요 주장'(≤3) — 없으면 미표시 */
+  .nt-badge.urgent{background:rgba(224,90,90,.14);color:#D64545;font-weight:800;}
   .pc-claims{margin-top:11px;padding-top:10px;border-top:1px dashed var(--line);display:flex;flex-direction:column;gap:6px;}
   .pc-claims-h{font-size:11px;font-weight:700;letter-spacing:.04em;color:var(--willow-text);}
   .pc-claim{position:relative;padding-left:14px;font-size:13px;line-height:1.5;color:var(--ink-soft);}
@@ -861,6 +862,7 @@
     top.appendChild(sec.el("span", { class:"nt-badge" }, t.category || "사회"));
     const scopeLabel = t.region ? `${t.scope} · ${t.region}` : (t.scope || "");
     if (scopeLabel) top.appendChild(sec.el("span", { class:"nt-badge" }, scopeLabel));
+    if (t.urgent) top.appendChild(sec.el("span", { class:"nt-badge urgent" }, "긴급"));
     if (t.trend === "상승") top.appendChild(sec.el("span", { class:"nt-badge" }, "↑ 상승"));
     card.appendChild(top);
     card.appendChild(sec.el("b", { class:"nt-title" }, t.title || ("#" + (t.name || ""))));

@@ -44,6 +44,14 @@ korean = [
 embeddings = [
     "sentence-transformers>=3.0",
 ]
+# 오프라인 영→한 번역(MarianMT, CPU 자체 구동): NEWS_TRANSLATE_ENGINE=marian
+# 배포에서만. 상주 메모리 ~1GB — Render 무료 티어(512MB)에선 켤 수 없다.
+# 미설치·로드 실패 시 LLM 번역 엔진으로 자동 폴백한다(기능 무중단).
+translate = [
+    "transformers>=4.44",
+    "torch>=2.3",
+    "sentencepiece>=0.2",
+]
 
 [dependency-groups]
 dev = [

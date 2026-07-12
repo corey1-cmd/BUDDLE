@@ -13,7 +13,13 @@ from fastapi import APIRouter, Query
 
 from buddle.ai.news.rights import rights_of
 from buddle.api.deps import DB, CurrentUser, Redis
-from buddle.schemas.news import NewsBriefingOut, NewsDigestOut, NewsTopicHeadline, NewsTopicOut
+from buddle.schemas.news import (
+    NewsBriefingOut,
+    NewsDigestOut,
+    NewsEntityBrief,
+    NewsTopicHeadline,
+    NewsTopicOut,
+)
 from buddle.services import news_service
 
 router = APIRouter(prefix="/news", tags=["news"])
@@ -127,6 +133,8 @@ async def list_topics(
         sources_list = sources_raw if isinstance(sources_raw, list) else []
         kws_raw = t.get("display_keywords")
         kws_list = kws_raw if isinstance(kws_raw, list) else []
+        briefs_raw = t.get("entity_briefs")
+        briefs_list = briefs_raw if isinstance(briefs_raw, list) else []
         out.append(
             NewsTopicOut(
                 name=str(t.get("name") or ""),
@@ -153,6 +161,17 @@ async def list_topics(
                 keywords=[str(k) for k in kws_list],
                 like_count=int(t.get("like_count") or 0),  # type: ignore[call-overload]
                 comment_count=int(t.get("comment_count") or 0),  # type: ignore[call-overload]
+                urgent=bool(t.get("urgent")),
+                entity_briefs=[
+                    NewsEntityBrief(
+                        name=str(b.get("name") or ""),
+                        summary=str(b.get("summary") or ""),
+                        url=str(b.get("url") or ""),
+                        thumbnail=str(b.get("thumbnail") or ""),
+                    )
+                    for b in briefs_list
+                    if isinstance(b, dict)
+                ],
             )
         )
     return out

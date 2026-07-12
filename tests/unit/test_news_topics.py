@@ -539,6 +539,30 @@ def test_identical_headlines_yield_single_card():
     assert len(norm) == len(set(norm))
 
 
+def test_collocation_requires_cross_document_evidence():
+    # 한 기사 안의 제목+요약 반복("수도권 호우"×2)만으로 연어가 승격되면 기사마다
+    # 분절이 갈려("수도권 호우" vs "호우 경보") 같은 사건의 두 기사가 묶이지
+    # 못한다(픽스처 E2E 실측). 연어는 최소 2개 기사에 걸쳐 나타나야 한다.
+    items = [
+        _item(
+            "수도권 호우 경보 발령… 하천변 대피 권고",
+            source="a",
+            age_h=1,
+            summary="기상청이 수도권에 호우 경보를 발령하고 하천변 대피를 권고했다.",
+        ),
+        _item(
+            "호우 경보 지역 확대에 지자체 대응 격상",
+            source="b",
+            age_h=2,
+            summary="호우 경보가 확대되며 경기 남부 지자체들이 대응 단계를 격상했다.",
+        ),
+    ]
+    topics = build_topics(items, now=NOW, min_count=2)
+    assert topics, "같은 사건의 두 기사는 하나의 화제로 묶여야 한다"
+    assert topics[0].count == 2
+    assert "호우" in topics[0].name
+
+
 def test_generic_english_verb_never_bridges_unrelated_articles():
     # 라이브 실측 오탐: 'contain' 하나가 "스페인 산불 진화" 기사와 "I Contain
     # Multitudes (and Also Three Git Repos)"라는 개발 잡담을 한 화제로 묶어

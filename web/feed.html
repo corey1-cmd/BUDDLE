@@ -709,6 +709,12 @@
   @media (min-width:760px){ .body{padding-left:24px;padding-right:24px;} }
 
   /* 카드 하단 '주요 주장' — 이 글/화제에서 나온 대표 주장(≤3). 없으면 미표시 */
+  .kb-item{font-size:13px;line-height:1.55;color:var(--ink-soft);padding:6px 0;border-bottom:1px dashed var(--line);}
+  .kb-item:last-of-type{border-bottom:none;}
+  .kb-item b{color:var(--ink);}
+  .kb-link{color:var(--willow-text);font-weight:600;text-decoration:none;font-size:12px;white-space:nowrap;}
+  .kb-lic{display:block;margin-top:8px;font-size:11px;color:var(--ink-faint);}
+  .nt-badge.urgent{background:rgba(224,90,90,.14);color:#D64545;font-weight:800;}
   .pc-claims{margin-top:11px;padding-top:10px;border-top:1px dashed var(--line);display:flex;flex-direction:column;gap:6px;}
   .pc-claims-h{font-size:11px;font-weight:700;letter-spacing:.04em;color:var(--willow-text);}
   .pc-claim{position:relative;padding-left:14px;font-size:13px;line-height:1.5;color:var(--ink-soft);}
@@ -1077,6 +1083,7 @@
     top.appendChild(sec.el("span", { class: "nt-badge" }, t.category || "사회"));
     const scopeLabel = t.region ? `${t.scope} · ${t.region}` : (t.scope || "");
     if (scopeLabel) top.appendChild(sec.el("span", { class: "nt-badge" }, scopeLabel));
+    if (t.urgent) top.appendChild(sec.el("span", { class: "nt-badge urgent" }, "긴급"));
     if (t.trend === "상승") top.appendChild(sec.el("span", { class: "nt-badge" }, "↑ 상승"));
     card.appendChild(top);
 
@@ -1454,6 +1461,29 @@
       box.appendChild(a);
     });
     wrap.appendChild(box);
+
+    // 배경지식 — 화제 등장 인물·기관의 위키백과 요약(있을 때만). 출처(위키백과
+    // 링크)와 CC BY-SA 4.0 표기는 생략하지 않는다.
+    if (Array.isArray(t.entity_briefs) && t.entity_briefs.length) {
+      const kb = sec.el("div", { class: "src-box" });
+      kb.appendChild(sec.el("div", { class: "sb-head" }, "배경지식"));
+      t.entity_briefs.slice(0, 3).forEach(b => {
+        const item = sec.el("div", { class: "kb-item" });
+        item.appendChild(sec.el("b", null, b.name || ""));
+        item.appendChild(document.createTextNode(" — " + (b.summary || "")));
+        if (b.url) {
+          item.appendChild(document.createTextNode(" "));
+          item.appendChild(sec.el("a", {
+            class: "kb-link", href: sec.safeUrl(b.url),
+            target: "_blank", rel: "noopener noreferrer",
+          }, "위키백과 ↗"));
+        }
+        kb.appendChild(item);
+      });
+      kb.appendChild(sec.el("small", { class: "kb-lic" },
+        "출처: 한국어 위키백과 (CC BY-SA 4.0)"));
+      wrap.appendChild(kb);
+    }
   }
 
   // "이 글의 부가 맥락" — notes saved from argument-AI conversations.

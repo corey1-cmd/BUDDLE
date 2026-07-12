@@ -1085,6 +1085,11 @@ class Topic:
     forecast: str = ""
     technologies: list[str] = field(default_factory=list)
     entities: list[str] = field(default_factory=list)
+    # 재난·안전 긴급 공지(지진·태풍·경보 등) — 카드 '긴급' 뱃지 + 정렬 가산 근거.
+    urgent: bool = False
+    # Wikipedia 배경지식(ai/news/wiki.py) — [{name, summary, url, thumbnail}].
+    # 상세 페이지 '배경지식' 박스 전용(CC BY-SA 출처 표기 필수).
+    entity_briefs: list[dict[str, str]] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -1111,6 +1116,8 @@ class Topic:
             "forecast": self.forecast,
             "technologies": self.technologies,
             "entities": self.entities,
+            "urgent": self.urgent,
+            "entity_briefs": self.entity_briefs,
         }
 
 
@@ -1127,6 +1134,12 @@ _QUESTION_TEMPLATES: dict[str, str] = {
 
 _RECENCY_HALF_LIFE_H = 24.0
 _MERGE_OVERLAP = 0.6  # two keywords sharing ≥60% of articles form one topic
+# 재난·안전 긴급 공지 렉시콘 — 매칭 시 화제에 urgent 플래그(카드 '긴급' 뱃지 +
+# 정렬 가산). 기상 특보·재난 문자 상용어 기준의 보수적 목록(오탐 방지).
+_URGENT_RE = re.compile(
+    r"지진|태풍|호우|폭우|대설|한파|폭염\s*경보|산불|화재|감염병|확진자\s*급증"
+    r"|재난\s*문자|대피|경보\s*발령|특보|긴급\s*재난|비상\s*대응"
+)
 _NPMI_MIN = 0.35  # 인접쌍이 이 이상이면 연어(복합명사)로 병합
 _WINDOW_H = 72.0  # 화제 집계 윈도우(시간) — novelty/persistence의 분모
 _RECENT_H = 6.0  # 추세 판정의 '최근' 창
@@ -1266,18 +1279,24 @@ def build_topics(
     streams = [_token_stream(f"{it.title} {clean_text(it.summary)}") for it in items]
     uni: dict[str, int] = {}
     bi: dict[tuple[str, str], int] = {}
+    bi_docs: dict[tuple[str, str], set[int]] = {}
     total_tok = 0
-    for st in streams:
+    for doc_i, st in enumerate(streams):
         total_tok += len(st)
         for tok in st:
             uni[tok] = uni.get(tok, 0) + 1
         for a, b in itertools.pairwise(st):
             if a != b:
                 bi[(a, b)] = bi.get((a, b), 0) + 1
+                bi_docs.setdefault((a, b), set()).add(doc_i)
     collocations: set[tuple[str, str]] = set()
     if total_tok:
         for (a, b), n_ab in bi.items():
-            if n_ab < min_count:
+            # 문서 빈도 조건 — 연어는 최소 2개 '기사'에 걸쳐 나타나야 한다.
+            # 한 기사 안의 제목+요약 반복("수도권 호우"×2)만으로 승격되면 기사마다
+            # 분절이 갈려("수도권 호우" vs "호우 경보") 공유 키워드가 사라지고
+            # 같은 사건의 두 기사가 화제로 묶이지 못한다(픽스처 E2E 실측).
+            if n_ab < min_count or len(bi_docs.get((a, b), ())) < min_count:
                 continue
             p_ab = n_ab / total_tok
             p_a = uni[a] / total_tok
@@ -1384,6 +1403,8 @@ def build_topics(
     for t, idxs in zip(topics, used_articles_by_topic, strict=True):
         arts = [items[i] for i in sorted(idxs)]
         joined = " ".join(f"{a.title} {clean_text(a.summary)}" for a in arts)
+        # 재난·안전 긴급 판정 — 텍스트 렉시콘 매칭(정부·지자체 공지 우선 노출).
+        t.urgent = bool(_URGENT_RE.search(joined))
         # 대표 태그: 별칭 중 PageRank 최상. 한국어 서비스라 최고점의 90% 안에
         # 한글 태그가 있으면 그것을 이름으로 쓴다.
         best = max(t.keywords, key=lambda kw: pr.get(kw, 0.0))
@@ -1485,6 +1506,9 @@ def build_topics(
             + 0.10 * novelty
             + 0.05 * persistence
         )
+        if t.urgent:
+            # 긴급 공지는 목록 상단으로 — 상한 1.0 안에서 가산.
+            t.score = min(1.0, t.score + 0.15)
 
     topics.sort(key=lambda t: t.score, reverse=True)
     # 최종 안전망: 카드 제목(대표 헤드라인)이 같은 화제는 하나만 남긴다.
