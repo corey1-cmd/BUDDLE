@@ -140,6 +140,18 @@
   .btn-fill{flex:2;padding:13px;border-radius:var(--r);border:0;background:var(--accent-grad);color:#fff;font-family:var(--body);font-size:14.5px;font-weight:600;cursor:pointer;box-shadow:var(--shadow-pop-sm);}
   .btn-fill:disabled{opacity:.5;}
 
+  /* ── 리포트 figure (보고서 인용용 — 항상 백지 위 인쇄 대비) ────── */
+  .rep-actions{display:flex;gap:8px;justify-content:flex-end;margin-bottom:10px;}
+  .rep-btn{flex:none;padding:8px 14px;font-size:13px;}
+  .rep-stage{background:#fff;border:1px solid var(--line);border-radius:12px;overflow:hidden;box-shadow:var(--shadow-sm);}
+  .rep-stage svg{display:block;width:100%;height:auto;}
+  .rep-tablewrap{margin-top:12px;overflow-x:auto;}
+  .rep-table{width:100%;border-collapse:collapse;font-size:12.5px;background:var(--paper-raised);border:1px solid var(--line);border-radius:10px;}
+  .rep-table th,.rep-table td{padding:7px 10px;border-bottom:1px solid var(--line);text-align:right;font-variant-numeric:tabular-nums;color:var(--ink-soft);}
+  .rep-table th{font-weight:700;color:var(--ink);background:var(--paper-sunken);}
+  .rep-table th:first-child,.rep-table td:first-child{text-align:left;font-variant-numeric:normal;}
+  .rep-table tr:last-child td{border-bottom:none;}
+
   /* ── 관계도 (MARBLE식 힘-방향 그래프 · 다크 스타맵) ───────────── */
   .map-stage{position:relative;width:100%;aspect-ratio:1/1.12;max-height:76vh;
     background:radial-gradient(125% 90% at 50% 4%, #16183200 0%, #0c0d1a 46%, #07070f 100%),#080810;
@@ -646,14 +658,34 @@
 
     <!-- view tabs: 관계도 / 대화 축 / 대립 보기 / 논증 그래프 -->
     <div class="tabs" id="tabs">
-      <button class="tab on" id="tabMap" type="button">관계도</button>
+      <button class="tab on" id="tabReport" type="button">리포트</button>
+      <button class="tab" id="tabMap" type="button">관계도</button>
       <button class="tab" id="tabAxes" type="button">대화 축</button>
       <button class="tab" id="tabOpp" type="button">대립 보기</button>
       <button class="tab" id="tabGraph" type="button">논증 그래프</button>
     </div>
 
-    <!-- view: 관계도 (MARBLE식 힘-방향 그래프) — 기본 화면 -->
-    <div id="viewMap">
+    <!-- view: 리포트 — 정부·기업 보고서에 figure로 인용 가능한 공론 동향 요약.
+         전체가 하나의 순수 SVG라 PNG/SVG로 그대로 내보낼 수 있다(캡처 불필요). -->
+    <div id="viewReport">
+      <div class="rep-actions">
+        <button class="btn-ghost rep-btn" id="repPngBtn" type="button">PNG 저장</button>
+        <button class="btn-ghost rep-btn" id="repSvgBtn" type="button">SVG 저장</button>
+      </div>
+      <div class="rep-stage" id="repStage"><!-- SVG figure injected --></div>
+      <div class="rep-tablewrap">
+        <table class="rep-table" id="repTable"><!-- 표 뷰(접근성·검증용) --></table>
+      </div>
+      <p class="note">
+        이 화면은 보고서 인용을 전제로 만든 집계 figure입니다. 상단 버튼으로 PNG
+        (고해상도)나 SVG(벡터)를 내려받아 문서에 그대로 붙일 수 있고, 아래 표는
+        같은 수치의 검증용 원자료입니다. 출처·생성일·표본 크기는 figure 하단에
+        함께 인쇄됩니다.
+      </p>
+    </div>
+
+    <!-- view: 관계도 (MARBLE식 힘-방향 그래프) -->
+    <div id="viewMap" style="display:none">
       <div class="sec-label">
         <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><circle cx="5" cy="6" r="2"/><circle cx="19" cy="7" r="2"/><circle cx="6" cy="18" r="2"/><circle cx="18" cy="17" r="2"/><path d="M12 12 5 6M12 12l7-5M12 12l-6 6M12 12l6 5"/></svg>
         관계도 — 화제를 중심으로 생각이 이어져요
@@ -854,23 +886,26 @@
     };
   }
 
+  let dashData = null;  // 리포트/축 뷰가 공유하는 대시보드 집계
   (async function init() {
+    // 스크립트 평가가 끝난 뒤 이어지게 한다 — 데모 경로는 await가 없어 동기로
+    // 흘러 아래쪽 const(REP_NS 등) 선언 전에 renderReport를 부르는 TDZ가 난다.
+    await Promise.resolve();
     if (tagName && tagName !== "화제") $("topicName").textContent = tagName;
     const authed = buddle.auth && buddle.auth.isAuthed && buddle.auth.isAuthed();
     if (!tagId || !authed) {
       demoMode = true; $("demoBadge").style.display = "";
-      render(demoDashboard());
+      dashData = demoDashboard();
     } else {
       try {
-        const d = await buddle.debate.dashboard(tagId);
-        render(d);
+        dashData = await buddle.debate.dashboard(tagId);
       } catch (_) {
         demoMode = true; $("demoBadge").style.display = "";
-        render(demoDashboard());
+        dashData = demoDashboard();
       }
     }
-    // 기본 탭(관계도) 렌더는 스크립트 맨 끝에서 호출한다 — 여기서 부르면 아직
-    // 선언 전인 MAP/graphLoaded(TDZ)를 건드려 그래프가 그려지지 않는다.
+    render(dashData);
+    renderReport();  // 기본 탭 = 리포트 (선언은 함수 호이스팅이라 안전)
   })();
 
   /* ── Opposition geometry view ──────────────────────────── */
@@ -1007,18 +1042,22 @@
 
   // tab switching (4-way: 관계도 / 대화 축 / 대립 보기 / 논증 그래프)
   function switchTab(which) {
+    $("tabReport").classList.toggle("on", which === "report");
     $("tabMap").classList.toggle("on", which === "map");
     $("tabAxes").classList.toggle("on", which === "axes");
     $("tabOpp").classList.toggle("on", which === "opp");
     $("tabGraph").classList.toggle("on", which === "graph");
+    $("viewReport").style.display = which === "report" ? "" : "none";
     $("viewMap").style.display = which === "map" ? "" : "none";
     $("viewAxes").style.display = which === "axes" ? "" : "none";
     $("viewOpp").style.display = which === "opp" ? "" : "none";
     $("viewGraph").style.display = which === "graph" ? "" : "none";
+    if (which === "report") renderReport();
     if (which === "map") loadMap();
     if (which === "opp") loadOpposition();
     if (which === "graph") loadGraph();
   }
+  $("tabReport").addEventListener("click", () => switchTab("report"));
   $("tabMap").addEventListener("click", () => switchTab("map"));
   $("tabAxes").addEventListener("click", () => switchTab("axes"));
   $("tabOpp").addEventListener("click", () => switchTab("opp"));
@@ -1424,8 +1463,274 @@
     return b;
   }
 
-  // 기본 탭 렌더 — 모든 선언(MAP·graphLoaded·startMap…)이 끝난 뒤에 호출한다.
-  loadMap();
+
+  /* ── 리포트 figure — 보고서 인용용 순수 SVG ──────────────────────
+     전체 figure(제목·차트·출처 캡션)를 하나의 SVG로 그린다: 화면 표시와
+     PNG/SVG 내보내기가 같은 원본을 공유해 "캡처"가 필요 없다. 색은
+     dataviz 검증 통과 팔레트 — 찬성/반대 다이버징 두 극 + 중립 회색
+     (다이버징 중앙은 규칙상 무채색; 모든 구간 직접 라벨 + 표 뷰로 보완). */
+  const REP_C = {
+    pro: "#1F7A53", neu: "#6B7385", con: "#B54A17", brand: "#5B60DF",
+    ink: "#171A2C", soft: "#4A4F66", faint: "#8A8FA6", line: "#D9DCE8", grid: "#EEF0F7",
+  };
+  const REP_FONT = "Pretendard, 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif";
+  const REP_NS = "http://www.w3.org/2000/svg";
+
+  function repEl(parent, tag, attrs) {
+    const el = document.createElementNS(REP_NS, tag);
+    for (const k in attrs) el.setAttribute(k, attrs[k]);
+    if (parent) parent.appendChild(el);
+    return el;
+  }
+  function repText(parent, x, y, str, { size = 12, weight = 400, fill = REP_C.soft, anchor = "start", spacing = null } = {}) {
+    const t = repEl(parent, "text", {
+      x, y, "font-family": REP_FONT, "font-size": size, "font-weight": weight,
+      fill, "text-anchor": anchor,
+    });
+    if (spacing) t.setAttribute("letter-spacing", spacing);
+    t.textContent = str;
+    return t;
+  }
+  const repTrunc = (s, n) => (s || "").length > n ? (s || "").slice(0, n - 1) + "…" : (s || "");
+  const repPct = (part, total) => total > 0 ? Math.round((part / total) * 1000) / 10 : 0;
+
+  function renderReport() {
+    const d = dashData || demoDashboard();
+    const stage = $("repStage");
+    if (!stage) return;
+    const axes = (d.axes || []).slice(0, 6);
+    const pro = axes.reduce((a, x) => a + (x.pro || 0), 0);
+    const neu = axes.reduce((a, x) => a + (x.neutral || 0), 0);
+    const con = axes.reduce((a, x) => a + (x.con || 0), 0);
+    const stanceN = pro + neu + con;
+    const tot = {
+      claims: d.total_claims || 0, grounds: d.total_grounds || 0,
+      rebuttals: d.total_rebuttals || 0, questions: d.total_questions || 0,
+    };
+    const unitN = tot.claims + tot.grounds + tot.rebuttals + tot.questions;
+    const topic = d.topic_name || tagName;
+    const now = new Date();
+    const dstr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+    const tstr = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+
+    // ── 레이아웃 산정 ──
+    const W = 1160, L = 64, CW = W - L * 2;
+    const fig2RowH = 44;
+    let y = 0;
+    const headerH = 138;
+    const fig1H = stanceN > 0 ? 118 : 64;
+    const fig2H = axes.length ? 40 + axes.length * fig2RowH + 26 : 0;
+    const fig3H = 40 + 4 * 30 + 8;
+    const capH = demoMode ? 86 : 70;
+    const H = headerH + fig1H + fig2H + fig3H + capH + 40;
+
+    const svg = document.createElementNS(REP_NS, "svg");
+    svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+    svg.setAttribute("role", "img");
+    svg.setAttribute("xmlns", REP_NS);
+    repEl(svg, "rect", { x: 0, y: 0, width: W, height: H, fill: "#ffffff" });
+
+    // ── 머리(제목·생성일·표본) ──
+    repText(svg, L, 46, "BUDDLE 공론 동향 리포트", { size: 11.5, weight: 700, fill: REP_C.brand, spacing: "0.14em" });
+    repText(svg, W - L, 46, `생성 ${dstr} ${tstr}`, { size: 11.5, fill: REP_C.faint, anchor: "end" });
+    repText(svg, L, 84, repTrunc(topic, 34), { size: 27, weight: 700, fill: REP_C.ink });
+    repText(svg, L, 112,
+      `집계 단위: 주장 ${tot.claims} · 근거 ${tot.grounds} · 반박 ${tot.rebuttals} · 질문 ${tot.questions} · 대화 축 ${axes.length}`,
+      { size: 12.5, fill: REP_C.soft });
+    repEl(svg, "line", { x1: L, y1: headerH - 10, x2: W - L, y2: headerH - 10, stroke: REP_C.line, "stroke-width": 1 });
+    y = headerH;
+
+    // ── 그림 1. 전체 입장 분포 (100% 스택, 2px 표면 간격) ──
+    repText(svg, L, y + 22, "1. 전체 입장 분포", { size: 14, weight: 700, fill: REP_C.ink });
+    const legend = [["찬성", REP_C.pro], ["중립", REP_C.neu], ["반대", REP_C.con]];
+    let lx = W - L;
+    for (let i = legend.length - 1; i >= 0; i--) {
+      const [lab, c] = legend[i];
+      lx -= 42;
+      repEl(svg, "rect", { x: lx, y: y + 12, width: 11, height: 11, rx: 3, fill: c });
+      repText(svg, lx + 16, y + 22, lab, { size: 12, fill: REP_C.soft });
+      lx -= 22;
+    }
+    if (stanceN > 0) {
+      const segs = [[pro, REP_C.pro, "찬성"], [neu, REP_C.neu, "중립"], [con, REP_C.con, "반대"]]
+        .filter(sg => sg[0] > 0);
+      const gapW = 2 * (segs.length - 1);
+      let sx = L;
+      const barY = y + 36, barH = 34;
+      segs.forEach(([n, c, lab]) => {
+        const w = Math.max(3, (CW - gapW) * (n / stanceN));
+        const r = repEl(svg, "rect", { x: sx, y: barY, width: w, height: barH, rx: 4, fill: c });
+        repEl(r, "title", {}).textContent = `${lab} ${n}건 · ${repPct(n, stanceN)}%`;
+        if (w >= 52) {
+          repText(svg, sx + w / 2, barY + 22, `${repPct(n, stanceN)}%`,
+            { size: 13, weight: 700, fill: "#ffffff", anchor: "middle" });
+        }
+        sx += w + 2;
+      });
+      repText(svg, L, barY + barH + 24,
+        segs.map(([n, , lab]) => `${lab} ${n}건(${repPct(n, stanceN)}%)`).join(" · ") + ` · 표본 N=${stanceN}`,
+        { size: 12, fill: REP_C.soft });
+    } else {
+      repText(svg, L, y + 48, "집계된 입장 표본이 아직 없습니다.", { size: 12.5, fill: REP_C.faint });
+    }
+    y += fig1H;
+
+    // ── 그림 2. 대화 축별 입장 (중립 기준 다이버징 — 축 내 비율) ──
+    if (axes.length) {
+      repText(svg, L, y + 22, "2. 대화 축별 입장 분포", { size: 14, weight: 700, fill: REP_C.ink });
+      repText(svg, W - L, y + 22, "막대 = 해당 축 내 비율", { size: 11, fill: REP_C.faint, anchor: "end" });
+      const labW = 336, span = 560;
+      const cx = L + labW + span / 2;
+      // 공통 적응 스케일 — 가장 넓은 한쪽(반대+중립/2 또는 찬성+중립/2)이 span/2에
+      // 맞도록 잡는다: 중앙 고정 다이버징이 여백을 뚫지 않고, 행끼리 비교 가능.
+      let sideMax = 50;
+      axes.forEach(a => {
+        const t = (a.pro || 0) + (a.neutral || 0) + (a.con || 0);
+        if (!t) return;
+        const half = repPct(a.neutral || 0, t) / 2;
+        sideMax = Math.max(sideMax, repPct(a.con || 0, t) + half, repPct(a.pro || 0, t) + half);
+      });
+      const px2 = (span / 2) / sideMax;
+      const rowsTop = y + 40, rowsBot = rowsTop + axes.length * fig2RowH - 12;
+      repEl(svg, "line", { x1: cx, y1: rowsTop - 6, x2: cx, y2: rowsBot + 6, stroke: REP_C.line, "stroke-width": 1, "stroke-dasharray": "3 4" });
+      axes.forEach((a, i) => {
+        const ry = rowsTop + i * fig2RowH;
+        const rp = a.pro || 0, rn = a.neutral || 0, rc = a.con || 0;
+        const rt = rp + rn + rc;
+        repText(svg, L, ry + 12, repTrunc(a.representative_claim, 26), { size: 12.5, weight: 600, fill: REP_C.ink });
+        repText(svg, L, ry + 27, `주장 ${a.claim_count || rt} · 근거 ${a.ground_count || 0} · 반박 ${a.rebuttal_count || 0}`,
+          { size: 10.5, fill: REP_C.faint });
+        if (!rt) return;
+        const wP = repPct(rp, rt) * px2, wN = repPct(rn, rt) * px2, wC = repPct(rc, rt) * px2;
+        const barY = ry + 2, barH = 20;
+        const nx = cx - wN / 2;
+        // % 라벨은 넓으면 막대 안(흰색), 좁으면 바깥 — 행 제목과의 충돌 방지.
+        const segLabel = (bx, bw, pct, color) => {
+          if (bw >= 46) {
+            repText(svg, bx + bw / 2, barY + 14, `${pct}%`, { size: 11, weight: 700, fill: "#ffffff", anchor: "middle" });
+          } else if (bw > 0) {
+            repText(svg, bx + bw + 5, barY + 14, `${pct}%`, { size: 10.5, weight: 600, fill: color });
+          }
+        };
+        if (rn > 0) {
+          const r = repEl(svg, "rect", { x: nx, y: barY, width: Math.max(2, wN), height: barH, rx: 3, fill: REP_C.neu });
+          repEl(r, "title", {}).textContent = `중립 ${rn}건 · ${repPct(rn, rt)}%`;
+        }
+        if (rc > 0) {
+          const bx = nx - 2 - Math.max(2, wC);
+          const r = repEl(svg, "rect", { x: bx, y: barY, width: Math.max(2, wC), height: barH, rx: 3, fill: REP_C.con });
+          repEl(r, "title", {}).textContent = `반대 ${rc}건 · ${repPct(rc, rt)}%`;
+          segLabel(bx, Math.max(2, wC), repPct(rc, rt), REP_C.con);
+        }
+        if (rp > 0) {
+          const bx = nx + Math.max(2, wN) + 2;
+          const r = repEl(svg, "rect", { x: bx, y: barY, width: Math.max(2, wP), height: barH, rx: 3, fill: REP_C.pro });
+          repEl(r, "title", {}).textContent = `찬성 ${rp}건 · ${repPct(rp, rt)}%`;
+          segLabel(bx, Math.max(2, wP), repPct(rp, rt), REP_C.pro);
+        }
+      });
+      repText(svg, cx, rowsBot + 22, "중립 기준선", { size: 10.5, fill: REP_C.faint, anchor: "middle" });
+      y += fig2H;
+    }
+
+    // ── 그림 3. 논증 구성 (단일 색조 막대 — 규모 비교) ──
+    repText(svg, L, y + 22, `${axes.length ? 3 : 2}. 논증 구성`, { size: 14, weight: 700, fill: REP_C.ink });
+    const rows3 = [["주장", tot.claims], ["근거", tot.grounds], ["반박", tot.rebuttals], ["질문", tot.questions]];
+    const max3 = Math.max(1, ...rows3.map(r => r[1]));
+    const bar3X = L + 64, bar3Max = CW - 64 - 64;
+    rows3.forEach(([lab, n], i) => {
+      const ry = y + 40 + i * 30;
+      repText(svg, L, ry + 14, lab, { size: 12.5, weight: 600, fill: REP_C.ink });
+      const w = Math.max(n > 0 ? 4 : 0, bar3Max * (n / max3));
+      if (n > 0) {
+        const r = repEl(svg, "rect", { x: bar3X, y: ry, width: w, height: 18, rx: 4, fill: REP_C.brand });
+        repEl(r, "title", {}).textContent = `${lab} ${n}건`;
+      }
+      repText(svg, bar3X + w + 8, ry + 14, String(n), { size: 12.5, weight: 700, fill: REP_C.soft });
+    });
+    y += fig3H;
+
+    // ── 캡션(출처·방법·표본) — figure에 인쇄되어 문서에 함께 붙는다 ──
+    repEl(svg, "line", { x1: L, y1: y + 6, x2: W - L, y2: y + 6, stroke: REP_C.line, "stroke-width": 1 });
+    repText(svg, L, y + 28,
+      "자료: 버들(buddle) 공론장 자동 집계 — 게시글·토론 기여에서 추출한 주장 단위(주장·근거·반박·질문)를 군집화한 결과.",
+      { size: 11, fill: REP_C.faint });
+    repText(svg, L, y + 46,
+      `생성 ${dstr} ${tstr} · 화제 #${repTrunc(topic, 24)} · 표본 N=${unitN} (주장 단위 합계)`,
+      { size: 11, fill: REP_C.faint });
+    if (demoMode) {
+      repText(svg, L, y + 66, "※ 데모 데이터 — 실제 집계가 아닙니다. 인용하지 마세요.", { size: 11.5, weight: 700, fill: REP_C.con });
+    }
+
+    stage.replaceChildren(svg);
+    renderReportTable(d, axes, { pro, neu, con });
+  }
+
+  // 표 뷰 — 같은 수치의 검증용 원자료(접근성·색약·인쇄 대비).
+  function renderReportTable(d, axes, totals) {
+    const tbl = $("repTable");
+    if (!tbl) return;
+    tbl.replaceChildren();
+    const head = sec.el("tr", null);
+    ["구분", "찬성", "중립", "반대", "근거", "반박"].forEach(h => head.appendChild(sec.el("th", null, h)));
+    tbl.appendChild(head);
+    const mkRow = (label, p, n, c, g, r) => {
+      const tr = sec.el("tr", null);
+      tr.appendChild(sec.el("td", null, label));
+      [p, n, c, g, r].forEach(v => tr.appendChild(sec.el("td", null, String(v))));
+      return tr;
+    };
+    tbl.appendChild(mkRow("전체", totals.pro, totals.neu, totals.con,
+      d.total_grounds || 0, d.total_rebuttals || 0));
+    axes.forEach(a => tbl.appendChild(mkRow(
+      (a.representative_claim || "").slice(0, 38),
+      a.pro || 0, a.neutral || 0, a.con || 0, a.ground_count || 0, a.rebuttal_count || 0)));
+  }
+
+  // ── 내보내기: 화면의 SVG 원본을 그대로 파일로 — 캡처 불필요 ──
+  function repFileName(ext) {
+    const topic = ((dashData && dashData.topic_name) || tagName).replace(/[^\w가-힣-]+/g, "-").slice(0, 30);
+    const d = new Date();
+    const ds = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, "0")}${String(d.getDate()).padStart(2, "0")}`;
+    return `buddle-report-${topic}-${ds}.${ext}`;
+  }
+  function repDownload(blob, name) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = name;
+    document.body.appendChild(a);  // 문서 밖 앵커는 download 파일명이 무시될 수 있다
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 4000);
+  }
+  function exportReport(kind) {
+    const svg = document.querySelector("#repStage svg");
+    if (!svg) return;
+    const xml = new XMLSerializer().serializeToString(svg);
+    if (kind === "svg") {
+      repDownload(new Blob([xml], { type: "image/svg+xml;charset=utf-8" }), repFileName("svg"));
+      return;
+    }
+    // PNG: 2배율 캔버스로 래스터화(리포트 인쇄 해상도). blob: URL은 페이지
+    // CSP(img-src 'self' data: https:)가 막으므로 data: URI로 싣는다.
+    const vb = svg.viewBox.baseVal;
+    const img = new Image();
+    img.onload = () => {
+      const scale = 2;
+      const cv = document.createElement("canvas");
+      cv.width = vb.width * scale; cv.height = vb.height * scale;
+      const ctx = cv.getContext("2d");
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, cv.width, cv.height);
+      ctx.drawImage(img, 0, 0, cv.width, cv.height);
+      cv.toBlob(b => { if (b) repDownload(b, repFileName("png")); }, "image/png");
+    };
+    img.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(xml);
+  }
+  $("repPngBtn").addEventListener("click", () => exportReport("png"));
+  $("repSvgBtn").addEventListener("click", () => exportReport("svg"));
+
+  // 기본 탭은 리포트(init에서 렌더). 관계도는 탭 진입 시 lazy 로드.
 
 </script>
 </body>
