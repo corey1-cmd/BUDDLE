@@ -410,6 +410,56 @@ _EN_STOPWORDS = frozenset(
         "multitudes",
         "repo",
         "repos",
+        # 라이브 실측 2차: 일반어가 화제 이름이 되어 같은 기사를 여러 카드로
+        # 쪼갰다 (#watch, #lost, #free, #open, #escaped, #victims, #turns,
+        # #former, #latest, #public, #part, #accounts following).
+        "watch",
+        "watches",
+        "watched",
+        "watching",
+        "lose",
+        "loses",
+        "lost",
+        "losing",
+        "free",
+        "open",
+        "opens",
+        "opened",
+        "opening",
+        "escape",
+        "escapes",
+        "escaped",
+        "escaping",
+        "victim",
+        "victims",
+        "turn",
+        "turns",
+        "turned",
+        "former",
+        "latest",
+        "public",
+        "part",
+        "parts",
+        "follow",
+        "follows",
+        "following",
+        "account",
+        "accounts",
+        "meet",
+        "meets",
+        "seek",
+        "seeks",
+        "seeking",
+        "cut",
+        "cuts",
+        "grant",
+        "grants",
+        "solo",
+        "aged",
+        "least",
+        "lives",
+        "friend",
+        "friends",
         # 라이브 실측 오탐: 축약형 잔재('don't'→don)와 동사·일반어가 화제
         # 이름이 되어 무관한 기사를 묶었다 (#like, #don, #dies, #looking).
         "like",
@@ -1286,6 +1336,12 @@ def build_topics(
 
     topics: list[Topic] = []
     used_articles_by_topic: list[set[int]] = []
+    # 기사 독점 배정 — 한 기사는 정확히 하나의 화제에만 속한다. 같은 기사가
+    # 여러 키워드 클러스터('watch'와 'lost' 둘 다 포함)에 걸치면 각 클러스터가
+    # 같은 헤드라인으로 별개 카드를 만들어 "동일 뉴스 2회 노출"이 된다(라이브
+    # 실측). 점수 높은 후보가 먼저 기사를 가져가고, 남은 기사가 min_count에
+    # 못 미치는 후보는 화제가 되지 못한다.
+    claimed: set[int] = set()
     for k, _cand_score in candidates:
         if len(topics) >= max_topics:
             break
@@ -1294,19 +1350,25 @@ def build_topics(
         for t_i, prev in enumerate(used_articles_by_topic):
             inter = len(idxs & prev)
             if inter and inter / min(len(idxs), len(prev)) >= _MERGE_OVERLAP:
-                # Same story cluster — absorb as an alias keyword.
+                # Same story cluster — absorb as an alias keyword. 다른 화제가
+                # 이미 가져간 기사는 넘겨받지 않는다(독점 유지).
                 if k not in topics[t_i].keywords:
                     topics[t_i].keywords.append(k)
-                used_articles_by_topic[t_i] |= idxs
+                fresh_merge = idxs - claimed
+                used_articles_by_topic[t_i] |= fresh_merge
+                claimed |= fresh_merge
                 merged = True
                 break
         if merged:
+            continue
+        fresh = idxs - claimed
+        if len(fresh) < min_count:
             continue
         topics.append(
             Topic(
                 name=k,
                 score=0.0,  # 아래 6)에서 다항 점수로 확정
-                count=len(idxs),
+                count=len(fresh),
                 sources=[],
                 category="",
                 scope="",
@@ -1314,7 +1376,8 @@ def build_topics(
                 keywords=[k],
             )
         )
-        used_articles_by_topic.append(idxs)
+        used_articles_by_topic.append(fresh)
+        claimed |= fresh
 
     # ── 4) 병합 반영 + 대표 태그(PageRank, 한국어 우선) ─────────────────────
     max_count = max((len(s) for s in used_articles_by_topic), default=1)
@@ -1424,7 +1487,19 @@ def build_topics(
         )
 
     topics.sort(key=lambda t: t.score, reverse=True)
-    return topics
+    # 최종 안전망: 카드 제목(대표 헤드라인)이 같은 화제는 하나만 남긴다.
+    # 기사 독점 배정 후에도 '제목이 글자까지 같은 서로 다른 기사'(같은 스토리를
+    # 두 소스가 그대로 전재)가 각각 화제를 만들면 사용자 눈엔 같은 뉴스 2장이다.
+    # 점수순 정렬 뒤라 높은 점수의 화제가 남는다.
+    seen_titles: set[str] = set()
+    deduped: list[Topic] = []
+    for t in topics:
+        title_key = " ".join((t.title or t.name).split()).casefold()
+        if title_key in seen_titles:
+            continue
+        seen_titles.add(title_key)
+        deduped.append(t)
+    return deduped
 
 
 # ── Deterministic digest (LLM 종합 브리핑 대체) ──────────────────────────────

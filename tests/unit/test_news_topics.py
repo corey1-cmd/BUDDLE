@@ -506,6 +506,39 @@ def test_trailing_attribution_stripped():
     assert strip_trailing_attribution("") == ""
 
 
+def test_same_article_never_anchors_two_topics():
+    # 라이브 실측: 한 기사가 두 키워드 클러스터(#watch/#lost)에 걸치면 같은
+    # 헤드라인 카드가 2장 뜬다. 기사 독점 배정 후에는 남은 기사가 min_count에
+    # 못 미치는 두 번째 클러스터가 화제로 승격되지 못한다.
+    items = [
+        _item("제주감귤 한라봉 소식", source="a", age_h=1),  # 두 클러스터에 다 걸침
+        _item("제주감귤 가격 소식", source="b", age_h=2),
+        _item("한라봉 재배 소식", source="c", age_h=3),
+    ]
+    topics = build_topics(items, now=NOW, min_count=2)
+    assert len(topics) == 1, [t.name for t in topics]
+    assert topics[0].count == 2
+
+
+def test_identical_headlines_yield_single_card():
+    # 같은 스토리를 두 소스가 제목까지 그대로 전재 → 클러스터가 갈려도 카드
+    # 제목(대표 헤드라인)이 같으면 사용자 눈엔 동일 뉴스 2장이다. 최종
+    # 제목 중복 필터가 1장만 남긴다.
+    dup_title = "같은 제목 전재 기사"
+    items = [
+        _item(dup_title, source="a", age_h=1, summary="쿼크 물리 실험"),
+        _item("쿼크 물리 관측 성공", source="b", age_h=5),
+        _item(dup_title, source="c", age_h=2, summary="행성 궤도 관측"),
+        _item("행성 궤도 연구 진행중", source="d", age_h=6),
+    ]
+    topics = build_topics(items, now=NOW, min_count=2)
+    titled = [t for t in topics if t.title == dup_title]
+    assert len(titled) <= 1, [(t.name, t.title) for t in topics]
+    # 전체적으로도 제목이 겹치는 카드는 없다
+    norm = [" ".join((t.title or t.name).split()).casefold() for t in topics]
+    assert len(norm) == len(set(norm))
+
+
 def test_generic_english_verb_never_bridges_unrelated_articles():
     # 라이브 실측 오탐: 'contain' 하나가 "스페인 산불 진화" 기사와 "I Contain
     # Multitudes (and Also Three Git Repos)"라는 개발 잡담을 한 화제로 묶어

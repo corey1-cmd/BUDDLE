@@ -442,14 +442,19 @@ async def _backfill_translations(db: AsyncSession, *, settings: object, limit: i
 
 
 async def _prune_topic_posts(db: AsyncSession, redis: RedisClient, topics: list[Topic]) -> int:
-    """빈 껍데기 화제 글만 정리한다 — 콘텐츠는 원칙적으로 영구 보존한다.
+    """빈 껍데기·중복 화제 글만 정리한다 — 콘텐츠는 원칙적으로 영구 보존한다.
 
-    사용자 방침(영구 저장): 사람은 기억보다 저장을 선호한다. 과거의 시간 만료
-    ('7일 초과'/'25시간')와 '영문 잔재 삭제'는 폐지했다 — 한 번 올라온 화제
-    글과 사용자 글은 시간이 지나도 사라지지 않는다(무한 스크롤로 과거 화제까지
-    이어진다). 유일한 삭제 대상은 자동 생성 글(author_label='지금 화제')이면서
-    참여가 전혀 없고 본문이 사실상 비어 있는(머리표를 뺀 실내용 없음) 퇴행 글
-    뿐이다. 참여가 붙었거나 실내용이 있으면 무조건 보존한다.
+    사용자 방침(영구 저장): 사람은 기억보다 저장을 선호한다. 시간 만료 삭제는
+    없다 — 한 번 올라온 화제 글과 사용자 글은 시간이 지나도 사라지지 않는다.
+    삭제 대상은 자동 생성 글(author_label='지금 화제') 중 참여(좋아요·댓글)가
+    전혀 없는 퇴행 글 두 종류뿐이다:
+
+      1. 빈 껍데기 — 머리표를 뺀 본문이 사실상 없음.
+      2. 중복 — 첫 줄(제목)이 같은 글이 여럿(과거 틱이 클러스터 이름만 바꿔
+         같은 이야기를 여러 번 올린 잔재; 라이브 실측 '동일 뉴스 2회 노출').
+         참여 글이 있으면 그것들을 남기고, 없으면 최신 1건만 남긴다.
+
+    참여가 붙은 글은 어떤 경우에도 지우지 않는다.
     """
     from sqlalchemy import func as sa_func
 
@@ -460,31 +465,61 @@ async def _prune_topic_posts(db: AsyncSession, redis: RedisClient, topics: list[
 
     rows = (
         await db.execute(
-            select(Post.id, Tag.name, Post.content_transformed)
+            select(Post.id, Tag.name, Post.content_transformed, Post.created_at)
             .join(PostTag, PostTag.post_id == Post.id)
             .join(Tag, Tag.id == PostTag.tag_id)
             .where(Post.author_label == NEWS_AUTHOR_LABEL)
         )
     ).all()
-    pruned = 0
-    for post_id, tag_name, content in rows:
-        # 실내용이 있으면(머리표 제거 후 텍스트가 남으면) 영구 보존. 영문이든
-        # 국문이든 삭제하지 않는다 — 번역은 콘텐츠 삭제가 아니라 재생성으로 개선.
-        body = (content or "").replace("[지금 화제]", "", 1).strip()
-        if body:
-            continue
+
+    async def _engaged(post_id: object) -> bool:
         likes = (
             await db.execute(
                 select(sa_func.count()).select_from(PostLike).where(PostLike.post_id == post_id)
             )
         ).scalar_one()
+        if likes:
+            return True
         comments = (
             await db.execute(
                 select(sa_func.count()).select_from(Comment).where(Comment.post_id == post_id)
             )
         ).scalar_one()
-        if likes or comments:
+        return bool(comments)
+
+    to_delete: dict[object, str] = {}  # post_id → tag_name (Redis 매핑 청소용)
+
+    # 1) 빈 껍데기 — 실내용이 있으면(영문이든 국문이든) 보존.
+    for post_id, tag_name, content, _created in rows:
+        body = (content or "").replace("[지금 화제]", "", 1).strip()
+        if body:
             continue
+        if await _engaged(post_id):
+            continue
+        to_delete[post_id] = tag_name
+
+    # 2) 제목 중복 — 같은 첫 줄의 글이 여럿이면 무참여 사본을 정리한다.
+    groups: dict[str, list[tuple[object, str, dt.datetime]]] = {}
+    for post_id, tag_name, content, created in rows:
+        if post_id in to_delete:
+            continue
+        key = _topic_post_title_key(content)
+        if key:
+            groups.setdefault(key, []).append((post_id, tag_name, created))
+    for group in groups.values():
+        if len(group) < 2:
+            continue
+        engaged_ids = [pid for pid, _tag, _c in group if await _engaged(pid)]
+        zero = [(pid, tag, c) for pid, tag, c in group if pid not in engaged_ids]
+        if not engaged_ids and zero:
+            # 참여 글이 하나도 없으면 최신 1건은 남긴다(이야기 자체는 보존).
+            zero.sort(key=lambda r: r[2])  # 오래된 순
+            zero = zero[:-1]
+        for pid, tag, _c in zero:
+            to_delete[pid] = tag
+
+    pruned = 0
+    for post_id, tag_name in to_delete.items():
         post = await db.get(Post, post_id)
         if post is not None:
             await db.delete(post)
@@ -493,7 +528,7 @@ async def _prune_topic_posts(db: AsyncSession, redis: RedisClient, topics: list[
             await redis.delete(_TOPICPOST_KEY + tag_name)
     if pruned:
         await db.commit()
-        log.info("news.topic_post.pruned_empty", count=pruned)
+        log.info("news.topic_post.pruned", count=pruned)
     return pruned
 
 
@@ -760,6 +795,16 @@ _TOPICPOST_TTL = _TOPIC_WINDOW_H * 3600
 NEWS_AUTHOR_LABEL = "지금 화제"
 
 
+def _topic_post_title_key(content: str | None) -> str:
+    """화제 글 첫 줄(제목)을 비교용 키로 정규화한다 — 중복 판정의 기준.
+
+    머리표('[지금 화제]')를 벗기고 공백을 접고 대소문자를 무시한다. 태그가
+    달라도 이 키가 같으면 사용자 눈에는 같은 뉴스다.
+    """
+    first = (content or "").split("\n", 1)[0].replace("[지금 화제]", "", 1)
+    return " ".join(first.split()).casefold()
+
+
 def compose_topic_post(t: Topic) -> str:
     """화제 글 본문 — 새 출력 형식: 화제/유형/핵심 사건/핵심 문제/핵심 기술/
     관련 기업/핵심 질문/미래 전망 + 관련 기사(출처 무생략).
@@ -805,8 +850,11 @@ async def _ensure_topic_posts(
 ) -> dict[str, str]:
     """화제마다 공개 글을 정확히 1건 보장하고 {화제명: post_id}를 돌려준다.
 
-    멱등성 2중 보장: Redis 매핑(72h TTL) 선조회 → 미스 시 DB에서 같은 태그의
-    최근 시스템 글을 재사용(Redis 재시작 대비) → 그래도 없으면 생성.
+    멱등성 3중 보장: Redis 매핑(72h TTL) 선조회 → 미스 시 DB에서 같은 태그의
+    최근 시스템 글을 재사용(Redis 재시작 대비) → 태그가 달라도 첫 줄(제목)이
+    같은 최근 글이 있으면 그것을 재사용 — 틱마다 클러스터 이름이 바뀌어도
+    (#watch → #lost) 같은 이야기로 새 글을 또 만들지 않는다(라이브 실측:
+    동일 뉴스 2회 노출의 원인). 그래도 없으면 생성.
 
     의도적으로 post_service._ingest_post(윤리 게이트+mediator)를 타지 않는다:
     본문이 집계값·헤드라인 발췌로만 조립되는 결정론적 자체 생성 텍스트라
@@ -820,6 +868,25 @@ async def _ensure_topic_posts(
 
     mapping: dict[str, str] = {}
     since = dt.datetime.now(dt.UTC) - dt.timedelta(hours=_TOPIC_WINDOW_H)
+
+    # 제목(첫 줄) → 최근 글 id 지도. 최신 글이 이기도록 오래된 것부터 덮어쓴다.
+    recent_rows = (
+        await db.execute(
+            select(Post.id, Post.content_transformed)
+            .where(
+                Post.author_kind == AuthorKind.EXTERNAL_AI,
+                Post.author_label == NEWS_AUTHOR_LABEL,
+                Post.created_at >= since,
+            )
+            .order_by(Post.created_at.asc())
+        )
+    ).all()
+    by_title: dict[str, str] = {}
+    for pid, content in recent_rows:
+        title_key = _topic_post_title_key(content)
+        if title_key:
+            by_title[title_key] = str(pid)
+
     for t in topics:
         if t.count < 2 or not t.name:
             continue
@@ -852,6 +919,15 @@ async def _ensure_topic_posts(
             continue
 
         content = compose_topic_post(t)
+
+        # 제목 재사용 — 태그는 달라졌지만 같은 헤드라인의 글이 이미 있으면
+        # 그 글을 이 화제의 글로 삼는다(중복 카드 생성 금지).
+        title_key = _topic_post_title_key(content)
+        reused = by_title.get(title_key) if title_key else None
+        if reused:
+            mapping[t.name] = reused
+            await redis.setex(key, _TOPICPOST_TTL, reused)
+            continue
         post = Post(
             source_persona_id=None,
             agent_id=None,
@@ -872,6 +948,8 @@ async def _ensure_topic_posts(
         db.add(PostTag(post_id=post.id, tag_id=tag.id))
         await db.commit()
         mapping[t.name] = str(post.id)
+        if title_key:
+            by_title[title_key] = str(post.id)  # 같은 배치 안의 중복도 차단
         await redis.setex(key, _TOPICPOST_TTL, str(post.id))
         log.info("news.topic_post.created", topic=t.name, post_id=str(post.id))
     return mapping
