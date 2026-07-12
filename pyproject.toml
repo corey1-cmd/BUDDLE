@@ -147,7 +147,7 @@ ignore_missing_imports = true
 # modules are missing and the call is Any. Relax just the adapter module so
 # the verdict doesn't depend on which extras happen to be installed.
 [[tool.mypy.overrides]]
-module = ["buddle.ai.personas.local_hf"]
+module = ["buddle.ai.personas.local_hf", "buddle.ai.news.marian"]
 disallow_untyped_calls = false
 
 # SQLAlchemy 2.0 Core expression language (select().join().where(), func.*,
