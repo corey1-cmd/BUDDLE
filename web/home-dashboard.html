@@ -70,7 +70,15 @@
   .rchip{flex:none;font-size:13px;font-weight:600;color:var(--ink-soft);background:var(--paper-sunken);border:1px solid var(--line);border-radius:999px;padding:7px 14px;text-decoration:none;white-space:nowrap;}
   .rchip:hover{border-color:var(--line-strong);color:var(--ink);}
   .rloading{text-align:center;color:var(--ink-faint);font-size:14px;padding:40px 0;}
-  .rfeed{display:flex;flex-direction:column;gap:14px;padding-bottom:8px;}
+  /* 웹 우선: 관리자 대시보드와 같은 넓은 중앙 정렬 비율(≈900px). 이 페이지에서만
+     bd-phone 폭을 넓히고, 카드 목록은 반응형 2열 그리드로 채운다(관리자 grid2 패리티). */
+  .bd-phone{max-width:940px;}
+  .rfeed{display:grid;grid-template-columns:1fr 1fr;gap:14px;align-items:start;padding-bottom:8px;}
+  .rfeed > *{margin-bottom:0;}
+  .rfeed > .rloading, .rfeed > .rempty, .rfeed > #feedSentinel{grid-column:1 / -1;}
+  #ntList{display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:start;}
+  #ntList > *{margin-bottom:0;}
+  @media (max-width:760px){ .rfeed, #ntList{grid-template-columns:1fr;} }
   .rcard{background:linear-gradient(158deg,rgba(255,255,255,.055) 0%,rgba(255,255,255,.02) 40%,transparent 62%),var(--paper-raised);border:1px solid var(--line);border-radius:18px;padding:15px;box-shadow:0 6px 22px rgba(23,26,60,.08),inset 0 1px 0 rgba(255,255,255,.10);backdrop-filter:blur(20px) saturate(150%);-webkit-backdrop-filter:blur(20px) saturate(150%);}
   .rc-head{display:flex;align-items:center;gap:9px;margin-bottom:11px;}
   .rc-ava{width:30px;height:30px;border-radius:10px;flex:none;display:grid;place-items:center;font-family:var(--display);font-weight:600;font-size:13px;color:#fff;background:var(--accent-grad);box-shadow:var(--shadow-pop-sm);}
@@ -610,6 +618,21 @@
 <script>
   sec.harden();
 
+  // 스크롤 진입 시 카드가 아래에서 부드럽게 떠오르는 효과(관리자 대시보드와 동일).
+  // 동적으로 추가되는 피드·화제 카드마다 reveal(el) 로 관찰만 건다.
+  const _revealIO = ("IntersectionObserver" in window) &&
+    !(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches)
+    ? new IntersectionObserver(function (es) {
+        es.forEach(function (e) { if (e.isIntersecting) { e.target.classList.add("in"); _revealIO.unobserve(e.target); } });
+      }, { rootMargin: "0px 0px -6% 0px", threshold: 0.06 })
+    : null;
+  function reveal(el) {
+    if (!el || !_revealIO) return el;
+    el.classList.add("bd-reveal", "bd-js-reveal");
+    _revealIO.observe(el);
+    return el;
+  }
+
   const rfeed = document.getElementById("rfeed");
   const rchips = document.getElementById("rchips");
 
@@ -769,11 +792,14 @@
       return;
     }
     if(!cursor) rfeed.innerHTML = "";
+    const added = [];
     items.forEach(it => {
       try { sessionStorage.setItem("buddle.feed.item."+it.id, JSON.stringify(it)); } catch(_){}
-      frag.appendChild(renderCard(it));
+      const c = renderCard(it);
+      frag.appendChild(c); added.push(c);
     });
     rfeed.appendChild(frag);
+    added.forEach(reveal);  // DOM 삽입 후 관찰 → 스크롤 진입 시 떠오름
     ensureFeedSentinel();
   }
 
@@ -862,7 +888,7 @@
     const items = Array.isArray(topics) ? topics : [];
     if(!items.length){ box.style.display = "none"; return; }
     list.replaceChildren();
-    items.forEach(t => list.appendChild(ntCard(t)));
+    items.forEach(t => reveal(list.appendChild(ntCard(t))));
     box.style.display = "";
   }
 

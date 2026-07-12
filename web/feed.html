@@ -489,7 +489,9 @@
     font-family:var(--body);color:var(--ink);min-height:100vh;
     background:radial-gradient(900px 600px at 80% -10%, rgba(61,138,107,.06) 0%, transparent 60%),#F7F8FD;-webkit-font-smoothing:antialiased;
   }
-  .phone{max-width:460px;margin:0 auto;min-height:100vh;background:rgba(255,255,255,.62);backdrop-filter:blur(22px) saturate(160%);display:flex;flex-direction:column;padding-bottom:84px;}
+  /* 웹 우선: 관리자 대시보드와 같은 넓은 중앙 정렬 비율(≈900px). 좁은 화면에선
+     자연히 전체 폭. 카드 목록은 아래에서 반응형 2열 그리드로 채운다. */
+  .phone{max-width:940px;margin:0 auto;min-height:100vh;background:rgba(255,255,255,.62);backdrop-filter:blur(22px) saturate(160%);display:flex;flex-direction:column;padding-bottom:84px;}
   header{display:flex;align-items:center;gap:12px;padding:14px 16px;border-bottom:1px solid var(--line);position:sticky;top:0;background:rgba(255,255,255,.68);backdrop-filter:blur(24px) saturate(160%);z-index:20;}
   .back{width:38px;height:38px;border-radius:14px;border:1px solid var(--line);background:var(--surface);display:grid;place-items:center;cursor:pointer;flex:none;}
   .back svg{width:19px;height:19px;stroke:var(--gold);}
@@ -697,6 +699,19 @@
   .nt-heads a::before{content:"· ";color:var(--ink-faint);}
   .ns-empty{text-align:center;font-size:12.5px;color:var(--ink-faint);padding:16px 6px;}
 
+  /* ── 웹 우선 레이아웃: 카드 목록을 반응형 2열 그리드로(관리자 grid2 패리티) ──
+     좁은 화면(≤760px)에선 1열. align-items:start 로 카드가 늘어나지 않게 한다. */
+  #feedList, #nsList{display:grid;grid-template-columns:1fr 1fr;gap:14px;align-items:start;}
+  #feedList > *, #nsList > *{margin-bottom:0;}
+  /* 로딩/빈상태/무한스크롤 센티널은 한 줄 전체 폭 */
+  #feedList > .loading, #feedList > #feedSentinel, #feedList > .empty,
+  #nsList > .ns-empty{grid-column:1 / -1;}
+  @media (max-width:760px){ #feedList, #nsList{grid-template-columns:1fr;} }
+  /* 상세(단일 글)는 읽기 좋은 좁은 중앙 컬럼 유지 */
+  #detailView{max-width:680px;margin:0 auto;width:100%;}
+  /* 넓은 화면에선 본문 좌우 여백을 조금 더 */
+  @media (min-width:760px){ .body{padding-left:24px;padding-right:24px;} }
+
   .hidden{display:none;}
 </style>
 </head>
@@ -766,6 +781,23 @@
   sec.harden();
 
   const $ = (id) => document.getElementById(id);
+
+  // 스크롤 진입 시 카드가 아래에서 부드럽게 떠오르는 효과(관리자 대시보드와 동일).
+  // 동작 축소 선호/미지원 시 no-op(카드는 그대로 보임). 동적으로 추가되는 카드마다
+  // reveal(el) 로 관찰만 걸면 된다.
+  const _revealIO = ("IntersectionObserver" in window) &&
+    !(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches)
+    ? new IntersectionObserver(function (es) {
+        es.forEach(function (e) { if (e.isIntersecting) { e.target.classList.add("in"); _revealIO.unobserve(e.target); } });
+      }, { rootMargin: "0px 0px -6% 0px", threshold: 0.06 })
+    : null;
+  function reveal(el) {
+    if (!el || !_revealIO) return el;
+    el.classList.add("bd-reveal", "bd-js-reveal");
+    _revealIO.observe(el);
+    return el;
+  }
+
   // 모든 페르소나가 하나의 시그니처 그라데이션 정체성을 공유 (이니셜만 다름)
   const palOf = (_s) => ["var(--accent-grad)", "#fff"];
   function hash(s){let h=0;for(let i=0;i<s.length;i++){h=(h<<5)-h+s.charCodeAt(i)|0;}return h;}
@@ -1028,7 +1060,7 @@
       const i = topics.findIndex(t => (t.name || "") === nsPinName);
       if (i > 0) topics.unshift(topics.splice(i, 1)[0]);
     }
-    topics.forEach(t => list.appendChild(nsTopicCard(t, nsPinName && t.name === nsPinName)));
+    topics.forEach(t => reveal(list.appendChild(nsTopicCard(t, nsPinName && t.name === nsPinName))));
     if (nsPinName && !nsPinScrolled) {
       nsPinScrolled = true;
       setTimeout(() => box.scrollIntoView({ behavior: "smooth" }), 250);
@@ -1310,7 +1342,7 @@
         currentQuery ? `"${currentQuery}"에 대한 글을 찾지 못했어요.` : "아직 글이 없어요."));
       return;
     }
-    list.forEach(it => box.appendChild(postCard(it)));
+    list.forEach(it => reveal(box.appendChild(postCard(it))));
     ensureFeedSentinel();
   }
 
