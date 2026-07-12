@@ -8,11 +8,13 @@ from collections.abc import Sequence
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
-from buddle.api.deps import DB, CurrentAdmin, Redis
+from buddle.api.deps import DB, CurrentAdmin, CurrentSuperAdmin, Redis
 from buddle.api.v1.admin.analytics import router as analytics_router
 from buddle.api.v1.admin.persona_models import router as persona_models_router
 from buddle.db.models.enums import AlertStatus
 from buddle.schemas.admin import (
+    AdminGrantRequest,
+    AdminUserRead,
     AuthorityComputeResult,
     AuthoritySnapshot,
     AutotuneResult,
@@ -59,6 +61,45 @@ admin_router.include_router(analytics_router)
 )
 async def get_stats(_: CurrentAdmin, db: DB) -> SystemStats:
     return await admin_service.collect_stats(db)
+
+
+# ── 관리자 관리 (슈퍼 관리자 전용) ──────────────────────────────────
+# 일반 관리자(is_admin)는 admin 화면을 쓸 수 있어도 이 세 엔드포인트는
+# 슈퍼 관리자만 호출할 수 있다(CurrentSuperAdmin → is_super_admin 아니면 403).
+
+
+@admin_router.get(
+    "/admins",
+    response_model=list[AdminUserRead],
+    summary="관리자 목록 (슈퍼 관리자 전용)",
+)
+async def list_admins(_: CurrentSuperAdmin, db: DB) -> list[AdminUserRead]:
+    admins = await admin_service.list_admins(db)
+    return [AdminUserRead.model_validate(u) for u in admins]
+
+
+@admin_router.post(
+    "/admins",
+    response_model=AdminUserRead,
+    summary="이메일로 관리자 추가 (슈퍼 관리자 전용)",
+)
+async def add_admin(body: AdminGrantRequest, _: CurrentSuperAdmin, db: DB) -> AdminUserRead:
+    user = await admin_service.grant_admin(db, str(body.email))
+    return AdminUserRead.model_validate(user)
+
+
+@admin_router.delete(
+    "/admins/{user_id}",
+    response_model=AdminUserRead,
+    summary="관리자 권한 회수 (슈퍼 관리자 전용, 슈퍼 관리자는 회수 불가)",
+)
+async def remove_admin(user_id: uuid.UUID, _: CurrentSuperAdmin, db: DB) -> AdminUserRead:
+    try:
+        # NotFound(404)는 그대로 전파, 슈퍼 관리자 보호(ValueError)는 400으로 변환.
+        user = await admin_service.revoke_admin(db, user_id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    return AdminUserRead.model_validate(user)
 
 
 # ── Ethics queue ──────────────────────────────────────────────────

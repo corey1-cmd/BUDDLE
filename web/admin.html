@@ -163,6 +163,23 @@
   <!-- Main content -->
   <div id="mainContent" style="display:none">
 
+    <!-- 관리자 관리 (슈퍼 관리자 전용 — is_super_admin 이 아니면 숨김) -->
+    <div class="card bd-reveal" id="adminMgmtCard" style="display:none;grid-column:1/-1;margin-bottom:18px">
+      <div class="card-title" style="display:flex;align-items:center;gap:8px">
+        관리자 관리
+        <span style="font-size:11px;font-weight:700;color:#7C5CFF;background:rgba(124,92,255,.14);padding:2px 8px;border-radius:99px">슈퍼 관리자</span>
+      </div>
+      <p style="font-size:12.5px;color:var(--muted);margin:2px 0 12px">
+        이미 회원가입한 계정의 이메일을 입력해 관리자로 추가하세요. 슈퍼 관리자만 이 기능을 쓸 수 있습니다.
+      </p>
+      <div id="adminList" style="display:flex;flex-direction:column;gap:6px;margin-bottom:12px">로딩 중…</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;border-top:1px solid var(--border);padding-top:12px">
+        <input id="newAdminEmail" type="email" placeholder="추가할 계정 이메일 (예: someone@example.com)" style="flex:1;min-width:220px;padding:8px 11px;border:1px solid var(--border);border-radius:8px;font-size:13px">
+        <button id="addAdminBtn" class="btn-sm" style="font-size:13px;padding:8px 16px;border-radius:8px;background:var(--grad-rich);color:#fff;border:0;cursor:pointer">관리자 추가</button>
+      </div>
+      <div id="adminMgmtMsg" style="font-size:12px;color:#E07B6B;margin-top:6px"></div>
+    </div>
+
     <!-- Row 1: 트래픽 + 사용자 참여 -->
     <div class="grid2">
       <div class="card bd-reveal">
@@ -375,10 +392,70 @@
     try { return JSON.parse(atob(token.split(".")[1])); } catch (_) { return {}; }
   }
 
-  // JWT에는 email이 없으므로 /v1/users/me로 가져옴
+  // JWT에는 email이 없으므로 /v1/users/me로 가져옴. 슈퍼 관리자면 관리자 관리
+  // 카드를 노출한다(일반 관리자에겐 숨김 — 서버도 슈퍼 관리자만 허용).
   api("GET", "/v1/users/me").then(me => {
     if (me && me.email) document.getElementById("adminEmail").textContent = me.email;
+    if (me && me.is_super_admin) {
+      const card = document.getElementById("adminMgmtCard");
+      if (card) { card.style.display = ""; loadAdmins(); }
+    }
   }).catch(() => {});
+
+  /* ── 관리자 관리 (슈퍼 관리자 전용) ── */
+  const _roleBadge = (isSuper) => isSuper
+    ? '<span style="font-size:10.5px;font-weight:700;color:#7C5CFF;background:rgba(124,92,255,.14);padding:2px 8px;border-radius:99px">슈퍼 관리자</span>'
+    : '<span style="font-size:10.5px;font-weight:700;color:#5B60DF;background:rgba(124,130,247,.14);padding:2px 8px;border-radius:99px">관리자</span>';
+
+  async function loadAdmins() {
+    const el = document.getElementById("adminList");
+    try {
+      const admins = await api("GET", "/v1/admin/admins");
+      if (!el || !Array.isArray(admins)) return;
+      if (!admins.length) { el.innerHTML = '<p style="color:var(--muted);font-size:13px">관리자가 없습니다.</p>'; return; }
+      el.innerHTML = "";
+      admins.forEach(a => {
+        const row = document.createElement("div");
+        row.style.cssText = "display:flex;align-items:center;gap:10px;padding:9px 12px;background:var(--panel-bg);border:1px solid var(--border);border-radius:10px";
+        const rm = a.is_super_admin
+          ? '' // 슈퍼 관리자는 회수 버튼 없음(보호)
+          : `<button class="admRm" data-id="${esc(a.id)}" data-email="${esc(a.email)}" title="관리자 해제" style="border:0;background:none;color:#E07B6B;cursor:pointer;font-size:15px;margin-left:auto">✕</button>`;
+        row.innerHTML =
+          `<span style="font-weight:600;font-size:13.5px">${esc(a.email)}</span>
+           ${_roleBadge(a.is_super_admin)}
+           ${a.is_super_admin ? '<span style="margin-left:auto"></span>' : ''}${rm}`;
+        el.appendChild(row);
+      });
+      el.querySelectorAll(".admRm").forEach(b => {
+        b.onclick = async function () {
+          if (!confirm(`'${this.dataset.email}' 계정의 관리자 권한을 회수할까요?`)) return;
+          try { await api("DELETE", "/v1/admin/admins/" + encodeURIComponent(this.dataset.id)); await loadAdmins(); }
+          catch (e) { console.warn(e); }
+        };
+      });
+    } catch (e) { if (el) el.innerHTML = '<p style="color:var(--muted);font-size:13px">목록을 불러오지 못했습니다.</p>'; }
+  }
+
+  (function bindAddAdmin() {
+    const btn = document.getElementById("addAdminBtn");
+    if (!btn) return;
+    btn.onclick = async function () {
+      const msg = document.getElementById("adminMgmtMsg");
+      const input = document.getElementById("newAdminEmail");
+      msg.textContent = "";
+      const email = (input.value || "").trim();
+      if (!email) { msg.textContent = "이메일을 입력하세요."; return; }
+      this.disabled = true;
+      try {
+        await api("POST", "/v1/admin/admins", { email });
+        input.value = "";
+        await loadAdmins();
+      } catch (e) {
+        msg.textContent = (e && e.message) ? e.message : "추가 실패 — 해당 이메일이 회원가입돼 있는지 확인하세요.";
+      }
+      this.disabled = false;
+    };
+  })();
 
   document.getElementById("logoutBtn").onclick = () => {
     sessionStorage.removeItem(TOKEN_KEY);
@@ -402,7 +479,11 @@
       location.replace("login.html?next=admin.html");
       return null;
     }
-    if (!res.ok) throw new Error(res.statusText);
+    if (!res.ok) {
+      let detail = res.statusText;
+      try { const j = await res.json(); detail = j.message || j.detail || detail; } catch (_) {}
+      throw new Error(detail);
+    }
     return res.status === 204 ? null : res.json();
   }
 

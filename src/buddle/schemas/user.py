@@ -20,6 +20,7 @@ class UserRead(BaseModel):
     tier: UserTier
     persona_quota: int
     is_admin: bool
+    is_super_admin: bool = False
     is_active: bool
     created_at: datetime
 
