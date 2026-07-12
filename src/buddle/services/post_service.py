@@ -545,6 +545,73 @@ async def _feed_items_for_posts(db: AsyncSession, posts: list[Post]) -> list[Pos
     )
     importance_map = {pid: float(norm) for pid, norm in imp_rows.all()}
 
+    # 카드 하단 '주요 주장'(≤3) — 글에서 추출된 claim(추출 순서 유지).
+    # 본문에 그대로 들어 있는 문장(추출이 원문을 복사한 메아리)은 거른다:
+    # 본문 반복은 주장이 아니라 소음이고, 사용자 방침은 "없으면 그냥 없게"다.
+    from buddle.db.models.argument_unit import ArgumentUnit
+    from buddle.db.models.enums import ArgumentKindEnum
+
+    claim_rows = await db.execute(
+        select(ArgumentUnit.post_id, ArgumentUnit.text)
+        .where(
+            ArgumentUnit.post_id.in_(post_ids),
+            ArgumentUnit.kind == ArgumentKindEnum.CLAIM,
+        )
+        .order_by(ArgumentUnit.created_at.asc())
+    )
+    raw_claims: dict[uuid.UUID, list[str]] = {}
+    for pid, text in claim_rows.all():
+        lst = raw_claims.setdefault(pid, [])
+        if text and text not in lst:
+            lst.append(text)
+    body_by_post = {p.id: (p.content_transformed or "") for p in posts}
+    claims_by_post: dict[uuid.UUID, list[str]] = {}
+    for pid, texts in raw_claims.items():
+        kept = [c for c in texts if c not in body_by_post.get(pid, "")][:3]
+        if kept:
+            claims_by_post[pid] = kept
+
+    # 화제 글('지금 화제')은 자체 추출이 없다 — 그 태그 아래 토론에서 나온
+    # 최근 claim을 폴백으로 붙인다. 일반 글엔 폴백을 쓰지 않는다(남의 글
+    # 주장이 섞이는 소음 방지). 그것도 없으면 빈 리스트(카드에 아무것도 없음).
+    topic_posts = [p for p in posts if p.author_label == "지금 화제"]
+    fallback_tag_ids = {
+        t.id
+        for p in topic_posts
+        if p.id not in claims_by_post
+        for t in tags_by_post.get(p.id, [])
+        if t.id is not None
+    }
+    claims_by_tag: dict[uuid.UUID, list[str]] = {}
+    if fallback_tag_ids:
+        tag_claim_rows = await db.execute(
+            select(ArgumentUnit.topic_tag_id, ArgumentUnit.text)
+            .where(
+                ArgumentUnit.topic_tag_id.in_(fallback_tag_ids),
+                ArgumentUnit.kind == ArgumentKindEnum.CLAIM,
+            )
+            .order_by(ArgumentUnit.created_at.desc())
+        )
+        for tid, text in tag_claim_rows.all():
+            lst = claims_by_tag.setdefault(tid, [])
+            if text and text not in lst and len(lst) < 3:
+                lst.append(text)
+
+    def _claims_for(p: Post) -> list[str]:
+        own = claims_by_post.get(p.id)
+        if own:
+            return own
+        if p.author_label != "지금 화제":
+            return []
+        body = body_by_post.get(p.id, "")
+        for t in tags_by_post.get(p.id, []):
+            if t.id is None:
+                continue
+            cand = [c for c in claims_by_tag.get(t.id, []) if c not in body]
+            if cand:
+                return cand[:3]
+        return []
+
     return [
         PostFeedItem(
             id=p.id,
@@ -558,6 +625,7 @@ async def _feed_items_for_posts(db: AsyncSession, posts: list[Post]) -> list[Pos
             tags=tags_by_post.get(p.id, []),
             importance=importance_map.get(p.id, 0.0),
             created_at=p.created_at,
+            claims=_claims_for(p),
         )
         for p in posts
     ]

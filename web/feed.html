@@ -699,18 +699,20 @@
   .nt-heads a::before{content:"· ";color:var(--ink-faint);}
   .ns-empty{text-align:center;font-size:12.5px;color:var(--ink-faint);padding:16px 6px;}
 
-  /* ── 웹 우선 레이아웃: 카드 목록을 반응형 2열 그리드로(관리자 grid2 패리티) ──
-     좁은 화면(≤760px)에선 1열. align-items:start 로 카드가 늘어나지 않게 한다. */
-  #feedList, #nsList{display:grid;grid-template-columns:1fr 1fr;gap:14px;align-items:start;}
+  /* ── 웹 우선 레이아웃: 넓은 중앙 컬럼(관리자 비율) + 카드는 한 줄에 하나 ──
+     카드 아래에 주요 주장이 붙는 구조라 2열보다 1열이 읽기 흐름에 맞다. */
+  #feedList, #nsList{display:grid;grid-template-columns:1fr;gap:14px;align-items:start;}
   #feedList > *, #nsList > *{margin-bottom:0;}
-  /* 로딩/빈상태/무한스크롤 센티널은 한 줄 전체 폭 */
-  #feedList > .loading, #feedList > #feedSentinel, #feedList > .empty,
-  #nsList > .ns-empty{grid-column:1 / -1;}
-  @media (max-width:760px){ #feedList, #nsList{grid-template-columns:1fr;} }
   /* 상세(단일 글)는 읽기 좋은 좁은 중앙 컬럼 유지 */
   #detailView{max-width:680px;margin:0 auto;width:100%;}
   /* 넓은 화면에선 본문 좌우 여백을 조금 더 */
   @media (min-width:760px){ .body{padding-left:24px;padding-right:24px;} }
+
+  /* 카드 하단 '주요 주장' — 이 글/화제에서 나온 대표 주장(≤3). 없으면 미표시 */
+  .pc-claims{margin-top:11px;padding-top:10px;border-top:1px dashed var(--line);display:flex;flex-direction:column;gap:6px;}
+  .pc-claims-h{font-size:11px;font-weight:700;letter-spacing:.04em;color:var(--willow-text);}
+  .pc-claim{position:relative;padding-left:14px;font-size:13px;line-height:1.5;color:var(--ink-soft);}
+  .pc-claim::before{content:"“";position:absolute;left:0;top:-1px;font-family:var(--display);font-weight:700;color:var(--willow);}
 
   .hidden{display:none;}
 </style>
@@ -1169,6 +1171,17 @@
     return { title, badge };
   }
 
+  // 카드 하단 '주요 주장' 블록 — claims(≤3)가 있으면 붙이고, 없으면 아무것도
+  // 렌더하지 않는다(빈 라벨·자리 표시 금지).
+  function claimsBlock(item) {
+    const cs = Array.isArray(item.claims) ? item.claims.filter(Boolean) : [];
+    if (!cs.length) return null;
+    const box = sec.el("div", { class: "pc-claims" });
+    box.appendChild(sec.el("div", { class: "pc-claims-h" }, "주요 주장"));
+    cs.slice(0, 3).forEach(c => box.appendChild(sec.el("div", { class: "pc-claim" }, c)));
+    return box;
+  }
+
   // 피드에 흐르는 화제 글은 텍스트 덩어리가 아니라 화제 카드 형식으로.
   function topicPostCard(item) {
     const { title, badge } = parseTopicPost(item.content_transformed);
@@ -1186,6 +1199,8 @@
       tags.slice(0, 5).forEach(t => kb.appendChild(sec.el("span", { class: "nt-kw" }, "#" + t)));
       card.appendChild(kb);
     }
+    const claimsEl = claimsBlock(item);
+    if (claimsEl) card.appendChild(claimsEl);
     const openDetail = () => {
       try { sessionStorage.setItem("buddle.feed.item." + item.id, JSON.stringify(item)); } catch (_) {}
       const qs = new URLSearchParams({ post: item.id });
@@ -1242,6 +1257,7 @@
     }
 
     const ex = sec.el("div", { class: "excerpt" }, item.content_transformed || "");
+    const claimsEl = claimsBlock(item);  // 주요 주장(≤3) — 없으면 null
 
     const foot = sec.el("div", { class: "foot" });
     if (item.like_count != null) foot.appendChild(metaItem("heart", item.like_count));
@@ -1258,6 +1274,7 @@
     foot.appendChild(discuss);
 
     card.appendChild(by); card.appendChild(ex);
+    if (claimsEl) card.appendChild(claimsEl);
     card.appendChild(foot);
 
     if (Array.isArray(item.tags) && item.tags.length) {

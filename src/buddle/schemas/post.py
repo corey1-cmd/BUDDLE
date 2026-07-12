@@ -58,6 +58,9 @@ class PostFeedItem(BaseModel):
     tags: list[TagName]
     importance: float  # normalized [-1, 1]
     created_at: datetime
+    # 카드 하단의 주요 주장(≤3) — 글에서 추출된 claim 우선, 없으면 그 글의
+    # 태그 아래 토론에서 나온 claim 폴백. 없으면 빈 리스트(카드에 미표시).
+    claims: list[str] = []
 
 
 class MyPostItem(BaseModel):

@@ -71,14 +71,19 @@
   .rchip:hover{border-color:var(--line-strong);color:var(--ink);}
   .rloading{text-align:center;color:var(--ink-faint);font-size:14px;padding:40px 0;}
   /* 웹 우선: 관리자 대시보드와 같은 넓은 중앙 정렬 비율(≈900px). 이 페이지에서만
-     bd-phone 폭을 넓히고, 카드 목록은 반응형 2열 그리드로 채운다(관리자 grid2 패리티). */
+     bd-phone 폭을 넓힌다. 카드는 한 줄에 하나 — 카드 아래에 주요 주장이 붙는
+     읽기 흐름이라 2열로 쪼개지 않는다. */
   .bd-phone{max-width:940px;}
-  .rfeed{display:grid;grid-template-columns:1fr 1fr;gap:14px;align-items:start;padding-bottom:8px;}
+  .rfeed{display:grid;grid-template-columns:1fr;gap:14px;align-items:start;padding-bottom:8px;}
   .rfeed > *{margin-bottom:0;}
-  .rfeed > .rloading, .rfeed > .rempty, .rfeed > #feedSentinel{grid-column:1 / -1;}
-  #ntList{display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:start;}
+  #ntList{display:grid;grid-template-columns:1fr;gap:12px;align-items:start;}
   #ntList > *{margin-bottom:0;}
-  @media (max-width:760px){ .rfeed, #ntList{grid-template-columns:1fr;} }
+
+  /* 카드 하단 '주요 주장'(≤3) — 없으면 미표시 */
+  .pc-claims{margin-top:11px;padding-top:10px;border-top:1px dashed var(--line);display:flex;flex-direction:column;gap:6px;}
+  .pc-claims-h{font-size:11px;font-weight:700;letter-spacing:.04em;color:var(--willow-text);}
+  .pc-claim{position:relative;padding-left:14px;font-size:13px;line-height:1.5;color:var(--ink-soft);}
+  .pc-claim::before{content:"“";position:absolute;left:0;top:-1px;font-family:var(--display);font-weight:700;color:var(--willow);}
   .rcard{background:linear-gradient(158deg,rgba(255,255,255,.055) 0%,rgba(255,255,255,.02) 40%,transparent 62%),var(--paper-raised);border:1px solid var(--line);border-radius:18px;padding:15px;box-shadow:0 6px 22px rgba(23,26,60,.08),inset 0 1px 0 rgba(255,255,255,.10);backdrop-filter:blur(20px) saturate(150%);-webkit-backdrop-filter:blur(20px) saturate(150%);}
   .rc-head{display:flex;align-items:center;gap:9px;margin-bottom:11px;}
   .rc-ava{width:30px;height:30px;border-radius:10px;flex:none;display:grid;place-items:center;font-family:var(--display);font-weight:600;font-size:13px;color:#fff;background:var(--accent-grad);box-shadow:var(--shadow-pop-sm);}
@@ -655,6 +660,16 @@
     return { title, badge };
   }
 
+  // 카드 하단 '주요 주장' — claims(≤3)가 있으면 붙이고, 없으면 렌더 안 함.
+  function claimsBlock(item){
+    const cs = Array.isArray(item.claims) ? item.claims.filter(Boolean) : [];
+    if (!cs.length) return null;
+    const box = sec.el("div", { class:"pc-claims" });
+    box.appendChild(sec.el("div", { class:"pc-claims-h" }, "주요 주장"));
+    cs.slice(0, 3).forEach(c => box.appendChild(sec.el("div", { class:"pc-claim" }, c)));
+    return box;
+  }
+
   // 피드에 흐르는 화제 글은 텍스트 덩어리가 아니라 화제 카드 형식으로.
   function topicPostCard(item){
     const { title, badge } = parseTopicPost(item.content_transformed);
@@ -672,6 +687,8 @@
       tags.slice(0, 5).forEach(t => kb.appendChild(sec.el("span", { class:"nt-kw" }, "#" + t)));
       card.appendChild(kb);
     }
+    const claimsEl = claimsBlock(item);
+    if (claimsEl) card.appendChild(claimsEl);
     const openDetail = () => {
       try { sessionStorage.setItem("buddle.feed.item." + item.id, JSON.stringify(item)); } catch(_){}
       const qs = new URLSearchParams({ post: item.id });
@@ -746,6 +763,10 @@
       tags.slice(0,4).forEach(t => tb.appendChild(sec.el("span", { class:"rc-tag" }, "#"+t)));
       card.appendChild(tb);
     }
+
+    // 주요 주장(≤3) — 없으면 아무것도 안 붙는다.
+    const claimsEl = claimsBlock(item);
+    if (claimsEl) card.appendChild(claimsEl);
 
     // 푸터: 좋아요 · 댓글 · 토론 버튼(오른쪽)
     const foot = sec.el("div", { class:"rc-foot" });
