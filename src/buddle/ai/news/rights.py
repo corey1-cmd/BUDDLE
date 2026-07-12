@@ -41,6 +41,7 @@ SOURCE_RIGHTS: dict[str, str] = {
     "중소벤처기업부": KOGL_TYPE1,
     "서울특별시": KOGL_TYPE1,
     "경기도 뉴스포털": KOGL_TYPE1,
+    "과학기술정보통신부": KOGL_TYPE1,
 }
 
 
