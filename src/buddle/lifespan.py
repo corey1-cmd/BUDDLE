@@ -66,7 +66,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     await _retry(_redis_ping, name="redis")
     app.state.redis = redis_client
-    log.info("redis.connected", url=settings.redis_url)
+    log.info("redis.connected", url=_sanitize_url(settings.redis_url))
 
     # ── In-app scheduler (opt-in; admin tick endpoints work regardless) ──
     scheduler = None

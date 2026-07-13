@@ -185,14 +185,47 @@ def create_app() -> FastAPI:
     # Lets the whole app run from one origin (http://localhost:8000) — no CORS
     # or BUDDLE_API_BASE wiring needed. The directory is optional: if web/ is
     # absent (e.g. a pure-API deploy), the JSON root above still answers at /api.
+    import mimetypes
     import pathlib
 
     from fastapi.staticfiles import StaticFiles
 
+    # Slim base images (python:*-slim) ship without /etc/mime.types, so
+    # mimetypes.guess_type() returns None for .css/.js and StaticFiles falls
+    # back to text/plain. With our `X-Content-Type-Options: nosniff` header the
+    # browser then REFUSES to apply the stylesheet/scripts → a fully unstyled
+    # page. Register the types explicitly so serving is correct on any image.
+    for _ext, _type in (
+        (".css", "text/css"),
+        (".js", "text/javascript"),
+        (".mjs", "text/javascript"),
+        (".woff2", "font/woff2"),
+        (".svg", "image/svg+xml"),
+        (".json", "application/json"),
+        (".webmanifest", "application/manifest+json"),
+    ):
+        mimetypes.add_type(_type, _ext)
+
+    class _NoStaleStatic(StaticFiles):
+        """StaticFiles that forces revalidation on every asset.
+
+        Without an explicit Cache-Control, browsers apply heuristic caching and
+        can keep serving a stale copy — including a broken/empty body captured
+        while an earlier deploy was failing — so the page renders unstyled even
+        after a fix ships. ``no-cache`` means "revalidate before use": the
+        browser still caches, but always checks the ETag, so a corrected file
+        is picked up immediately and a stale broken one is never reused.
+        """
+
+        async def get_response(self, path: str, scope):  # type: ignore[no-untyped-def]
+            response = await super().get_response(path, scope)
+            response.headers.setdefault("Cache-Control", "no-cache")
+            return response
+
     _web_dir = pathlib.Path(__file__).resolve().parents[2] / "web"
     if _web_dir.is_dir():
         # html=True → "/" serves web/login.html-style index; unknown paths 404.
-        app.mount("/", StaticFiles(directory=str(_web_dir), html=True), name="web")
+        app.mount("/", _NoStaleStatic(directory=str(_web_dir), html=True), name="web")
     else:
 
         @app.get("/", include_in_schema=False)

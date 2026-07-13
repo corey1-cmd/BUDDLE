@@ -186,6 +186,8 @@
     get(id) { return request("GET", `/v1/posts/${id}`); },
     like(id) { return request("PUT", `/v1/plaza/posts/${id}/like`); },
     unlike(id) { return request("DELETE", `/v1/plaza/posts/${id}/like`); },
+    bookmark(id) { return request("PUT", `/v1/plaza/posts/${id}/bookmark`); },
+    unbookmark(id) { return request("DELETE", `/v1/plaza/posts/${id}/bookmark`); },
     comments(id) { return request("GET", `/v1/plaza/posts/${id}/comments`); },
     addComment(id, content, kind = "inform") {
       return request("POST", `/v1/plaza/posts/${id}/comments`, { content, kind });
@@ -194,13 +196,29 @@
 
   /* ── Feed / Inbox ──────────────────────────────────────── */
   const feed = {
-    list(cursor, tag) {
+    list(cursor, tag, q) {
       const qs = new URLSearchParams();
       if (cursor) qs.set("cursor", cursor);
       if (tag && tag !== "전체") qs.set("tag", tag);
-      const q = qs.toString();
-      return request("GET", `/v1/feed${q ? `?${q}` : ""}`);
+      if (q) qs.set("q", q);
+      const query = qs.toString();
+      return request("GET", `/v1/feed${query ? `?${query}` : ""}`);
     },
+  };
+
+  /* ── Bookmarks (저장한 글) / Notifications (알림) ──────── */
+  const bookmarks = {
+    list(limit = 30) { return request("GET", `/v1/bookmarks?limit=${limit}`); },
+  };
+  const notifications = {
+    list({ limit = 30, unreadOnly = false } = {}) {
+      const qs = new URLSearchParams({ limit: String(limit) });
+      if (unreadOnly) qs.set("unread_only", "true");
+      return request("GET", `/v1/notifications?${qs.toString()}`);
+    },
+    unreadCount() { return request("GET", "/v1/notifications/unread-count"); },
+    markRead(id) { return request("POST", `/v1/notifications/${id}/read`); },
+    markAllRead() { return request("POST", "/v1/notifications/read-all"); },
   };
   const inbox = {
     list(cursor) { return request("GET", `/v1/inbox${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ""}`); },
@@ -242,6 +260,9 @@
       qs.set("limit", String(limit));
       return request("GET", `/v1/tags?${qs.toString()}`);
     },
+    trending({ days = 7, limit = 10 } = {}) {
+      return request("GET", `/v1/tags/trending?days=${days}&limit=${limit}`);
+    },
   };
 
   const proximity = {
@@ -282,6 +303,7 @@
   global.buddle = {
     ApiError, setTokens, clearTokens, requireAuth,
     auth, users, personas, tags, posts, feed, inbox, sessions, knowledge, proximity,
+    bookmarks, notifications,
     openDialogue,
   };
 })(window);

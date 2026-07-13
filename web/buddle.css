@@ -4,58 +4,76 @@
    One stylesheet, linked by every page, so tokens never drift (they used to
    live in 10 inline :root blocks with 3 different font stacks).
 
-   Direction: an "aurora" gradient — blue → lavender → soft pink — as the
-   single signature brand device, carried on filled surfaces (buttons, avatars,
-   active pills, the wordmark) with a soft colored shadow underneath for a
-   tactile, dimensional pop. Background stays a calm warm white so the
-   gradient reads as a deliberate accent, not noise — full-bleed, minimal
-   dead space, no boxed-off hero panels.
+   Direction: premium-tech ("cosmic glass") — a deep desaturated blue-black
+   ground with faint volumetric haze (soft radial glows), frosted-glass
+   translucent layered surfaces, bold tight-tracked sans headlines, and ONE
+   signature accent: blue-violet, carried on filled surfaces (buttons,
+   avatars, active pills, the wordmark) as a blue→violet→shadow gradient with
+   a soft bloom underneath, plus hairline metallic top-edge highlights.
 
    60-30-10:
-     60%  paper        near-white ground
-     30%  ink          text + structure (cool dark, near-black)
-     10%  accent grad   the one signature gradient — CTAs, avatars, active state
+     60%  paper        cosmic blue-black ground + volumetric haze
+     30%  ink          text + structure (cool near-white, desaturated)
+     10%  accent grad   blue-violet — CTAs, avatars, active state
    ========================================================================= */
 
+/* ── Typeface — Pretendard Variable (Latin + Hangul in ONE face) ────────────
+   Self-hosted (CSP: font-src 'self'). One variable file covers 45–920 weight,
+   so Korean and Latin never fall back to mismatched system fonts (the old
+   Spline Sans had no Hangul glyphs — Korean text rendered in a different,
+   heavier face and looked broken next to Latin). */
+@font-face{
+  font-family:"Pretendard Variable";
+  src:url("fonts/PretendardVariable.woff2") format("woff2-variations");
+  font-weight:45 920;
+  font-style:normal;
+  font-display:swap;
+}
+
 :root{
+  color-scheme:light;
   /* ── 60 / 30 / 10 ─────────────────────────────────────────────────────── */
-  --paper:#FBFAF9;          /* base ground (60) */
-  --paper-raised:#FFFFFF;   /* cards / sheets lifted off the ground */
-  --paper-sunken:#F4F3FA;   /* wells, track backgrounds */
+  --paper:#F7F8FD;          /* base ground (60) — cool near-white */
+  --paper-raised:rgba(255,255,255,.72); /* frosted card glass (translucent layer) */
+  --paper-sunken:rgba(96,102,150,.08);  /* wells, track backgrounds */
 
-  --ink:#272636;            /* primary text — cool near-black */
-  --ink-soft:#5C5A70;       /* secondary text */
-  --ink-faint:#908DA0;      /* tertiary / captions */
-  --line:#ECEAF3;           /* hairline dividers & borders */
-  --line-strong:#DDD9EC;
+  --ink:#171A2C;            /* primary text — cool near-black */
+  --ink-soft:#4B5169;       /* secondary text — desaturated */
+  --ink-faint:#878DA6;      /* tertiary / captions */
+  --line:rgba(23,26,60,.10);   /* hairline dividers & glass rims */
+  --line-strong:rgba(23,26,60,.18);
 
-  /* THE accent (10) — solid form, for text/icon/border contexts where a
-     gradient can't render (color:, border-color:, currentColor strokes). */
-  --willow:#5C7CF0;
-  --willow-press:#4863D6;   /* pressed/hover-darken */
-  --willow-wash:#EEF0FE;    /* faint accent fill (selected rows, chips) */
-  --willow-ring:rgba(92,124,240,.28); /* focus ring */
+  /* THE accent (10) — blue-violet. Solid form, for text/icon/border
+     contexts where a gradient can't render (color:, border-color:, strokes).
+     Dark enough to read on the light ground, desaturated enough to feel calm. */
+  --willow:#6A70E8;
+  --willow-press:#585EDA;   /* pressed/hover-darken (fills only) */
+  --willow-text:#5B60DF;    /* text/icon accent — deeper tint for light ground */
+  --willow-wash:rgba(106,112,232,.11); /* faint accent fill (selected rows, chips) */
+  --willow-ring:rgba(106,112,232,.32); /* focus ring */
 
   /* THE signature gradient — filled surfaces only (buttons, avatars, active
-     pills, wordmark via background-clip:text). Blue → lavender → soft pink. */
-  --accent-grad:linear-gradient(135deg,#6F8FF5 0%,#A98DEE 55%,#F0AFDA 100%);
-  --accent-grad-2:linear-gradient(135deg,#7C9CF5 0%,#C2A0EE 100%);
-  --accent-grad-press:linear-gradient(135deg,#5A78E0 0%,#9078D6 55%,#E294C0 100%);
-  --shadow-pop:0 10px 22px rgba(108,100,225,.30),0 2px 8px rgba(108,100,225,.16),inset 0 1px 0 rgba(255,255,255,.45);
-  --shadow-pop-sm:0 5px 14px rgba(108,100,225,.26),inset 0 1px 0 rgba(255,255,255,.45);
+     pills, wordmark via background-clip:text). Blue → violet → cosmic shadow,
+     with an iridescent top-edge highlight from the pop shadows below. */
+  --accent-grad:linear-gradient(135deg,#6D8CFF 0%,#7C6FF2 55%,#3A3480 100%);
+  --accent-grad-2:linear-gradient(135deg,#6D8CFF 0%,#6F5FD8 100%);
+  --accent-grad-press:linear-gradient(135deg,#5A78E8 0%,#6A5CD4 55%,#2E2966 100%);
+  --shadow-pop:0 10px 30px rgba(104,96,255,.22),0 2px 8px rgba(23,26,60,.10),inset 0 1px 0 rgba(255,255,255,.55);
+  --shadow-pop-sm:0 5px 18px rgba(104,96,255,.18),inset 0 1px 0 rgba(255,255,255,.55);
 
   /* Semantic data pair — used ONLY for debate stance (찬성/반대), deliberately
-     DECOUPLED from the brand gradient so position-taking reads as data, not
+     DECOUPLED from the brand accent so position-taking reads as data, not
      brand chrome. Desaturated, never the old red/blue trading dichotomy. */
-  --pos:#3D8A6B;            /* 찬성 — growth green */
-  --pos-wash:#EAF3EF;
-  --caution:#B4734A;        /* 반대 — muted clay, never alarm-red */
-  --caution-wash:#F6EDE6;
+  --pos:#1E9E67;            /* 찬성 — growth green (light-ground tuned) */
+  --pos-wash:rgba(30,158,103,.11);
+  --caution:#C06B3E;        /* 반대 — muted clay, never alarm-red */
+  --caution-wash:rgba(192,107,62,.11);
 
-  /* ── type ─────────────────────────────────────────────────────────────── */
-  --display:"Fraunces",Georgia,serif;          /* warm serif — humanity */
-  --body:"Spline Sans",system-ui,-apple-system,sans-serif;
-  --mono:"Spline Sans",system-ui,sans-serif;   /* data: same face, tabular */
+  /* ── type — one face everywhere (Latin+Hangul unified), headlines by
+     weight not by face ──────────────────────────────────────────────────── */
+  --display:"Pretendard Variable",Pretendard,"Apple SD Gothic Neo","Malgun Gothic",system-ui,-apple-system,sans-serif;
+  --body:"Pretendard Variable",Pretendard,"Apple SD Gothic Neo","Malgun Gothic",system-ui,-apple-system,sans-serif;
+  --mono:"Pretendard Variable",Pretendard,system-ui,sans-serif;   /* data: same face, tabular */
 
   /* type scale (mobile-first, 1.25 ratio, hand-tuned) */
   --t-display:28px;   /* hero line */
@@ -70,9 +88,10 @@
 
   /* ── form ─────────────────────────────────────────────────────────────── */
   --r-sm:10px; --r:14px; --r-lg:20px; --r-pill:999px;
-  --shadow-sm:0 1px 2px rgba(40,38,60,.05), 0 1px 3px rgba(40,38,60,.07);
-  --shadow:0 2px 8px rgba(40,38,60,.06), 0 8px 24px rgba(40,38,60,.07);
-  --shadow-lg:0 12px 40px rgba(40,38,60,.12);
+  /* soft cool depth + a faint blue-violet bloom so elevation reads as light */
+  --shadow-sm:0 1px 2px rgba(23,26,60,.08), 0 1px 3px rgba(23,26,60,.06);
+  --shadow:0 2px 8px rgba(23,26,60,.08), 0 12px 32px rgba(84,86,200,.10);
+  --shadow-lg:0 12px 40px rgba(23,26,60,.12), 0 18px 60px rgba(84,86,200,.12);
 
   /* ── motion — calm, never bouncy ──────────────────────────────────────── */
   --ease:cubic-bezier(.22,.61,.36,1);
@@ -89,19 +108,30 @@ body{
   font-family:var(--body);
   font-size:var(--t-body);
   line-height:1.55;
+  letter-spacing:-.01em;    /* tight tracking, everywhere */
   color:var(--ink);
-  background:var(--paper);
+  /* volumetric haze — pastel blue-violet glows the frosted layers refract.
+     Softer than the dark theme: on a white ground the glass reads from the
+     tinted light behind it, not from darkness. */
+  background:
+    radial-gradient(1000px 640px at 82% -12%, rgba(129,108,255,.14), transparent 64%),
+    radial-gradient(760px 520px at -10% 16%, rgba(84,140,255,.10), transparent 58%),
+    radial-gradient(520px 420px at 30% 42%, rgba(150,96,255,.06), transparent 60%),
+    radial-gradient(900px 700px at 58% 115%, rgba(96,88,230,.10), transparent 62%),
+    var(--paper);
+  background-attachment:fixed;
   -webkit-font-smoothing:antialiased;
   text-rendering:optimizeLegibility;
 }
 
-/* The phone column every page lives in. */
+/* The phone column every page lives in. (Transparent so the cosmic haze on
+   <body> reads through the frosted layers above it.) */
 .bd-phone{
   width:100%;
   max-width:var(--phone-max);
   min-height:100dvh;
   margin:0 auto;
-  background:var(--paper);
+  background:transparent;
   position:relative;
   padding:var(--s4) var(--s4) calc(var(--s8) + var(--s7));
 }
@@ -122,10 +152,10 @@ body{
 }
 
 /* ── Typography primitives ──────────────────────────────────────────────── */
-.bd-eyebrow{font-size:var(--t-xs);font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-faint);}
-.bd-display{font-family:var(--display);font-weight:600;font-size:var(--t-display);line-height:1.12;letter-spacing:-.01em;color:var(--ink);}
-h1,.bd-h1{font-family:var(--display);font-weight:600;font-size:var(--t-h1);line-height:1.2;letter-spacing:-.01em;color:var(--ink);}
-h2,.bd-h2{font-size:var(--t-h2);font-weight:600;color:var(--ink);}
+.bd-eyebrow{font-size:var(--t-xs);font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-faint);}
+.bd-display{font-family:var(--display);font-weight:800;font-size:var(--t-display);line-height:1.16;letter-spacing:-.02em;color:var(--ink);}
+h1,.bd-h1{font-family:var(--display);font-weight:700;font-size:var(--t-h1);line-height:1.25;letter-spacing:-.02em;color:var(--ink);}
+h2,.bd-h2{font-size:var(--t-h2);font-weight:600;letter-spacing:-.02em;color:var(--ink);}
 .bd-muted{color:var(--ink-soft);}
 .bd-faint{color:var(--ink-faint);}
 .bd-num{font-variant-numeric:tabular-nums;}
@@ -145,18 +175,26 @@ h2,.bd-h2{font-size:var(--t-h2);font-weight:600;color:var(--ink);}
 .bd-btn--primary:hover{background:var(--accent-grad-press);}
 .bd-btn--ghost{background:transparent;border-color:transparent;color:var(--ink-soft);}
 .bd-btn--ghost:hover{background:var(--paper-sunken);color:var(--ink);}
-.bd-btn--danger{background:var(--caution-wash);border-color:transparent;color:#8C4A28;}
+.bd-btn--danger{background:var(--caution-wash);border-color:transparent;color:#E8A87E;}
 .bd-btn--block{width:100%;}
 .bd-btn:disabled{opacity:.45;cursor:default;transform:none;}
 
-/* ── Cards & dividers ───────────────────────────────────────────────────── */
-.bd-card{background:var(--paper-raised);border:1px solid var(--line);border-radius:var(--r-lg);padding:var(--s4);box-shadow:var(--shadow-sm);}
-.bd-card--quiet{box-shadow:none;}
+/* ── Cards & dividers — frosted glass: translucent fill + specular sweep +
+   heavy blur + bright rim. The diagonal white sweep is what sells "glass". */
+.bd-card{
+  background:
+    linear-gradient(158deg, rgba(255,255,255,.10) 0%, rgba(255,255,255,.03) 34%, rgba(255,255,255,0) 55%),
+    var(--paper-raised);
+  border:1px solid var(--line);border-radius:var(--r-lg);padding:var(--s4);
+  box-shadow:0 8px 32px rgba(23,26,60,.12), inset 0 1px 0 rgba(255,255,255,.14);
+  backdrop-filter:blur(28px) saturate(170%);-webkit-backdrop-filter:blur(28px) saturate(170%);
+}
+.bd-card--quiet{box-shadow:inset 0 1px 0 rgba(255,255,255,.14);}
 .bd-hr{height:1px;background:var(--line);border:0;margin:var(--s4) 0;}
 
 /* ── Chips / tags ───────────────────────────────────────────────────────── */
 .bd-chip{display:inline-flex;align-items:center;gap:6px;font-size:var(--t-sm);font-weight:500;color:var(--ink-soft);background:var(--paper-sunken);border:1px solid var(--line);border-radius:var(--r-pill);padding:6px 12px;transition:background var(--dur) var(--ease),color var(--dur) var(--ease),border-color var(--dur) var(--ease);}
-.bd-chip--on{background:var(--willow-wash);border-color:transparent;color:var(--willow-press);}
+.bd-chip--on{background:var(--willow-wash);border-color:transparent;color:var(--willow-text);}
 .bd-chip[role=button],a.bd-chip{cursor:pointer;}
 .bd-chip[role=button]:hover,a.bd-chip:hover{border-color:var(--line-strong);}
 
@@ -184,8 +222,8 @@ h2,.bd-h2{font-size:var(--t-h2);font-weight:600;color:var(--ink);}
 
 /* ── Badges ─────────────────────────────────────────────────────────────── */
 .bd-badge{font-size:var(--t-xs);font-weight:600;border-radius:var(--r-pill);padding:5px 10px;background:var(--paper-sunken);color:var(--ink-soft);border:1px solid var(--line);}
-.bd-badge--accent{background:var(--willow-wash);color:var(--willow-press);border-color:transparent;}
-.bd-badge--caution{background:var(--caution-wash);color:#8C4A28;border-color:transparent;}
+.bd-badge--accent{background:var(--willow-wash);color:var(--willow-text);border-color:transparent;}
+.bd-badge--caution{background:var(--caution-wash);color:#E8A87E;border-color:transparent;}
 
 /* ── Persona avatar — one signature gradient mark, everywhere ──────────────
    Every persona reads as the same brand identity; only the initial differs.
@@ -197,14 +235,19 @@ h2,.bd-h2{font-size:var(--t-h2);font-weight:600;color:var(--ink);}
   position:fixed;left:50%;transform:translateX(-50%);bottom:0;z-index:40;
   width:100%;max-width:var(--phone-max);
   display:flex;justify-content:space-around;align-items:center;
-  background:rgba(251,251,250,.86);backdrop-filter:saturate(180%) blur(14px);
+  background:rgba(255,255,255,.66);backdrop-filter:saturate(180%) blur(18px);
   border-top:1px solid var(--line);
   padding:var(--s2) var(--s2) calc(var(--s2) + env(safe-area-inset-bottom));
 }
 .bd-nav a{display:flex;flex-direction:column;align-items:center;gap:3px;font-size:var(--t-xs);font-weight:600;color:var(--ink-faint);text-decoration:none;padding:6px 4px;transition:color var(--dur) var(--ease);}
 .bd-nav a svg{width:23px;height:23px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;}
-.bd-nav a.on{color:var(--willow);}
+.bd-nav a.on{color:var(--willow-text);}
 .bd-nav a:not(.on):hover{color:var(--ink-soft);}
+/* Instagram식 가운데 만들기(글쓰기) 버튼 — 채워진 액센트 스퀘어로 강조 */
+.bd-nav a.nav-create{gap:5px;color:var(--ink-soft);}
+.bd-nav a.nav-create .plus{display:grid;place-items:center;width:38px;height:30px;border-radius:11px;background:var(--accent-grad);box-shadow:var(--shadow-pop-sm);}
+.bd-nav a.nav-create .plus svg{width:22px;height:22px;stroke:#fff;stroke-width:2.2;}
+.bd-nav a.nav-create.on,.bd-nav a.nav-create{color:var(--ink-soft);}
 
 /* ── Top bar ────────────────────────────────────────────────────────────── */
 .bd-top{display:flex;align-items:center;gap:var(--s3);margin-bottom:var(--s4);}
@@ -221,7 +264,7 @@ h2,.bd-h2{font-size:var(--t-h2);font-weight:600;color:var(--ink);}
 .bd-empty p{color:var(--ink-soft);font-size:var(--t-sm);max-width:32ch;margin:0 auto var(--s4);}
 
 /* ── Section heading ────────────────────────────────────────────────────── */
-.bd-sec-title{font-size:var(--t-sm);font-weight:600;letter-spacing:.02em;color:var(--ink-faint);margin-bottom:var(--s3);}
+.bd-sec-title{font-size:var(--t-sm);font-weight:600;letter-spacing:0;color:var(--ink-faint);margin-bottom:var(--s3);}
 
 /* ── Scroll-reveal (progressive enhancement; no-JS shows everything) ─────────
    Fail-safe: .bd-reveal is visible by default. Only when JS confirms it can
@@ -230,6 +273,18 @@ h2,.bd-h2{font-size:var(--t-h2);font-weight:600;color:var(--ink);}
 .bd-reveal{opacity:1;transform:none;}
 .bd-js-reveal.bd-reveal{opacity:0;transform:translateY(10px);transition:opacity var(--dur-slow) var(--ease),transform var(--dur-slow) var(--ease);}
 .bd-js-reveal.bd-reveal.in{opacity:1;transform:none;}
+
+/* ── Frosted layer for page-local cards ─────────────────────────────────────
+   `body .card` outweighs the page-local `.card{background:var(--surface)}`
+   (0,1,1 vs 0,1,0), so every card gets the same glass recipe: specular sweep
+   over the translucent fill, heavy blur, bright top rim. */
+body .card{
+  background:
+    linear-gradient(158deg, rgba(255,255,255,.10) 0%, rgba(255,255,255,.03) 34%, rgba(255,255,255,0) 55%),
+    var(--paper-raised);
+  box-shadow:0 8px 32px rgba(23,26,60,.10), inset 0 1px 0 rgba(255,255,255,.13);
+  backdrop-filter:blur(28px) saturate(170%);-webkit-backdrop-filter:blur(28px) saturate(170%);
+}
 
 /* ── Focus visibility (quality floor) ───────────────────────────────────── */
 :focus-visible{outline:none;box-shadow:0 0 0 3px var(--willow-ring);border-radius:var(--r-sm);}
@@ -269,8 +324,8 @@ h2,.bd-h2{font-size:var(--t-h2);font-weight:600;color:var(--ink);}
   --navy:var(--ink);
   --navy-700:var(--ink);
   --dusk:var(--ink-soft);
-  --gold:var(--willow-press);     /* icon/text accent (audited: never "caution") */
-  --coral:var(--willow);          /* selected/active/liked indicator (audited: never "caution") */
+  --gold:var(--willow-text);      /* icon/text accent (audited: never "caution") */
+  --coral:#7D90DE;                /* selected/active/liked indicator (audited: never "caution") */
 
   /* gradients: the signature aurora gradient, everywhere a "rich" gradient
      was requested (heroes, avatars, primary buttons). */

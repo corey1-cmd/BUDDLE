@@ -4,14 +4,14 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, status
+from fastapi import APIRouter, Query, status
 
 from buddle.api.deps import DB, CurrentUser, Redis
 from buddle.core.exceptions import PostNotFound, ValidationError
 from buddle.db.models.enums import PostVisibility
 from buddle.db.models.post import Post
 from buddle.schemas.debate import DebateTopicCreated, DebateTopicRequest
-from buddle.schemas.post import PostCreate, PostRead
+from buddle.schemas.post import MyPostsPage, PostCreate, PostRead
 from buddle.schemas.reaction import ImportanceView, ReportAck, ReportRequest
 from buddle.services import (
     argument_service,
@@ -37,6 +37,20 @@ async def create_post(
 ) -> PostRead:
     post = await post_service.create_post(db, user, payload, redis_client=redis)
     return await post_service.get_post_for_owner(db, user, post.id)
+
+
+@router.get(
+    "",
+    response_model=MyPostsPage,
+    summary="My posts (프로필 목록) — 통계 + 최신순 키셋 페이지",
+)
+async def list_my_posts(
+    user: CurrentUser,
+    db: DB,
+    cursor: str | None = Query(default=None),
+    limit: int = Query(default=20, ge=1, le=50),
+) -> MyPostsPage:
+    return await post_service.get_my_posts(db, user, cursor=cursor, limit=limit)
 
 
 @router.get(

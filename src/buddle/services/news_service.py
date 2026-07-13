@@ -18,35 +18,58 @@ Admin endpoint returns:
 from __future__ import annotations
 
 import contextlib
+import datetime as dt
 import json
 import time
 from dataclasses import dataclass
 
+from sqlalchemy import select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from buddle.ai.news.fetcher import RawArticle, fetch_configured
-from buddle.ai.news.mediator import MediatedArticle, analyse_batch, synthesize_digest
+from buddle.ai.news.fetcher import RawArticle, fetch_configured, hamming64, simhash64
+from buddle.ai.news.rights import is_open_license
+from buddle.ai.news.topics import (
+    Topic,
+    TopicInput,
+    build_topics,
+    classify_category,
+    classify_region,
+    clean_text,
+    compose_digest,
+    extract_keywords,
+    extractive_gist,
+)
 from buddle.core.logging import get_logger
 from buddle.core.types import RedisClient
 from buddle.db.models.knowledge_audit import KnowledgeAudit
+from buddle.db.models.news_item import NewsItem
 
 log = get_logger(__name__)
 
 _BRIEFINGS_KEY = "buddle:news:briefings"
 _SEEN_KEY = "buddle:news:seen"
 _STATUS_KEY = "buddle:news:status"
-_DIGEST_KEY = "buddle:news:digest"  # mediator-combined briefing (the 'combination' stage)
+_DIGEST_KEY = "buddle:news:digest"  # combined briefing (the 'combination' stage)
 _SOURCES_KEY = "buddle:news:sources"  # admin-configured fetch sources (where to search)
-_BRIEFINGS_TTL = 60 * 60 * 25  # 25 hours
+_TOPICS_KEY = "buddle:news:topics"  # algorithmic 화제 cache (홈·관심주제 노출용)
+_SIMHASH_KEY = "buddle:news:simhash"  # 최근 기사 내용 지문(준중복 탐지, 48h)
+# 파생 캐시(브리핑/다이제스트/상태) 보존 — 실제 콘텐츠(글)는 DB에 영구 저장되고
+# 이 캐시는 매 틱 갱신된다. 스케줄러가 잠시 멈춰도 화면이 비지 않도록 7일 보존.
+_BRIEFINGS_TTL = 60 * 60 * 24 * 7  # 7 days
 _SEEN_TTL = 60 * 60 * 48  # 48 hours (dedup window)
 _MAX_STORED = 60  # max articles kept in cache
+_TOPIC_WINDOW_H = 72  # 화제 집계 윈도우 (DB 기준)
 
 # Source kinds the fetcher can dispatch. 'rss' takes an arbitrary feed url
 # (Techmeme, WSJ, New Yorker, …); the API kinds use their own fixed endpoints.
-_ALLOWED_KINDS = ("rss", "hackernews", "devto")
+# 'govapi' = 공공데이터포털(data.go.kr) OpenAPI — 채널 우선순위 1순위(정형 JSON).
+_ALLOWED_KINDS = ("rss", "hackernews", "devto", "govapi")
 
-# Seeded on first read so behaviour matches the previous hardcoded set. Techmeme
-# is the worked example of a free, public RSS feed; add WSJ/New Yorker as rss too.
+# 한국어 서비스 방침: 국내 정부·공공 RSS + 해외 RSS를 함께 수집하되, 해외
+# 기사는 수집 직후 한국어로 배치 번역해 공개한다(NEWS_TRANSLATE_FOREIGN,
+# ai/news/translate.py — 번역 실패 시 원문 공개·해외 분류 유지). 지자체 RSS는
+# admin 화면(뉴스 소스 추가)에서 URL만 등록하면 된다.
 DEFAULT_SOURCES: list[dict[str, object]] = [
     {
         "id": "hackernews",
@@ -64,6 +87,133 @@ DEFAULT_SOURCES: list[dict[str, object]] = [
         "url": "https://www.techmeme.com/feed.xml",
         "enabled": True,
         "limit": 10,
+    },
+    # Public RSS expansion (beta Phase 2). Official feeds only — the rights
+    # engine's default-deny policy means we store title+link+meta and write
+    # our own gist from the snippet; article bodies are never collected.
+    {
+        "id": "guardian-world",
+        "name": "The Guardian",
+        "kind": "rss",
+        "url": "https://www.theguardian.com/world/rss",
+        "enabled": True,
+        "limit": 10,
+    },
+    {
+        "id": "bbc-news",
+        "name": "BBC",
+        "kind": "rss",
+        "url": "https://feeds.bbci.co.uk/news/rss.xml",
+        "enabled": True,
+        "limit": 10,
+    },
+    {
+        "id": "the-verge",
+        "name": "The Verge",
+        "kind": "rss",
+        "url": "https://www.theverge.com/rss/index.xml",
+        "enabled": True,
+        "limit": 10,
+    },
+    {
+        "id": "ars-technica",
+        "name": "Ars Technica",
+        "kind": "rss",
+        "url": "https://feeds.arstechnica.com/arstechnica/index",
+        "enabled": True,
+        "limit": 10,
+    },
+    # ── 정부·공공(공공누리 제1유형 = 출처표시 시 상업적 이용·2차 창작 허용) ──
+    # 정책브리핑(korea.kr)의 표준 RSS. 개방 등급이라 인용 추천에 우선 노출된다
+    # (ai/news/rights.py). korea.kr는 국외 IP를 차단하는 경우가 있으나 소스별
+    # fetch 실패는 파이프라인이 무중단 처리한다(국내 리전 서버에선 정상 수집).
+    {
+        "id": "korea-kr-policy",
+        "name": "대한민국 정책브리핑",
+        "kind": "rss",
+        "url": "https://www.korea.kr/rss/policy.xml",
+        "enabled": True,
+        "limit": 10,
+        "rights": "kogl_type1",
+    },
+    {
+        "id": "korea-kr-dept",
+        "name": "정부 부처 보도자료",
+        "kind": "rss",
+        "url": "https://www.korea.kr/rss/dept_all.xml",
+        "enabled": True,
+        "limit": 10,
+        "rights": "kogl_type1",
+    },
+    {
+        "id": "korea-kr-fact",
+        "name": "정부 팩트체크(사실은 이렇습니다)",
+        "kind": "rss",
+        "url": "https://www.korea.kr/rss/fact.xml",
+        "enabled": True,
+        "limit": 5,
+        "rights": "kogl_type1",
+    },
+    # ── 부처·지자체 공식 RSS 확대(정부_및_지자체_공지_수집.docx 검증 채널) ──
+    # 채널 우선순위: OpenAPI > RSS > (스크래핑 미도입 — CONTENT_TRUST_UPGRADE.md).
+    # URL은 기관 개편으로 바뀔 수 있다 — 소스별 fetch 실패는 무중단 처리되고
+    # admin 화면에서 URL만 고치면 된다(하드코딩 아님, 레지스트리 기반).
+    {
+        "id": "mois-press",
+        "name": "행정안전부",
+        "kind": "rss",
+        "url": "https://www.mois.go.kr/gpms/view/jsp/rss/rss.jsp?ctxCd=1012",
+        "enabled": True,
+        "limit": 8,
+        "rights": "kogl_type1",
+    },
+    {
+        "id": "mcst-press",
+        "name": "문화체육관광부",
+        "kind": "rss",
+        "url": "https://www.mcst.go.kr/common/rss/press.jsp",
+        "enabled": True,
+        "limit": 8,
+        "rights": "kogl_type1",
+    },
+    {
+        "id": "kisa-notice",
+        "name": "한국인터넷진흥원",
+        "kind": "rss",
+        "url": "https://www.kisa.or.kr/rss/401",
+        "enabled": True,
+        "limit": 5,
+        "rights": "kogl_type1",
+    },
+    {
+        "id": "mss-press",
+        "name": "중소벤처기업부",
+        "kind": "rss",
+        "url": "https://www.mss.go.kr/rss/smba/board/86.do",
+        "enabled": True,
+        "limit": 8,
+        "rights": "kogl_type1",
+    },
+    {
+        "id": "gg-news",
+        "name": "경기도 뉴스포털",
+        "kind": "rss",
+        "url": "https://gnews.gg.go.kr/rss/gnews_rss_main.do",
+        "enabled": True,
+        "limit": 8,
+        "rights": "kogl_type1",
+    },
+    # 공공데이터포털 OpenAPI 자리 — DATA_GO_KR_SERVICE_KEY 발급 후 admin 화면에서
+    # 원하는 오퍼레이션 URL을 등록하고 켠다(키 미설정 시 자동 스킵). 예시로
+    # 과기정통부 보도자료 오퍼레이션을 꺼진 상태로 심어 둔다(발급 후 활성화).
+    {
+        "id": "msit-press-api",
+        "name": "과학기술정보통신부",
+        "kind": "govapi",
+        "url": "https://apis.data.go.kr/1721000/msitpressexplaininfo/getPressList",
+        "enabled": False,
+        "limit": 10,
+        "rights": "kogl_type1",
     },
 ]
 
@@ -90,26 +240,13 @@ async def _mark_seen(redis: RedisClient, url_hash: str) -> None:
     await redis.expire(_SEEN_KEY, _SEEN_TTL)
 
 
-async def _store_briefings(redis: RedisClient, articles: list[MediatedArticle]) -> None:
-    """Prepend new briefings to the Redis list, cap at MAX_STORED."""
-    serialised = [
-        json.dumps(
-            {
-                "url": a.raw.url,
-                "title": a.raw.title,
-                "source": a.raw.source,
-                "gist_ko": a.gist_ko,
-                "tags": a.tags,
-                "ekb_briefing": a.ekb_briefing,
-                "relevance": a.relevance,
-                "stub": a.stub,
-                "stored_at": int(time.time()),
-            },
-            ensure_ascii=False,
-        )
-        for a in articles
-    ]
+async def _store_briefing_dicts(redis: RedisClient, briefings: list[dict[str, object]]) -> None:
+    """Prepend new briefings to the Redis list, cap at MAX_STORED.
 
+    Takes ready-made dicts (algorithmic or LLM path both produce the same
+    shape), so the storage layer no longer depends on the mediator types.
+    """
+    serialised = [json.dumps(b, ensure_ascii=False) for b in briefings]
     if not serialised:
         return
 
@@ -240,8 +377,283 @@ async def delete_news_source(redis: RedisClient, source_id: str) -> bool:
     return True
 
 
+async def reset_news_sources(redis: RedisClient) -> list[dict[str, object]]:
+    """Overwrite the registry with DEFAULT_SOURCES.
+
+    레지스트리는 Redis에 영속되므로 코드의 기본값을 바꿔도 기존 배포엔 반영되지
+    않는다 — 한국 전용 기본값(해외 비활성)을 라이브에 적용하는 1클릭 경로.
+    """
+    await _save_sources(redis, list(DEFAULT_SOURCES))
+    return list(DEFAULT_SOURCES)
+
+
+def _analyse_algorithmic(article: RawArticle) -> dict[str, object]:
+    """Per-article analysis with zero API calls — the LLM 대체 경로.
+
+    Produces the same briefing dict shape the Redis cache has always held
+    (gist_ko / tags / ekb_briefing / relevance), so every existing consumer
+    (persona dialogue injection, user /v1/news, admin dashboard) keeps working
+    unchanged. gist = 발췌(첫 문장), tags = 키워드, relevance = 소스 휴리스틱.
+    """
+    from buddle.ai.news.rights import is_open_license
+
+    text = f"{article.title} {clean_text(article.summary)}"
+    keywords = extract_keywords(text, limit=5)
+    gist = extractive_gist(article.title, article.summary)
+    category = classify_category(keywords, text)
+    if article.translated:
+        # 번역 후 텍스트는 한국어지만 원산지는 해외 — 언어 기반 분류가
+        # '전국'으로 오분류하는 것을 원산지 표식으로 차단한다.
+        scope, region = "해외", ""
+    else:
+        scope, region = classify_region(text, article.source)
+    # 개방 라이선스(공공누리 1유형)는 인용 추천 우선순위가 높다; 그 외에는
+    # 참여도(로그 스케일)를 살짝 반영한 고정 기본값 — 임계 필터(0.3)는 통과.
+    relevance = 0.9 if is_open_license(article.source) else min(0.85, 0.6 + article.score / 400)
+    return {
+        "url": article.url,
+        "title": article.title,
+        "source": article.source,
+        "gist_ko": gist,
+        "tags": keywords or [category],
+        "ekb_briefing": f"{article.title} — {gist}" if gist != article.title else article.title,
+        "relevance": round(relevance, 2),
+        "stub": False,
+        "category": category,
+        "scope": scope,
+        "region": region,
+        "stored_at": int(time.time()),
+    }
+
+
+async def _persist_items(
+    db: AsyncSession, articles: list[RawArticle], analysed: list[dict[str, object]]
+) -> int:
+    """DB 저장 + 중복 제거: guid UNIQUE에 ON CONFLICT DO NOTHING.
+
+    Returns the number of genuinely new rows — the pipeline's dedup truth
+    (Redis seen-set stays as a cheap pre-filter but is no longer load-bearing).
+    """
+    if not articles:
+        return 0
+    rows = [
+        {
+            "guid": a.url_hash,
+            "source": a.source,
+            "title": a.title[:500],
+            "url": a.url,
+            "summary": clean_text(a.summary)[:2000],
+            "category": str(meta["category"]),
+            "scope": str(meta["scope"]),
+            "region": str(meta["region"]),
+            "rights": a.rights,
+            "published_at": dt.datetime.fromtimestamp(a.published_at, tz=dt.UTC),
+        }
+        for a, meta in zip(articles, analysed, strict=True)
+    ]
+    stmt = pg_insert(NewsItem).values(rows).on_conflict_do_nothing(index_elements=["guid"])
+    result = await db.execute(stmt)
+    await db.commit()
+    return int(result.rowcount or 0)
+
+
+async def _backfill_translations(
+    db: AsyncSession, *, settings: object, redis: RedisClient | None = None, limit: int = 20
+) -> int:
+    """저장돼 있는 미번역(한글 없는) 기사를 소급 번역해 DB를 치유한다.
+
+    번역은 원래 수집 시점에만 돌기 때문에 (a) 번역 기능 배포 이전에 저장된
+    기사와 (b) fail-open으로 원문이 저장된 기사가 72시간 화제 윈도우 안에
+    영어로 남는다(라이브 실측: 화제 카드가 통째로 영어). 틱마다 최신순으로
+    최대 limit건을 배치 번역해 UPDATE — 시스템이 스스로 낫는다.
+    """
+    from buddle.ai.news.translate import translate_articles
+
+    since = dt.datetime.now(dt.UTC) - dt.timedelta(hours=_TOPIC_WINDOW_H)
+    rows = (
+        (
+            await db.execute(
+                select(NewsItem)
+                .where(NewsItem.published_at >= since, ~NewsItem.title.regexp_match("[가-힣]"))
+                .order_by(NewsItem.published_at.desc())
+                .limit(limit)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    if not rows:
+        return 0
+    pseudo = [
+        RawArticle(
+            url=r.url,
+            title=r.title,
+            source=r.source,
+            summary=r.summary,
+            published_at=int(r.published_at.timestamp()),
+        )
+        for r in rows
+    ]
+    translated = await translate_articles(pseudo, settings=settings, redis=redis)
+    healed = 0
+    for row, art in zip(rows, translated, strict=True):
+        if art.translated:
+            row.title = art.title[:500]
+            row.summary = art.summary
+            healed += 1
+    if healed:
+        await db.commit()
+        log.info("news.backfill_translate", scanned=len(rows), healed=healed)
+    return healed
+
+
+async def _prune_topic_posts(db: AsyncSession, redis: RedisClient, topics: list[Topic]) -> int:
+    """빈 껍데기·중복 화제 글만 정리한다 — 콘텐츠는 원칙적으로 영구 보존한다.
+
+    사용자 방침(영구 저장): 사람은 기억보다 저장을 선호한다. 시간 만료 삭제는
+    없다 — 한 번 올라온 화제 글과 사용자 글은 시간이 지나도 사라지지 않는다.
+    삭제 대상은 자동 생성 글(author_label='지금 화제') 중 참여(좋아요·댓글)가
+    전혀 없는 퇴행 글 두 종류뿐이다:
+
+      1. 빈 껍데기 — 머리표를 뺀 본문이 사실상 없음.
+      2. 중복 — 첫 줄(제목)이 같은 글이 여럿(과거 틱이 클러스터 이름만 바꿔
+         같은 이야기를 여러 번 올린 잔재; 라이브 실측 '동일 뉴스 2회 노출').
+         참여 글이 있으면 그것들을 남기고, 없으면 최신 1건만 남긴다.
+
+    참여가 붙은 글은 어떤 경우에도 지우지 않는다.
+    """
+    from sqlalchemy import func as sa_func
+
+    from buddle.db.models.comment import Comment
+    from buddle.db.models.post import Post
+    from buddle.db.models.post_like import PostLike
+    from buddle.db.models.tag import PostTag, Tag
+
+    rows = (
+        await db.execute(
+            select(Post.id, Tag.name, Post.content_transformed, Post.created_at)
+            .join(PostTag, PostTag.post_id == Post.id)
+            .join(Tag, Tag.id == PostTag.tag_id)
+            .where(Post.author_label == NEWS_AUTHOR_LABEL)
+        )
+    ).all()
+
+    async def _engaged(post_id: object) -> bool:
+        likes = (
+            await db.execute(
+                select(sa_func.count()).select_from(PostLike).where(PostLike.post_id == post_id)
+            )
+        ).scalar_one()
+        if likes:
+            return True
+        comments = (
+            await db.execute(
+                select(sa_func.count()).select_from(Comment).where(Comment.post_id == post_id)
+            )
+        ).scalar_one()
+        return bool(comments)
+
+    to_delete: dict[object, str] = {}  # post_id → tag_name (Redis 매핑 청소용)
+
+    # 1) 빈 껍데기 — 실내용이 있으면(영문이든 국문이든) 보존.
+    for post_id, tag_name, content, _created in rows:
+        body = (content or "").replace("[지금 화제]", "", 1).strip()
+        if body:
+            continue
+        if await _engaged(post_id):
+            continue
+        to_delete[post_id] = tag_name
+
+    # 2) 제목 중복 — 같은 첫 줄의 글이 여럿이면 무참여 사본을 정리한다.
+    groups: dict[str, list[tuple[object, str, dt.datetime]]] = {}
+    for post_id, tag_name, content, created in rows:
+        if post_id in to_delete:
+            continue
+        key = _topic_post_title_key(content)
+        if key:
+            groups.setdefault(key, []).append((post_id, tag_name, created))
+    for group in groups.values():
+        if len(group) < 2:
+            continue
+        engaged_ids = [pid for pid, _tag, _c in group if await _engaged(pid)]
+        zero = [(pid, tag, c) for pid, tag, c in group if pid not in engaged_ids]
+        if not engaged_ids and zero:
+            # 참여 글이 하나도 없으면 최신 1건은 남긴다(이야기 자체는 보존).
+            zero.sort(key=lambda r: r[2])  # 오래된 순
+            zero = zero[:-1]
+        for pid, tag, _c in zero:
+            to_delete[pid] = tag
+
+    pruned = 0
+    for post_id, tag_name in to_delete.items():
+        post = await db.get(Post, post_id)
+        if post is not None:
+            await db.delete(post)
+            pruned += 1
+        with contextlib.suppress(Exception):
+            await redis.delete(_TOPICPOST_KEY + tag_name)
+    if pruned:
+        await db.commit()
+        log.info("news.topic_post.pruned", count=pruned)
+    return pruned
+
+
+async def _rebuild_topics(db: AsyncSession, redis: RedisClient) -> list[Topic]:
+    """최근 윈도우의 DB 아이템으로 화제를 재계산하고 Redis에 캐시한다."""
+    since = dt.datetime.now(tz=dt.UTC) - dt.timedelta(hours=_TOPIC_WINDOW_H)
+    rows = (
+        (await db.execute(select(NewsItem).where(NewsItem.published_at >= since).limit(500)))
+        .scalars()
+        .all()
+    )
+    inputs = [
+        TopicInput(
+            title=r.title,
+            url=r.url,
+            source=r.source,
+            summary=r.summary,
+            published_at=int(r.published_at.timestamp()),
+            # 수집 시점 분류를 힌트로 승계 — 번역된 해외 기사가 화제 재분류에서
+            # '전국'으로 뒤집히는 것을 막는다(다수결, topics.build_topics).
+            category=r.category,
+            scope=r.scope,
+            region=r.region,
+        )
+        for r in rows
+    ]
+    topics = build_topics(inputs, max_topics=24)
+    await _cache_topics(redis, topics)
+    return topics
+
+
+# 캐시 포맷 버전 — 필드가 늘 때 올린다. 구버전 캐시(title 없음 등)는 배포
+# 직후 그대로 서빙되면 "#키워드" 카드가 뜨므로(라이브 실측) 재계산으로 우회.
+_TOPICS_CACHE_V = 2
+
+
+async def _cache_topics(redis: RedisClient, topics: list[Topic]) -> None:
+    await redis.setex(
+        _TOPICS_KEY,
+        _BRIEFINGS_TTL,
+        json.dumps(
+            {
+                "v": _TOPICS_CACHE_V,
+                "topics": [t.to_dict() for t in topics],
+                "ts": int(time.time()),
+            },
+            ensure_ascii=False,
+        ),
+    )
+
+
 async def news_tick(db: AsyncSession, *, redis: RedisClient) -> dict[str, object]:
-    """Main scheduler entry-point. Returns a summary dict for the scheduler log."""
+    """Main scheduler entry-point. Returns a summary dict for the scheduler log.
+
+    RSS 수집 → 파싱 → DB 저장(중복 제거) → 알고리즘 분석 → 화제/브리핑/다이제스트.
+    기본 경로는 외부 AI 호출 0회. (기사당 LLM 1회를 쓰던 이전 경로는
+    NEWS_AI_ANALYSIS_ENABLED=true 로만 활성화되는 opt-in으로 강등 — 무료 쿼터를
+    태우고 429를 유발하던 원인이었다.)
+    """
     from buddle.config import get_settings
 
     settings = get_settings()
@@ -249,76 +661,639 @@ async def news_tick(db: AsyncSession, *, redis: RedisClient) -> dict[str, object
     log.info("news.tick.start")
     # Where to search: consult the admin-configured source store first.
     sources = await get_news_sources(redis)
-    articles = await fetch_configured(sources)
+    articles = await fetch_configured(
+        sources, govapi_key=str(getattr(settings, "data_go_kr_service_key", "") or "")
+    )
     fetched = len(articles)
     log.info("news.tick.fetched", count=fetched, sources=len(sources))
 
-    # Filter already-seen articles
-    new_articles: list[RawArticle] = []
+    # Redis seen-set: 같은 틱 주기 안에서의 값싼 선필터 (진짜 중복 제거는 DB UNIQUE)
+    unseen: list[RawArticle] = []
     for a in articles:
         if not await _is_seen(redis, a.url_hash):
+            unseen.append(a)
+
+    # SimHash 준중복: URL은 다른데 내용이 같은 전재 기사(통신사 기사가 여러
+    # 매체로 유입)를 거른다. 임계 ≤10 — 제목+요약 20~40토큰 규모에서 표기
+    # 한두 곳 차이는 거리 4~6, 무관 기사 쌍은 최소 27로 실측돼(분포 27~43)
+    # 여유가 17비트다. seen 처리해 다음 틱 재검사도 막는다. (설계서 §M1-4)
+    new_articles: list[RawArticle] = []
+    if unseen:
+        near_dup = 0
+        now_s = time.time()
+        raw_hashes = await redis.zrangebyscore(_SIMHASH_KEY, now_s - _SEEN_TTL, "+inf")
+        recent_hashes = [int(h) for h in raw_hashes if str(h).isdigit()]
+        fresh_hashes: dict[str, float] = {}
+        for a in unseen:
+            sh = simhash64(f"{a.title} {a.summary[:300]}")
+            if sh and any(hamming64(sh, r) <= 10 for r in recent_hashes):
+                near_dup += 1
+                await _mark_seen(redis, a.url_hash)
+                continue
+            if sh:
+                recent_hashes.append(sh)
+                fresh_hashes[str(sh)] = now_s
             new_articles.append(a)
+        if fresh_hashes:
+            await redis.zadd(_SIMHASH_KEY, fresh_hashes)
+            await redis.zremrangebyscore(_SIMHASH_KEY, 0, now_s - _SEEN_TTL)
+            await redis.expire(_SIMHASH_KEY, _SEEN_TTL)
+        if near_dup:
+            log.info("news.tick.near_dup", count=near_dup)
 
-    log.info("news.tick.new", count=len(new_articles))
-    if not new_articles:
-        return {"fetched": fetched, "new": 0, "stored": 0}
+    # 해외 기사 배치 번역 — 한국어로 피드에 공개한다. 기사당이 아니라 배치당
+    # 1회 호출(429 fan-out 없음), 실패 시 원문 공개(fail-open).
+    if new_articles and getattr(settings, "news_translate_foreign", True):
+        from buddle.ai.news.rights import may_transform
+        from buddle.ai.news.translate import needs_translation, translate_articles
 
-    # AI analysis via mediator
-    mediated = await analyse_batch(new_articles, settings=settings, max_concurrent=3)
-
-    # Filter by relevance threshold
-    threshold = getattr(settings, "news_relevance_threshold", 0.3)
-    kept = [m for m in mediated if m.relevance >= threshold]
-
-    # Store in Redis + mark seen
-    await _store_briefings(redis, kept)
-    for m in kept:
-        await _mark_seen(redis, m.raw.url_hash)
-
-    # Combination stage — the mediator weaves the kept articles into ONE cohesive
-    # digest (not a flat list). Stored separately for the background page and as
-    # the lead block delivered to personas. Failure here never breaks ingestion.
-    digest_text = ""
-    if kept:
-        try:
-            digest_text = await synthesize_digest(kept, settings=settings)
-            if digest_text:
-                digest_tags = list({t for m in kept for t in m.tags})[:8]
-                await redis.setex(
-                    _DIGEST_KEY,
-                    _BRIEFINGS_TTL,
-                    json.dumps(
-                        {
-                            "text": digest_text,
-                            "tags": digest_tags,
-                            "count": len(kept),
-                            "ts": int(time.time()),
-                        },
-                        ensure_ascii=False,
-                    ),
+        # 공공누리 3유형(변경 금지) 문서는 번역(=원문 변형) 대상에서 제외한다.
+        foreign_idx = [
+            i
+            for i, a in enumerate(new_articles)
+            if needs_translation(a) and may_transform(a.rights)
+        ]
+        if foreign_idx:
+            try:
+                translated = await translate_articles(
+                    [new_articles[i] for i in foreign_idx], settings=settings, redis=redis
                 )
-        except Exception as e:
-            log.warning("news.digest_error", error=str(e))
+                for i, art in zip(foreign_idx, translated, strict=True):
+                    new_articles[i] = art
+            except Exception as e:
+                log.warning("news.translate_error", error=str(e))
+    log.info("news.tick.new", count=len(new_articles))
 
-    # Save status snapshot
-    kept_sources = list({m.raw.source for m in kept})
+    stored = 0
+    if new_articles:
+        if getattr(settings, "news_ai_analysis_enabled", False):
+            # Opt-in legacy path: per-article LLM analysis (429-prone, costly).
+            from buddle.ai.news.mediator import analyse_batch
+
+            mediated = await analyse_batch(new_articles, settings=settings, max_concurrent=3)
+            threshold = getattr(settings, "news_relevance_threshold", 0.3)
+            analysed = [
+                {
+                    "url": m.raw.url,
+                    "title": m.raw.title,
+                    "source": m.raw.source,
+                    "gist_ko": m.gist_ko,
+                    "tags": m.tags,
+                    "ekb_briefing": m.ekb_briefing,
+                    "relevance": m.relevance,
+                    "stub": m.stub,
+                    "category": classify_category(m.tags, m.raw.title),
+                    "scope": classify_region(m.raw.title, m.raw.source)[0],
+                    "region": classify_region(m.raw.title, m.raw.source)[1],
+                    "stored_at": int(time.time()),
+                }
+                for m in mediated
+                if m.relevance >= threshold
+            ]
+            kept_articles = [
+                a for a, m in zip(new_articles, mediated, strict=True) if m.relevance >= threshold
+            ]
+        else:
+            # Default path: pure algorithmic analysis — zero API calls.
+            analysed = [_analyse_algorithmic(a) for a in new_articles]
+            kept_articles = new_articles
+
+        try:
+            stored = await _persist_items(db, kept_articles, analysed)
+        except Exception as e:  # DB unavailable must not kill the Redis path
+            log.warning("news.persist_error", error=str(e))
+            stored = len(kept_articles)
+
+        await _store_briefing_dicts(redis, analysed)
+        for a in kept_articles:
+            await _mark_seen(redis, a.url_hash)
+
+    # 화제 재계산(수집이 없어도 최신 윈도우 반영) + 결정론적 다이제스트.
+    topics: list[Topic] = []
+    try:
+        topics = await _rebuild_topics(db, redis)
+    except Exception as e:
+        log.warning("news.topics_error", error=str(e))
+
+    # 저장돼 있는 미번역 기사 소급 번역 — 배포 이전/실패분을 매 틱 치유.
+    backfilled = 0
+    if getattr(settings, "news_translate_foreign", True):
+        try:
+            backfilled = await _backfill_translations(db, settings=settings, redis=redis)
+            if backfilled:
+                # 번역된 텍스트로 화제를 다시 계산해야 한국어 카드가 나온다.
+                topics = await _rebuild_topics(db, redis)
+        except Exception as e:
+            log.warning("news.backfill_error", error=str(e))
+
+    # 카드 문안 정제(틱당 배치 1회): 키워드 이름 대신 "무슨 일이 일어났는가"
+    # 문장형 제목·요약·한국어 키워드. 실패해도 결정론 폴백(대표 헤드라인)이
+    # 이미 채워져 있어 서빙은 계속된다.
+    refined = 0
+    if topics and getattr(settings, "news_topic_refine_enabled", True):
+        try:
+            from buddle.ai.news.refine import refine_topics
+
+            refined = await refine_topics(topics, settings=settings)
+            if refined:
+                await _cache_topics(redis, topics)
+        except Exception as e:
+            log.warning("news.refine_error", error=str(e))
+
+    # Wikipedia 배경지식 보강 — refine이 확보한 entities에 한국어 위키백과
+    # 요약을 붙인다(캐시 우선, 틱당 신규 조회 ≤12). 실패는 보강 없이 진행.
+    if topics and getattr(settings, "news_wiki_enrich_enabled", True):
+        try:
+            from buddle.ai.news.wiki import enrich_topics
+
+            enriched = await enrich_topics(redis, list(topics))
+            if enriched:
+                await _cache_topics(redis, topics)
+        except Exception as e:
+            log.warning("news.wiki_enrich_error", error=str(e))
+
+    # 화제 → 광장 글 승격(멱등) — 상호작용(좋아요·댓글·토론)의 대상을 만든다.
+    try:
+        await _ensure_topic_posts(db, redis, topics)
+    except Exception as e:
+        log.warning("news.topic_post_error", error=str(e))
+
+    # 잔재 화제 글 정리 — 참여 없는 오탐/만료 화제 글만 삭제(참여 글은 보존).
+    try:
+        await _prune_topic_posts(db, redis, topics)
+    except Exception as e:
+        log.warning("news.topic_post_prune_error", error=str(e))
+
+    try:
+        digest_text = compose_digest(topics)
+        if digest_text:
+            digest_tags = [t.name for t in topics[:8]]
+            await redis.setex(
+                _DIGEST_KEY,
+                _BRIEFINGS_TTL,
+                json.dumps(
+                    {
+                        "text": digest_text,
+                        "tags": digest_tags,
+                        "count": stored,
+                        "ts": int(time.time()),
+                    },
+                    ensure_ascii=False,
+                ),
+            )
+    except Exception as e:
+        log.warning("news.digest_error", error=str(e))
+
+    # Save status snapshot. 번역/해석 진단값을 함께 남긴다 — 카드가 영어로
+    # 나올 때 원인이 (a) LLM 엔진 미설정인지 (b) 설정됐는데 호출 실패인지를
+    # admin 화면에서 바로 구분할 수 있게 한다(persona_endpoint_url 없으면
+    # 번역·해석이 통째로 폴백돼 원문 영어가 서빙된다).
+    from buddle.ai.news.mediator import get_last_ai_error
+
+    kept_sources = list({a.source for a in new_articles})
+    translated_now = sum(1 for a in new_articles if getattr(a, "translated", False))
     status = {
         "last_run_ts": time.time(),
         "fetched": fetched,
         "new_items": len(new_articles),
-        "stored": len(kept),
+        "stored": stored,
         "sources": kept_sources,
+        # 해석(한국어화) 파이프라인 진단
+        "llm_configured": bool(getattr(settings, "persona_endpoint_url", "")),
+        "translated": translated_now,  # 이번 틱 신규 기사 중 번역 성공 건수
+        "backfilled": backfilled,  # 기존 저장 영어 기사 소급 번역 건수
+        "refined": refined,  # LLM 해석(문장형 한국어 제목·요약) 반영 화제 수
+        # 설정은 됐는데 0건일 때의 정확한 사유(401/404/429…). 성공 시 빈 문자열.
+        "llm_error": get_last_ai_error(),
     }
     await redis.setex(_STATUS_KEY, _BRIEFINGS_TTL, json.dumps(status, ensure_ascii=False))
 
     # KnowledgeAudit log
-    try:
-        await _audit(db, len(kept), ",".join(kept_sources))
-    except Exception as e:
-        log.warning("news.audit_error", error=str(e))
+    if stored:
+        try:
+            await _audit(db, stored, ",".join(kept_sources))
+        except Exception as e:
+            log.warning("news.audit_error", error=str(e))
 
-    log.info("news.tick.done", fetched=fetched, new=len(new_articles), stored=len(kept))
-    return {"fetched": fetched, "new": len(new_articles), "stored": len(kept)}
+    log.info(
+        "news.tick.done",
+        fetched=fetched,
+        new=len(new_articles),
+        stored=stored,
+        topics=len(topics),
+    )
+    return {"fetched": fetched, "new": len(new_articles), "stored": stored, "topics": len(topics)}
+
+
+# ── 화제 → 광장 글 승격 (레딧식 상호작용의 대상 엔티티) ─────────────────────
+#
+# 화제 카드를 눌렀을 때 외부 뉴스 링크가 아니라 좋아요·댓글·토론이 있는 글로
+# 가야 한다. 화제마다 시스템 글을 1건 만들어 기존 상호작용(좋아요/댓글/토론/
+# 논증 대화)을 전부 재사용한다 — 새 상호작용 테이블이 필요 없다.
+
+_TOPICPOST_KEY = "buddle:news:topicpost:"  # + 화제명 → post_id (72h TTL)
+_TOPICPOST_TTL = _TOPIC_WINDOW_H * 3600
+NEWS_AUTHOR_LABEL = "지금 화제"
+
+
+def _topic_post_title_key(content: str | None) -> str:
+    """화제 글 첫 줄(제목)을 비교용 키로 정규화한다 — 중복 판정의 기준.
+
+    머리표('[지금 화제]')를 벗기고 공백을 접고 대소문자를 무시한다. 태그가
+    달라도 이 키가 같으면 사용자 눈에는 같은 뉴스다.
+    """
+    first = (content or "").split("\n", 1)[0].replace("[지금 화제]", "", 1)
+    return " ".join(first.split()).casefold()
+
+
+def compose_topic_post(t: Topic) -> str:
+    """화제 글 본문 — 새 출력 형식: 화제/유형/핵심 사건/핵심 문제/핵심 기술/
+    관련 기업/핵심 질문/미래 전망 + 관련 기사(출처 무생략).
+
+    채워진 필드만 표기한다: 결정론 폴백은 사건·질문까지만 만들고(추측 금지),
+    문제·전망은 LLM 정제가 성공했을 때만 존재한다. 이 텍스트가 논증 대화와
+    댓글의 시드가 된다.
+    """
+    title = t.title or t.name
+    lines = [f"[지금 화제] {title}", ""]
+    if t.summary:
+        lines += [t.summary, ""]
+    meta_bits = [
+        *(["긴급"] if t.urgent else []),  # 재난·안전 — 카드 뱃지로 분리 표시된다
+        # 정부·공공기관 출처(공공누리 1유형 이상)가 섞여 있으면 뱃지로 표시 —
+        # 클라이언트가 이 문구를 감지해 카드 테두리를 파란색(#191970)으로 그린다.
+        *(["정부출처"] if any(is_open_license(s) for s in t.sources) else []),
+        t.type_label or f"{t.category} 이슈",
+        t.scope + (f" · {t.region}" if t.region else ""),
+    ]
+    lines.append("유형: " + " · ".join(b for b in meta_bits if b))
+    if t.event and t.event != title:
+        lines.append(f"핵심 사건: {t.event}")
+    if t.problem:
+        lines.append(f"핵심 문제: {t.problem}")
+    if t.technologies:
+        lines.append("핵심 기술: " + ", ".join(t.technologies))
+    if t.entities:
+        lines.append("관련 기업·인물: " + ", ".join(t.entities))
+    if t.question:
+        lines.append(f"핵심 질문: {t.question}")
+    if t.forecast:
+        lines.append(f"미래 전망: {t.forecast}")
+    if t.display_keywords:
+        lines.append("관련 키워드: " + ", ".join(t.display_keywords))
+    lines.append("")
+    lines.append(f"관련 기사 {t.count}건 · 매체 {len(t.sources)}곳 · 추세 {t.trend}:")
+    for h in t.headlines[:4]:
+        date = f", {h['date']}" if h.get("date") else ""
+        lines.append(f"· {h.get('title', '')} ({h.get('source', '')}{date})")
+    lines += ["", "이 화제, 어떻게 생각하세요? 댓글이나 토론으로 생각을 나눠보세요."]
+    return "\n".join(lines)
+
+
+async def _heal_topic_post_body(db: AsyncSession, post_id: str, new_content: str) -> bool:
+    """재사용하는 화제 글의 본문이 옛 버전이면 새(한국어) 본문으로 갱신한다.
+
+    화제 글은 태그/제목 기준으로 멱등 재사용되지만, 본문은 최초 생성 시점의
+    상태로 고정돼 있었다 — 그때 번역·해석이 실패(LLM 엔드포인트 미설정 등)했다면
+    영어 원문 본문이 영구 저장 정책과 맞물려 영원히 남는다. 이후 틱에서 같은
+    화제가 한국어로 다시 조립되면 그 본문으로 덮어써 피드가 스스로 낫게 한다.
+    좋아요·댓글은 post_id에 묶여 있어 영향받지 않고, 내용이 같으면 쓰지 않는다.
+    """
+    import uuid as _uuid
+
+    from buddle.db.models.post import Post
+
+    try:
+        pid = _uuid.UUID(post_id)
+    except (ValueError, AttributeError):
+        return False
+    post = await db.get(Post, pid)
+    if post is None or post.content_transformed == new_content:
+        return False
+    post.content_raw = new_content
+    post.content_transformed = new_content
+    await db.commit()
+    return True
+
+
+async def _ensure_topic_posts(
+    db: AsyncSession, redis: RedisClient, topics: list[Topic]
+) -> dict[str, str]:
+    """화제마다 공개 글을 정확히 1건 보장하고 {화제명: post_id}를 돌려준다.
+
+    멱등성 3중 보장: Redis 매핑(72h TTL) 선조회 → 미스 시 DB에서 같은 태그의
+    최근 시스템 글을 재사용(Redis 재시작 대비) → 태그가 달라도 첫 줄(제목)이
+    같은 최근 글이 있으면 그것을 재사용 — 틱마다 클러스터 이름이 바뀌어도
+    (#watch → #lost) 같은 이야기로 새 글을 또 만들지 않는다(라이브 실측:
+    동일 뉴스 2회 노출의 원인). 그래도 없으면 생성.
+
+    의도적으로 post_service._ingest_post(윤리 게이트+mediator)를 타지 않는다:
+    본문이 집계값·헤드라인 발췌로만 조립되는 결정론적 자체 생성 텍스트라
+    LLM 게이트가 불필요하고, 2분 틱마다 모델 호출을 유발하면 무-LLM 원칙이
+    깨진다. 사용자 유래 텍스트는 이 경로에 절대 섞이지 않는다.
+    """
+    from buddle.db.models.enums import AuthorKind, PostVisibility
+    from buddle.db.models.importance import ImportanceScore
+    from buddle.db.models.post import Post
+    from buddle.db.models.tag import PostTag, Tag
+
+    mapping: dict[str, str] = {}
+    since = dt.datetime.now(dt.UTC) - dt.timedelta(hours=_TOPIC_WINDOW_H)
+
+    # 제목(첫 줄) → 최근 글 id 지도. 최신 글이 이기도록 오래된 것부터 덮어쓴다.
+    recent_rows = (
+        await db.execute(
+            select(Post.id, Post.content_transformed)
+            .where(
+                Post.author_kind == AuthorKind.EXTERNAL_AI,
+                Post.author_label == NEWS_AUTHOR_LABEL,
+                Post.created_at >= since,
+            )
+            .order_by(Post.created_at.asc())
+        )
+    ).all()
+    by_title: dict[str, str] = {}
+    for pid, content in recent_rows:
+        title_key = _topic_post_title_key(content)
+        if title_key:
+            by_title[title_key] = str(pid)
+
+    for t in topics:
+        if t.count < 2 or not t.name:
+            continue
+        tag_name = t.name[:64]
+        key = _TOPICPOST_KEY + tag_name
+        # 이번 틱의 화제 상태로 본문을 미리 조립한다 — 재사용 글의 본문이
+        # 옛 영어판이면 새(한국어) 본문으로 갱신하는 자가 치유에 쓴다.
+        content = compose_topic_post(t)
+
+        cached = await redis.get(key)
+        if cached:
+            mapping[t.name] = str(cached)
+            await _heal_topic_post_body(db, str(cached), content)
+            continue
+
+        # DB 폴백 — Redis가 비워져도 같은 화제 글을 중복 생성하지 않는다.
+        existing = (
+            await db.execute(
+                select(Post.id)
+                .join(PostTag, PostTag.post_id == Post.id)
+                .join(Tag, Tag.id == PostTag.tag_id)
+                .where(
+                    Tag.name == tag_name,
+                    Post.author_kind == AuthorKind.EXTERNAL_AI,
+                    Post.author_label == NEWS_AUTHOR_LABEL,
+                    Post.created_at >= since,
+                )
+                .order_by(Post.created_at.desc())
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+        if existing is not None:
+            mapping[t.name] = str(existing)
+            await redis.setex(key, _TOPICPOST_TTL, str(existing))
+            await _heal_topic_post_body(db, str(existing), content)
+            continue
+
+        # 제목 재사용 — 태그는 달라졌지만 같은 헤드라인의 글이 이미 있으면
+        # 그 글을 이 화제의 글로 삼는다(중복 카드 생성 금지).
+        title_key = _topic_post_title_key(content)
+        reused = by_title.get(title_key) if title_key else None
+        if reused:
+            mapping[t.name] = reused
+            await redis.setex(key, _TOPICPOST_TTL, reused)
+            await _heal_topic_post_body(db, reused, content)
+            continue
+        post = Post(
+            source_persona_id=None,
+            agent_id=None,
+            author_kind=AuthorKind.EXTERNAL_AI,
+            author_label=NEWS_AUTHOR_LABEL,
+            content_raw=content,
+            content_transformed=content,
+            visibility=PostVisibility.PUBLIC,
+        )
+        db.add(post)
+        await db.flush()
+        db.add(ImportanceScore(post_id=post.id, raw_score=0.0, normalized=0.0))
+        tag = (await db.execute(select(Tag).where(Tag.name == tag_name))).scalar_one_or_none()
+        if tag is None:
+            tag = Tag(name=tag_name)
+            db.add(tag)
+            await db.flush()
+        db.add(PostTag(post_id=post.id, tag_id=tag.id))
+        await db.commit()
+        mapping[t.name] = str(post.id)
+        if title_key:
+            by_title[title_key] = str(post.id)  # 같은 배치 안의 중복도 차단
+        await redis.setex(key, _TOPICPOST_TTL, str(post.id))
+        log.info("news.topic_post.created", topic=t.name, post_id=str(post.id))
+    return mapping
+
+
+async def _attach_topic_posts(
+    db: AsyncSession, redis: RedisClient, topics: list[dict[str, object]]
+) -> list[dict[str, object]]:
+    """서빙 직전에 화제 dict에 post_id + 좋아요/댓글 수를 붙인다.
+
+    카드의 상호작용 버튼(좋아요·댓글·토론)이 실카운트를 보여야 하므로,
+    Redis 매핑 일괄 조회 후 카운트는 그룹 집계 2쿼리로 끝낸다.
+    """
+    import uuid as _uuid
+
+    from sqlalchemy import func as sa_func
+
+    from buddle.db.models.comment import Comment
+    from buddle.db.models.post_like import PostLike
+
+    if not topics:
+        return topics
+    keys = [_TOPICPOST_KEY + str(t.get("name") or "")[:64] for t in topics]
+    values = await redis.mget(keys)
+    post_ids: list[_uuid.UUID] = []
+    for t, v in zip(topics, values, strict=True):
+        if v:
+            t["post_id"] = str(v)
+            with contextlib.suppress(ValueError):
+                post_ids.append(_uuid.UUID(str(v)))
+    if post_ids:
+        like_map = {
+            pid: int(n)
+            for pid, n in (
+                await db.execute(
+                    select(PostLike.post_id, sa_func.count())
+                    .where(PostLike.post_id.in_(post_ids))
+                    .group_by(PostLike.post_id)
+                )
+            ).all()
+        }
+        cmt_map = {
+            pid: int(n)
+            for pid, n in (
+                await db.execute(
+                    select(Comment.post_id, sa_func.count())
+                    .where(Comment.post_id.in_(post_ids))
+                    .group_by(Comment.post_id)
+                )
+            ).all()
+        }
+        for t in topics:
+            if t.get("post_id"):
+                with contextlib.suppress(ValueError):
+                    pid = _uuid.UUID(str(t["post_id"]))
+                    t["like_count"] = like_map.get(pid, 0)
+                    t["comment_count"] = cmt_map.get(pid, 0)
+    return topics
+
+
+_UINTEREST_KEY = "buddle:news:uinterest:"  # + user_id → 관심 용어 캐시 (10분)
+_UINTEREST_TTL = 600
+
+
+async def _user_interest_terms(db: AsyncSession, redis: RedisClient, user_id: object) -> set[str]:
+    """사용자의 관심 용어 집합 — 전부 사용자의 명시적 행동에서 나온다.
+
+    원천: ① 페르소나 관심 태그 ② 좋아요한 글의 태그 ③ 저장한 글의 태그
+    ④ 내가 쓴 글의 태그. 프로파일링 추론이 아니라 행동 기록의 태그 합집합이라
+    설명 가능하고, opt-out 개념도 불필요(자기 행동 그 자체). 10분 캐시.
+    """
+    key = _UINTEREST_KEY + str(user_id)
+    cached = await redis.get(key)
+    if cached:
+        with contextlib.suppress(json.JSONDecodeError):
+            return {str(x) for x in json.loads(cached)}
+
+    from buddle.db.models.persona import Persona
+    from buddle.db.models.post import Post
+    from buddle.db.models.post_bookmark import PostBookmark
+    from buddle.db.models.post_like import PostLike
+    from buddle.db.models.tag import PersonaInterestTag, PostTag, Tag
+
+    terms: set[str] = set()
+    my_personas = select(Persona.id).where(Persona.user_id == user_id)
+    for row in (
+        await db.execute(
+            select(Tag.name)
+            .join(PersonaInterestTag, PersonaInterestTag.tag_id == Tag.id)
+            .where(PersonaInterestTag.persona_id.in_(my_personas))
+        )
+    ).all():
+        terms.add(row[0])
+    for model, cond in (
+        (PostLike, PostLike.user_id == user_id),
+        (PostBookmark, PostBookmark.user_id == user_id),
+    ):
+        for row in (
+            await db.execute(
+                select(Tag.name)
+                .join(PostTag, PostTag.tag_id == Tag.id)
+                .join(model, model.post_id == PostTag.post_id)
+                .where(cond)
+                .limit(200)
+            )
+        ).all():
+            terms.add(row[0])
+    for row in (
+        await db.execute(
+            select(Tag.name)
+            .join(PostTag, PostTag.tag_id == Tag.id)
+            .join(Post, Post.id == PostTag.post_id)
+            .where(Post.source_persona_id.in_(my_personas))
+            .limit(200)
+        )
+    ).all():
+        terms.add(row[0])
+
+    terms = {t.lower() for t in terms if t}
+    with contextlib.suppress(Exception):
+        await redis.setex(key, _UINTEREST_TTL, json.dumps(sorted(terms), ensure_ascii=False))
+    return terms
+
+
+def _topic_affinity(terms: set[str], t: dict[str, object]) -> int:
+    """화제와 관심 용어의 겹침 수 — 이름·키워드·표시 키워드·카테고리 기준."""
+    if not terms:
+        return 0
+    topic_terms: set[str] = {str(t.get("category") or "").lower()}
+    for field_name in ("keywords", "display_keywords"):
+        v = t.get(field_name)
+        if isinstance(v, list):
+            topic_terms.update(str(k).lower() for k in v)
+    name = str(t.get("name") or "").lower()
+    if name:
+        topic_terms.add(name)
+        topic_terms.update(name.split())
+    return len(terms & topic_terms)
+
+
+def rank_topics_for_user(
+    topics: list[dict[str, object]], terms: set[str], mode: str
+) -> list[dict[str, object]]:
+    """개인화 정렬 (순수 함수 — 단위테스트 대상).
+
+    - recommend(홈): 전체 화제 점수가 주도하되 관심 일치가 가산 —
+      score × (1 + 0.3·min(affinity, 3)). "지금 뜨는 것 + 당신 취향".
+    - interest(피드): 관심 일치 우선, 동률은 점수순 — "당신이 관심 가질 것".
+      일치 0인 화제도 뒤에 남긴다(콜드스타트에도 빈 화면이 없다).
+    """
+    if mode == "interest":
+        return sorted(
+            topics,
+            key=lambda t: (_topic_affinity(terms, t), float(t.get("score") or 0.0)),
+            reverse=True,
+        )
+    return sorted(
+        topics,
+        key=lambda t: (
+            float(t.get("score") or 0.0) * (1.0 + 0.3 * min(_topic_affinity(terms, t), 3))
+        ),
+        reverse=True,
+    )
+
+
+async def get_news_topics(
+    db: AsyncSession,
+    redis: RedisClient,
+    *,
+    scope: str | None = None,
+    category: str | None = None,
+    region: str | None = None,
+    limit: int = 12,
+    mode: str = "score",
+    user_id: object | None = None,
+) -> list[dict[str, object]]:
+    """화제 읽기 경로 — 필터(범위·주제·위치)로 좁힌다. 위치 자동 매칭은 없다:
+    사용자가 명시적으로 고른 필터만 적용된다(전국/해외 이슈는 위치 불필요).
+
+    Redis 캐시 우선, 비어 있으면 DB에서 재계산(콜드스타트/재기동 복원).
+    """
+    topics: list[dict[str, object]] = []
+    raw = await redis.get(_TOPICS_KEY)
+    if raw:
+        with contextlib.suppress(json.JSONDecodeError):
+            payload = json.loads(raw)
+            if payload.get("v") == _TOPICS_CACHE_V:
+                topics = payload.get("topics") or []
+    if not topics:
+        with contextlib.suppress(Exception):
+            topics = [t.to_dict() for t in await _rebuild_topics(db, redis)]
+
+    if scope:
+        topics = [t for t in topics if str(t.get("scope")) == scope]
+    if category:
+        topics = [t for t in topics if str(t.get("category")) == category]
+    if region:
+        needle = region.strip()
+        topics = [t for t in topics if needle and needle in str(t.get("region") or "")]
+    # 개인화: recommend(홈)=점수 주도+취향 가산 / interest(피드)=관심 일치 우선.
+    # 실패해도 점수순으로 서빙(개인화는 품질 레이어, 가용성 의존성 아님).
+    if user_id is not None and mode in ("recommend", "interest"):
+        with contextlib.suppress(Exception):
+            terms = await _user_interest_terms(db, redis, user_id)
+            topics = rank_topics_for_user(topics, terms, mode)
+    with contextlib.suppress(Exception):
+        topics = await _attach_topic_posts(db, redis, topics)
+    return topics[:limit]
 
 
 def _topic_overlap(briefing: dict[str, object], topic_set: set[str]) -> int:
@@ -373,13 +1348,25 @@ async def get_news_briefings(
 
 async def get_news_status(redis: RedisClient) -> dict[str, object]:
     """Return the last-run status for the admin dashboard."""
+    from buddle.config import get_settings
+
     raw = await redis.get(_STATUS_KEY)
     if raw:
         try:
             return json.loads(raw)
         except json.JSONDecodeError:
             pass
-    return {"last_run_ts": 0, "fetched": 0, "new_items": 0, "stored": 0, "sources": []}
+    return {
+        "last_run_ts": 0,
+        "fetched": 0,
+        "new_items": 0,
+        "stored": 0,
+        "sources": [],
+        "llm_configured": bool(getattr(get_settings(), "persona_endpoint_url", "")),
+        "translated": 0,
+        "backfilled": 0,
+        "refined": 0,
+    }
 
 
 async def get_news_digest(redis: RedisClient) -> dict[str, object]:

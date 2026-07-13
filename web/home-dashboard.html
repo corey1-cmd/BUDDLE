@@ -4,9 +4,6 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <title>버들</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Spline+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="buddle.css">
 <style>
   /* page-local: dashboard composition only — all tokens come from buddle.css */
@@ -21,7 +18,7 @@
   .search svg{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:1.8;flex:none;}
 
   /* willow brief — the day's single calm headline (was the trading "global market") */
-  .brief{position:relative;overflow:hidden;border-radius:var(--r-lg);padding:var(--s5);margin-bottom:var(--s6);background:linear-gradient(135deg,#6F8FF5 0%,#A98DEE 55%,#F0AFDA 130%);color:#fff;box-shadow:var(--shadow);}
+  .brief{position:relative;overflow:hidden;border-radius:var(--r-lg);padding:var(--s5);margin-bottom:var(--s6);background:linear-gradient(135deg,#6D8CFF 0%,#7C6FF2 55%,#3A3480 130%);color:#fff;box-shadow:var(--shadow);}
   .brief::after{content:"";position:absolute;right:-30px;top:-30px;width:180px;height:180px;border-radius:50%;background:radial-gradient(circle at 30% 30%,rgba(255,255,255,.16),transparent 70%);pointer-events:none;}
   .brief .bd-eyebrow{color:rgba(255,255,255,.72);margin-bottom:var(--s2);}
   .brief h2{font-family:var(--display);font-weight:500;font-size:20px;line-height:1.3;color:#fff;}
@@ -66,6 +63,74 @@
   .region-flags{display:flex;gap:var(--s2);margin-bottom:var(--s4);flex-wrap:wrap;}
   .rflag{display:flex;align-items:center;gap:6px;font-size:var(--t-xs);font-weight:600;color:var(--ink-soft);background:var(--paper-sunken);border-radius:var(--r-pill);padding:5px 11px;}
   .rflag .dot{width:7px;height:7px;border-radius:50%;}
+
+  /* ── 레딧식 개별 피드 ── */
+  .rchips{display:flex;gap:8px;overflow-x:auto;padding-bottom:4px;margin-bottom:16px;scrollbar-width:none;}
+  .rchips::-webkit-scrollbar{display:none;}
+  .rchip{flex:none;font-size:13px;font-weight:600;color:var(--ink-soft);background:var(--paper-sunken);border:1px solid var(--line);border-radius:999px;padding:7px 14px;text-decoration:none;white-space:nowrap;}
+  .rchip:hover{border-color:var(--line-strong);color:var(--ink);}
+  .rloading{text-align:center;color:var(--ink-faint);font-size:14px;padding:40px 0;}
+  /* 웹 우선: 관리자 대시보드와 같은 넓은 중앙 정렬 비율(≈900px). 이 페이지에서만
+     bd-phone 폭을 넓힌다. 카드는 한 줄에 하나 — 카드 아래에 주요 주장이 붙는
+     읽기 흐름이라 2열로 쪼개지 않는다. */
+  .bd-phone{max-width:940px;}
+  .rfeed{display:grid;grid-template-columns:1fr;gap:14px;align-items:start;padding-bottom:8px;}
+  .rfeed > *{margin-bottom:0;}
+  #ntList{display:grid;grid-template-columns:1fr;gap:12px;align-items:start;}
+  #ntList > *{margin-bottom:0;}
+
+  /* 카드 하단 '주요 주장'(≤3) — 없으면 미표시 */
+  .nt-badge.urgent{background:rgba(224,90,90,.14);color:#D64545;font-weight:800;}
+  .pc-claims{margin-top:11px;padding-top:10px;border-top:1px dashed var(--line);display:flex;flex-direction:column;gap:6px;}
+  .pc-claims-h{font-size:11px;font-weight:700;letter-spacing:.04em;color:var(--willow-text);}
+  .pc-claim{position:relative;padding-left:14px;font-size:13px;line-height:1.5;color:var(--ink-soft);}
+  .pc-claim::before{content:"“";position:absolute;left:0;top:-1px;font-family:var(--display);font-weight:700;color:var(--willow);}
+  .rcard{background:linear-gradient(158deg,rgba(255,255,255,.055) 0%,rgba(255,255,255,.02) 40%,transparent 62%),var(--paper-raised);border:1px solid var(--line);border-radius:18px;padding:15px;box-shadow:0 6px 22px rgba(23,26,60,.08),inset 0 1px 0 rgba(255,255,255,.10);backdrop-filter:blur(20px) saturate(150%);-webkit-backdrop-filter:blur(20px) saturate(150%);}
+  .rc-head{display:flex;align-items:center;gap:9px;margin-bottom:11px;}
+  .rc-ava{width:30px;height:30px;border-radius:10px;flex:none;display:grid;place-items:center;font-family:var(--display);font-weight:600;font-size:13px;color:#fff;background:var(--accent-grad);box-shadow:var(--shadow-pop-sm);}
+  .rc-who{font-size:13.5px;font-weight:600;color:var(--ink);}
+  .rc-dot{color:var(--ink-faint);}
+  .rc-time{font-size:12px;color:var(--ink-faint);}
+  .rc-body{font-size:15.5px;line-height:1.6;color:var(--ink);display:-webkit-box;-webkit-line-clamp:6;-webkit-box-orient:vertical;overflow:hidden;cursor:pointer;}
+  /* 내용 없을 때: 블러 처리된 유리 박스 */
+  .rc-blur{position:relative;height:120px;border-radius:14px;overflow:hidden;background:linear-gradient(120deg,rgba(124,130,247,.16),rgba(84,140,255,.10) 50%,rgba(124,108,255,.14));}
+  .rc-blur::after{content:"";position:absolute;inset:0;backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);background:repeating-linear-gradient(100deg,rgba(255,255,255,.05) 0 22px,rgba(255,255,255,.02) 22px 44px);}
+  .rc-tags{display:flex;flex-wrap:wrap;gap:6px;margin-top:11px;}
+  .rc-tag{font-size:12px;font-weight:600;color:var(--willow-text);background:var(--willow-wash);border-radius:999px;padding:3px 9px;}
+  .rc-foot{display:flex;align-items:center;gap:18px;margin-top:13px;}
+  .rc-stat{display:flex;align-items:center;gap:6px;font-size:13px;font-weight:600;color:var(--ink-soft);background:none;border:0;cursor:pointer;padding:0;font-family:var(--body);}
+  .rc-stat svg{width:17px;height:17px;stroke:currentColor;fill:none;stroke-width:1.9;}
+  .rc-stat.on{color:var(--willow-text);}
+  .rc-debate{margin-left:auto;display:flex;align-items:center;gap:6px;font-size:13px;font-weight:700;color:#fff;background:var(--accent-grad);border:1px solid rgba(255,255,255,.18);border-radius:999px;padding:8px 15px;text-decoration:none;box-shadow:var(--shadow-pop-sm);}
+  .rc-debate svg{width:15px;height:15px;stroke:#fff;fill:none;stroke-width:2;}
+  .rmore{width:100%;margin-top:4px;padding:12px;border:1px solid var(--line);border-radius:14px;background:var(--surface);color:var(--willow-text);font-family:var(--body);font-size:14px;font-weight:600;cursor:pointer;}
+  .rempty{text-align:center;color:var(--ink-faint);font-size:14px;line-height:1.6;padding:48px 24px;}
+
+  /* ── 지금 화제 — 피드와 동일한 카드 형식(제목·태그·버튼), 추천 정렬 ── */
+  .nt-sec{margin-bottom:16px;}
+  .nt-head{display:flex;align-items:baseline;gap:8px;margin-bottom:10px;}
+  .nt-head h2{font-family:var(--display);font-size:16px;font-weight:600;color:var(--ink);}
+  .nt-head small{font-size:11.5px;color:var(--ink-faint);}
+  .nt-head a{margin-left:auto;font-size:12.5px;font-weight:600;color:var(--willow-text);text-decoration:none;}
+  .nt-card{padding:12px 13px;border:1px solid var(--line);border-radius:16px;background:var(--paper-sunken);margin-bottom:10px;cursor:pointer;transition:border-color .15s,transform .12s;}
+  .nt-card:hover{border-color:var(--line-strong);}
+  .nt-card:active{transform:scale(.99);}
+  /* 정부·공공기관 출처가 섞인 화제 — 언론사 출처와 구분되는 파란 테두리 */
+  .nt-card.gov{border-color:#191970;box-shadow:0 0 0 3px rgba(25,25,112,.12);}
+  .nt-badge.gov{background:rgba(25,25,112,.14);color:#191970;font-weight:800;}
+  .nt-top{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin-bottom:6px;}
+  .nt-badge{font-size:10.5px;font-weight:700;padding:2px 8px;border-radius:999px;background:var(--willow-wash);color:var(--willow-text);}
+  .nt-title{display:block;font-size:15px;font-weight:700;line-height:1.45;color:var(--ink);}
+  .nt-kws{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;}
+  .nt-kw{font-size:11px;font-weight:600;color:var(--willow-text);background:var(--willow-wash);border-radius:999px;padding:2px 9px;}
+  .nt-acts{display:flex;align-items:center;gap:14px;margin-top:10px;}
+  .nt-act{display:flex;align-items:center;gap:6px;font-size:12.5px;font-weight:600;color:var(--ink-soft);
+    background:none;border:0;cursor:pointer;padding:4px 2px;font-family:var(--body);}
+  .nt-act svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:1.9;}
+  .nt-act.on{color:var(--willow-text);}
+  .nt-act.debate{margin-left:auto;color:#fff;background:var(--accent-grad);border-radius:999px;
+    padding:7px 14px;box-shadow:var(--shadow-pop-sm);}
+  .nt-act.debate svg{stroke:#fff;}
 </style>
 </head>
 <body>
@@ -444,6 +509,9 @@
       qs.set("limit", String(limit));
       return request("GET", `/v1/tags?${qs.toString()}`);
     },
+    trending({ days = 7, limit = 10 } = {}) {
+      return request("GET", `/v1/tags/trending?days=${days}&limit=${limit}`);
+    },
   };
 
   const proximity = {
@@ -453,6 +521,19 @@
     setLocation(personaId, { lat, lon, sharing }) {
       return request("PUT", `/v1/proximity/personas/${personaId}/location`,
         { lat, lon, sharing });
+    },
+  };
+
+  /* ── News topics (무-LLM 화제 집계) ────────────────────── */
+  const news = {
+    // GET /v1/news/topics — 범위(동네|시|도|전국|해외)·주제·위치(선택) 필터.
+    topics({ scope = null, category = null, region = null, limit = 12, mode = null } = {}) {
+      const qs = new URLSearchParams({ limit: String(limit) });
+      if (scope) qs.set("scope", scope);
+      if (category) qs.set("category", category);
+      if (region) qs.set("region", region);
+      if (mode) qs.set("mode", mode);
+      return request("GET", `/v1/news/topics?${qs.toString()}`);
     },
   };
 
@@ -483,7 +564,7 @@
 
   global.buddle = {
     ApiError, setTokens, clearTokens, requireAuth,
-    auth, users, personas, tags, posts, feed, inbox, sessions, knowledge, proximity,
+    auth, users, personas, tags, posts, feed, inbox, sessions, knowledge, proximity, news,
     openDialogue,
   };
 })(window);
@@ -495,202 +576,372 @@
 
 </script>
 
-  <!-- top: brand + profile -->
+  <!-- top: profile (left, glass square) + brand + notifications -->
   <div class="bd-top" style="margin-bottom:var(--s4)">
+    <a href="profile.html" aria-label="내 프로필" title="내 프로필"
+      style="display:flex;align-items:center;justify-content:center;width:40px;height:40px;flex:none;border-radius:13px;border:1px solid var(--line);background:linear-gradient(158deg,rgba(255,255,255,.10),rgba(255,255,255,.02) 55%),var(--paper-raised);backdrop-filter:blur(20px) saturate(160%);-webkit-backdrop-filter:blur(20px) saturate(160%);box-shadow:inset 0 1px 0 rgba(255,255,255,.12);color:var(--ink-soft);text-decoration:none">
+      <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 5-6 8-6s6.5 2 8 6"/></svg>
+    </a>
     <div style="flex:1;display:flex;align-items:center;gap:9px">
-      <svg width="26" height="26" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 3c0 5-4 7-4 11a4 4 0 0 0 8 0c0-4-4-6-4-11z" fill="#5C7CF0" opacity=".9"/><path d="M12 14c0 3 .5 5 .5 7" stroke="#4863D6" stroke-width="1.4" stroke-linecap="round"/></svg>
       <span style="font-family:var(--display);font-weight:600;font-size:20px;color:var(--ink);letter-spacing:-.01em">버들</span>
     </div>
     <a id="adminBtn" href="admin.html" aria-label="관리자 대시보드" title="관리자 대시보드"
       style="display:none;align-items:center;justify-content:center;width:36px;height:36px;border-radius:10px;background:var(--willow-wash);border:none;cursor:pointer;text-decoration:none">
-      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#3D8A6B" stroke-width="1.8"><path d="M12 2l9 4.5V12c0 5-4 8.5-9 10-5-1.5-9-5-9-10V6.5z"/><path d="M9 12l2 2 4-4"/></svg>
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#4FC98F" stroke-width="1.8"><path d="M12 2l9 4.5V12c0 5-4 8.5-9 10-5-1.5-9-5-9-10V6.5z"/><path d="M9 12l2 2 4-4"/></svg>
     </a>
-    <a href="profile.html" class="bd-iconbtn" aria-label="내 프로파일"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 5-6 8-6s6.5 2 8 6"/></svg></a>
-    <button class="bd-iconbtn" aria-label="알림"><svg viewBox="0 0 24 24"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg></button>
+    <a href="notifications.html" class="bd-iconbtn" aria-label="알림"><svg viewBox="0 0 24 24"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg></a>
   </div>
 
-  <!-- greeting: one clear message -->
-  <div class="greet bd-reveal">
-    <div class="bd-eyebrow">오늘의 버들</div>
-    <h1 id="greetLine">곁에 두고, <span class="accent">천천히</span><br>이야기를 나눠요</h1>
-    <p>잘 쓰지 않아도 괜찮아요. 페르소나와 대화하면, 결이 맞는 사람에게 가닿습니다.</p>
-  </div>
-
-  <!-- search -->
+  <!-- 검색 (관심주제로) -->
   <a href="feed.html" class="search bd-reveal" style="text-decoration:none">
     <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
-    주제, 페르소나, 대화 찾기
+    화제·글 내용 검색
   </a>
 
-  <!-- the day's single calm headline (was "GLOBAL MARKET" trading banner) -->
-  <section class="brief bd-reveal" role="button" tabindex="0" onclick="location.href='feed.html'">
-    <div class="bd-eyebrow">AI 데일리 브리핑 · 6월 4일</div>
-    <h2 id="briefLine">오늘 전 세계에서 가장 활발한 이야기는<br>‘도시 산책 코스’와 ‘AI와 글쓰기’예요.</h2>
-    <div class="hint"><svg viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg>화제로 들어가 토론 보기</div>
+  <!-- 트렌딩 화제 칩 (탭하면 관심주제에서 필터) -->
+  <div class="rchips" id="rchips"></div>
+
+  <!-- 지금 화제 — 추천 정렬(전체 점수 + 내 관심 가산), 피드와 동일한 카드 형식 -->
+  <section class="nt-sec" id="ntSec" style="display:none">
+    <div class="nt-head">
+      <h2>지금 화제</h2><small>추천</small>
+      <a href="feed.html">전체 보기 →</a>
+    </div>
+    <div id="ntList"></div>
   </section>
 
-  <!-- my personas — presences, not tickers -->
-  <section class="sec bd-reveal">
-    <div class="sec-head">
-      <h2>나의 페르소나</h2>
-      <a href="chat.html">전체 보기</a>
-    </div>
-    <div id="myList"><!-- rendered --></div>
-  </section>
-
-  <!-- recent conversations -->
-  <section class="sec bd-reveal">
-    <div class="sec-head"><h2>이어서 대화하기</h2></div>
-    <div class="strip" id="recentStrip"><!-- rendered --></div>
-  </section>
-
-  <!-- live topics — what's being discussed now (no deltas) -->
-  <section class="sec bd-reveal">
-    <div class="sec-head">
-      <h2>지금 활발한 화제</h2>
-      <a href="feed.html">더 보기</a>
-    </div>
-    <div class="region-flags">
-      <span class="rflag"><span class="dot" style="background:#d64541"></span>한국</span>
-      <span class="rflag"><span class="dot" style="background:#2f6df0"></span>미국</span>
-      <span class="rflag"><span class="dot" style="background:#e8a13c"></span>홍콩</span>
-    </div>
-    <div id="topicList"><!-- rendered --></div>
-  </section>
+  <!-- 레딧식 개별 피드 -->
+  <div class="rfeed" id="rfeed"><div class="rloading">불러오는 중…</div></div>
 
 </div>
 
-<!-- bottom nav (shared component) -->
+<!-- bottom nav (Instagram식 5슬롯: 홈·관심주제·글쓰기(중앙)·내활동·프로필) -->
 <nav class="bd-nav">
   <a href="home-dashboard.html" class="on"><svg viewBox="0 0 24 24"><path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/></svg>홈</a>
-  <a href="feed.html"><svg viewBox="0 0 24 24"><path d="M20.8 7.6a5 5 0 0 0-7.1 0L12 9.3l-1.7-1.7a5 5 0 1 0-7.1 7.1L12 23l8.8-8.3a5 5 0 0 0 0-7.1z"/></svg>관심주제</a>
-  <a href="chat.html"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18"/></svg>대화NOW</a>
+  <a href="feed.html"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>관심주제</a>
+  <a href="compose.html" class="nav-create"><span class="plus"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></span>글쓰기</a>
   <a href="inbox.html"><svg viewBox="0 0 24 24"><path d="M21 12A9 9 0 1 1 12 3v9z"/><path d="M12 3a9 9 0 0 1 9 9h-9z"/></svg>내 활동</a>
-  <a href="compose.html"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>글쓰기</a>
+  <a href="profile.html"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 5-6 8-6s6.5 2 8 6"/></svg>프로필</a>
 </nav>
 <script src="buddle.ux.js"></script>
 <script>
   sec.harden();
 
-  /* 모든 페르소나가 하나의 시그니처 그라데이션 정체성을 공유 */
-  const ava=(name,_i)=>{
-    return `<div class="ava" style="background:var(--accent-grad);color:#fff">${sec.esc(String(name).slice(0,1))}</div>`;};
-
-  /* Demo seeds — used only until the backend has real data. We never invent
-     activity numbers (there's no metric API), so personas show as presences. */
-  let myPersonas=[
-    {id:"d1",name:"초록",desc:"일상·산책 · 한국어/영어"},
-    {id:"d2",name:"물결",desc:"음악·영화 · 한/영/일"},
-    {id:"d3",name:"햇살",desc:"독서·글쓰기 · 한국어"},
-    {id:"d4",name:"바람",desc:"기술 토론 · EN"},
-  ];
-  let recent=[
-    {name:"초록",sub:"방금"},{name:"바람",sub:"1시간 전"},{name:"물결",sub:"어제"},
-    {name:"햇살",sub:"2일 전"},{name:"이끼",sub:"3일 전"},
-  ];
-  const topics=[
-    {name:"동네 산책 코스",sub:"한국 · 활발한 토론",heat:"많음"},
-    {name:"AI와 글쓰기",sub:"미국 · 새로운 주장 늘어남",heat:"늘어남"},
-    {name:"자취 요리",sub:"한국 · 꾸준한 대화",heat:"꾸준"},
-    {name:"러닝 크루",sub:"한국 · 새로 떠오름",heat:"새로움"},
-    {name:"여행 메이트",sub:"홍콩 · 잔잔한 흐름",heat:"잔잔"},
-  ];
-
-  function renderMyList(){
-    const box=document.getElementById("myList");
-    box.replaceChildren(...myPersonas.map((p,i)=>{
-      const row=sec.el("div",{class:"p-row",dataset:{id:p.id},role:"button",tabindex:"0"});
-      row.innerHTML=ava(p.name,i);
-      const info=sec.el("div",{class:"info"});
-      info.appendChild(sec.el("h4",null,p.name));
-      info.appendChild(sec.el("small",null,p.desc));
-      const go=sec.el("div",{class:"go"});
-      go.innerHTML='<svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg>';
-      row.append(info,go);
-      const id=p.id;
-      row.addEventListener("click",()=>{
-        location.href=(id&&!String(id).startsWith("d"))
-          ? `chat.html?persona=${encodeURIComponent(id)}` : "chat.html";
-      });
-      return row;
-    }));
+  // 스크롤 진입 시 카드가 아래에서 부드럽게 떠오르는 효과(관리자 대시보드와 동일).
+  // 동적으로 추가되는 피드·화제 카드마다 reveal(el) 로 관찰만 건다.
+  const _revealIO = ("IntersectionObserver" in window) &&
+    !(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches)
+    ? new IntersectionObserver(function (es) {
+        es.forEach(function (e) { if (e.isIntersecting) { e.target.classList.add("in"); _revealIO.unobserve(e.target); } });
+      }, { rootMargin: "0px 0px -6% 0px", threshold: 0.06 })
+    : null;
+  function reveal(el) {
+    if (!el || !_revealIO) return el;
+    el.classList.add("bd-reveal", "bd-js-reveal");
+    _revealIO.observe(el);
+    return el;
   }
 
-  function renderRecent(rows){
-    const box=document.getElementById("recentStrip");
-    box.replaceChildren(...rows.map((p,i)=>{
-      const card=sec.el("div",{class:"pcard",dataset:{pid:p.personaId||""},role:"button",tabindex:"0"});
-      card.innerHTML=ava(p.name,i);
-      card.appendChild(sec.el("h5",null,p.name));
-      card.appendChild(sec.el("small",null,p.sub));
-      const pid=p.personaId;
-      if(pid) card.addEventListener("click",()=>{location.href=`chat.html?persona=${encodeURIComponent(pid)}`;});
-      return card;
-    }));
-  }
-
-  function renderTopics(){
-    const box=document.getElementById("topicList");
-    box.replaceChildren(...topics.map((t,i)=>{
-      const row=sec.el("div",{class:"topic"});
-      row.appendChild(sec.el("div",{class:"seq"},String(i+1)));
-      const info=sec.el("div",{class:"info"});
-      info.appendChild(sec.el("h4",null,t.name));
-      info.appendChild(sec.el("small",null,t.sub));
-      const heat=sec.el("div",{class:"heat"});
-      heat.innerHTML='<svg viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg>';
-      heat.appendChild(document.createTextNode(t.heat));
-      row.append(info,heat);
-      row.style.cursor="pointer";
-      row.addEventListener("click",()=>{location.href="feed.html";});
-      return row;
-    }));
-  }
-
-  renderMyList(); renderRecent(recent); renderTopics();
-  bdux.stagger(".bd-reveal", 60);
+  const rfeed = document.getElementById("rfeed");
+  const rchips = document.getElementById("rchips");
 
   function relTime(iso){
-    if(!iso) return "";
+    if(!iso) return "방금";
     const s=(Date.now()-new Date(iso).getTime())/1000;
     if(s<60) return "방금";
     if(s<3600) return `${Math.floor(s/60)}분 전`;
     if(s<86400) return `${Math.floor(s/3600)}시간 전`;
     return `${Math.floor(s/86400)}일 전`;
   }
+  function tagName(t){ return (t&&typeof t==="object") ? (t.name||"") : String(t||""); }
 
-  /* Boot — same soft-auth gate + live persona/session wiring as before.
-     Activity metrics stay absent (no API); we light up names + routing only. */
+  // 화제 글([지금 화제]) 파싱 — 본문 구조에서 제목·유형을 뽑는다.
+  function parseTopicPost(text){
+    const lines = (text || "").split("\n");
+    const title = (lines[0] || "").replace(/^\[지금 화제\]\s*/, "").trim();
+    let badge = "";
+    for (const ln of lines){ if (ln.startsWith("유형:")) { badge = ln.slice(3).trim(); break; } }
+    return { title, badge };
+  }
+
+  // 카드 하단 '주요 주장' — claims(≤3)가 있으면 붙이고, 없으면 렌더 안 함.
+  function claimsBlock(item){
+    const cs = Array.isArray(item.claims) ? item.claims.filter(Boolean) : [];
+    if (!cs.length) return null;
+    const box = sec.el("div", { class:"pc-claims" });
+    box.appendChild(sec.el("div", { class:"pc-claims-h" }, "주요 주장"));
+    cs.slice(0, 3).forEach(c => box.appendChild(sec.el("div", { class:"pc-claim" }, c)));
+    return box;
+  }
+
+  // 피드에 흐르는 화제 글은 텍스트 덩어리가 아니라 화제 카드 형식으로.
+  function topicPostCard(item){
+    const { title, badge } = parseTopicPost(item.content_transformed);
+    const bits = badge.split("·").map(b => b.trim()).filter(Boolean);
+    const isGov = bits.includes("정부출처");
+    const card = sec.el("div", { class:"nt-card" + (isGov ? " gov" : "") });
+    if (bits.length){
+      const top = sec.el("div", { class:"nt-top" });
+      bits.slice(0, 3).forEach(b => top.appendChild(
+        sec.el("span", { class: "nt-badge" + (b === "정부출처" ? " gov" : "") }, b)));
+      card.appendChild(top);
+    }
+    card.appendChild(sec.el("b", { class:"nt-title" }, title || "지금 화제"));
+    const tags = (item.tags || []).map(tagName).filter(Boolean);
+    if (tags.length){
+      const kb = sec.el("div", { class:"nt-kws" });
+      tags.slice(0, 5).forEach(t => kb.appendChild(sec.el("span", { class:"nt-kw" }, "#" + t)));
+      card.appendChild(kb);
+    }
+    const claimsEl = claimsBlock(item);
+    if (claimsEl) card.appendChild(claimsEl);
+    const openDetail = () => {
+      try { sessionStorage.setItem("buddle.feed.item." + item.id, JSON.stringify(item)); } catch(_){}
+      const qs = new URLSearchParams({ post: item.id });
+      if (tags[0]) qs.set("tag", tags[0]);
+      location.href = "feed.html?" + qs.toString();
+    };
+    const acts = sec.el("div", { class:"nt-acts" });
+    let liked = false, likeN = item.like_count || 0;
+    const likeBtn = sec.el("button", { class:"nt-act", type:"button" });
+    const paintLike = () => {
+      likeBtn.innerHTML = '<svg viewBox="0 0 24 24"><path d="M20.8 7.6a5 5 0 0 0-7.1 0L12 9.3l-1.7-1.7a5 5 0 1 0-7.1 7.1L12 23l8.8-8.3a5 5 0 0 0 0-7.1z"/></svg>';
+      likeBtn.appendChild(document.createTextNode(" 좋아요 " + likeN));
+      likeBtn.classList.toggle("on", liked);
+    };
+    paintLike();
+    likeBtn.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      liked = !liked; likeN += liked ? 1 : -1; paintLike();
+      try { liked ? await buddle.posts.like(item.id) : await buddle.posts.unlike(item.id); }
+      catch(_){ liked = !liked; likeN += liked ? 1 : -1; paintLike(); }
+    });
+    const cmtBtn = sec.el("button", { class:"nt-act", type:"button" });
+    cmtBtn.innerHTML = '<svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>';
+    cmtBtn.appendChild(document.createTextNode(" 댓글 " + (item.comment_count || 0)));
+    cmtBtn.addEventListener("click", (e) => { e.stopPropagation(); openDetail(); });
+    const debateBtn = sec.el("button", { class:"nt-act debate", type:"button" });
+    debateBtn.innerHTML = '<svg viewBox="0 0 24 24"><path d="M8 10h8M8 14h5"/><path d="M21 12a9 9 0 1 1-4.5-7.8L21 3l-1 4.2A8.9 8.9 0 0 1 21 12z"/></svg>';
+    debateBtn.appendChild(document.createTextNode(" 토론"));
+    debateBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      location.href = "argument-chat.html?post=" + encodeURIComponent(item.id);
+    });
+    acts.append(likeBtn, cmtBtn, debateBtn);
+    card.appendChild(acts);
+    card.addEventListener("click", openDetail);
+    return card;
+  }
+
+  // 레딧식 카드 한 장
+  function renderCard(item){
+    if ((item.author_label || "") === "지금 화제") return topicPostCard(item);
+    const persona = (item.source_persona && item.source_persona.name) || item.author_label || "익명";
+    const text = (item.content_transformed || "").trim();
+    const tags = (item.tags||[]).map(tagName).filter(Boolean);
+    const card = sec.el("div", { class:"rcard" });
+
+    // 헤더: 아바타 · 이름 · 시간
+    const head = sec.el("div", { class:"rc-head" });
+    head.appendChild(sec.el("div", { class:"rc-ava" }, persona.slice(0,1)));
+    const who = sec.el("div", null);
+    who.appendChild(sec.el("span", { class:"rc-who" }, persona));
+    who.appendChild(document.createTextNode(" "));
+    who.appendChild(sec.el("span", { class:"rc-dot" }, "·"));
+    who.appendChild(document.createTextNode(" "));
+    who.appendChild(sec.el("span", { class:"rc-time" }, relTime(item.created_at)));
+    head.appendChild(who);
+    card.appendChild(head);
+
+    // 본문: 글(사진 대신). 없으면 블러 박스.
+    const openDetail = () => { location.href = `feed.html?post=${encodeURIComponent(item.id)}`; };
+    if (text) {
+      const body = sec.el("div", { class:"rc-body" }, text);
+      body.addEventListener("click", openDetail);
+      card.appendChild(body);
+    } else {
+      card.appendChild(sec.el("div", { class:"rc-blur" }));
+    }
+
+    // 태그 칩
+    if (tags.length){
+      const tb = sec.el("div", { class:"rc-tags" });
+      tags.slice(0,4).forEach(t => tb.appendChild(sec.el("span", { class:"rc-tag" }, "#"+t)));
+      card.appendChild(tb);
+    }
+
+    // 주요 주장(≤3) — 없으면 아무것도 안 붙는다.
+    const claimsEl = claimsBlock(item);
+    if (claimsEl) card.appendChild(claimsEl);
+
+    // 푸터: 좋아요 · 댓글 · 토론 버튼(오른쪽)
+    const foot = sec.el("div", { class:"rc-foot" });
+    const likeBtn = sec.el("button", { class:"rc-stat", type:"button" });
+    let liked = false, likeN = item.like_count||0;
+    const paint = () => { likeBtn.innerHTML =
+      `<svg viewBox="0 0 24 24"><path d="M20.8 7.6a5 5 0 0 0-7.1 0L12 9.3l-1.7-1.7a5 5 0 1 0-7.1 7.1L12 23l8.8-8.3a5 5 0 0 0 0-7.1z"/></svg>`;
+      likeBtn.appendChild(document.createTextNode(" "+likeN)); likeBtn.classList.toggle("on", liked); };
+    paint();
+    likeBtn.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      liked = !liked; likeN += liked ? 1 : -1; paint();
+      try { liked ? await buddle.posts.like(item.id) : await buddle.posts.unlike(item.id); }
+      catch(_){ liked = !liked; likeN += liked ? 1 : -1; paint(); }
+    });
+    const cmt = sec.el("button", { class:"rc-stat", type:"button" });
+    cmt.innerHTML = `<svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>`;
+    cmt.appendChild(document.createTextNode(" "+(item.comment_count||0)));
+    cmt.addEventListener("click", openDetail);
+    foot.append(likeBtn, cmt);
+    // 토론 버튼 — 이 글의 주장과 토론
+    const debate = sec.el("a", { class:"rc-debate", href:`argument-chat.html?post=${encodeURIComponent(item.id)}` });
+    debate.innerHTML = `<svg viewBox="0 0 24 24"><path d="M8 10h8M8 14h5"/><path d="M21 12a9 9 0 1 1-4.5-7.8L21 3l-1 4.2A8.9 8.9 0 0 1 21 12z"/></svg>`;
+    debate.appendChild(document.createTextNode("토론"));
+    foot.appendChild(debate);
+    card.appendChild(foot);
+    return card;
+  }
+
+  let nextCursor = null;
+  async function loadFeed(cursor){
+    if(!cursor) rfeed.innerHTML = '<div class="rloading">불러오는 중…</div>';
+    let items = [];
+    try {
+      const page = await buddle.feed.list(cursor);
+      if (page && Array.isArray(page.items)) { items = page.items; nextCursor = page.next_cursor || null; }
+    } catch(_){ nextCursor = null; }
+
+    const frag = document.createDocumentFragment();
+    if(!cursor && !items.length){
+      rfeed.innerHTML = "";
+      rfeed.appendChild(sec.el("div", { class:"rempty" },
+        "아직 도착한 글이 없어요.\n가운데 글쓰기로 첫 생각을 남겨보세요."));
+      return;
+    }
+    if(!cursor) rfeed.innerHTML = "";
+    const added = [];
+    items.forEach(it => {
+      try { sessionStorage.setItem("buddle.feed.item."+it.id, JSON.stringify(it)); } catch(_){}
+      const c = renderCard(it);
+      frag.appendChild(c); added.push(c);
+    });
+    rfeed.appendChild(frag);
+    added.forEach(reveal);  // DOM 삽입 후 관찰 → 스크롤 진입 시 떠오름
+    ensureFeedSentinel();
+  }
+
+  // 인스타식 무한 스크롤 — 하단 800px 전에 다음 페이지를 자동 로드.
+  let feedIO = null, loadingMore = false;
+  function ensureFeedSentinel(){
+    let sn = document.getElementById("feedSentinel");
+    if (!nextCursor){ if (sn) sn.remove(); return; }
+    if (!sn){
+      sn = sec.el("div", { id:"feedSentinel" });
+      sn.style.height = "1px";
+      if (!feedIO){
+        feedIO = new IntersectionObserver((es) => {
+          if (es.some(e => e.isIntersecting) && nextCursor && !loadingMore){
+            loadingMore = true;
+            loadFeed(nextCursor).finally(() => { loadingMore = false; });
+          }
+        }, { rootMargin: "800px 0px" });
+      }
+      feedIO.observe(sn);
+    }
+    rfeed.appendChild(sn);  // 항상 목록 끝으로
+  }
+
+  // 지금 화제 — 피드와 동일한 카드 형식. 홈은 추천 정렬(점수+내 관심 가산).
+  function ntOpenTopic(t){
+    if (t.post_id) {
+      const qs = new URLSearchParams({ post: t.post_id });
+      if (t.name) qs.set("tag", t.name);
+      location.href = "feed.html?" + qs.toString();
+    } else if (t.name) {
+      location.href = "feed.html?news_topic=" + encodeURIComponent(t.name);
+    }
+  }
+  function ntCard(t){
+    const card = sec.el("div", { class:"nt-card" + (t.is_gov_source ? " gov" : "") });
+    const top = sec.el("div", { class:"nt-top" });
+    top.appendChild(sec.el("span", { class:"nt-badge" }, t.category || "사회"));
+    const scopeLabel = t.region ? `${t.scope} · ${t.region}` : (t.scope || "");
+    if (scopeLabel) top.appendChild(sec.el("span", { class:"nt-badge" }, scopeLabel));
+    if (t.urgent) top.appendChild(sec.el("span", { class:"nt-badge urgent" }, "긴급"));
+    if (t.trend === "상승") top.appendChild(sec.el("span", { class:"nt-badge" }, "↑ 상승"));
+    if (t.is_gov_source) top.appendChild(sec.el("span", { class:"nt-badge gov" }, "정부출처"));
+    card.appendChild(top);
+    card.appendChild(sec.el("b", { class:"nt-title" }, t.title || ("#" + (t.name || ""))));
+    const kws = Array.isArray(t.keywords) ? t.keywords : [];
+    if (kws.length){
+      const kb = sec.el("div", { class:"nt-kws" });
+      kws.slice(0, 5).forEach(k => kb.appendChild(sec.el("span", { class:"nt-kw" }, "#" + k)));
+      card.appendChild(kb);
+    }
+    const acts = sec.el("div", { class:"nt-acts" });
+    let liked = false, likeN = t.like_count || 0;
+    const likeBtn = sec.el("button", { class:"nt-act", type:"button" });
+    const paintLike = () => {
+      likeBtn.innerHTML = '<svg viewBox="0 0 24 24"><path d="M20.8 7.6a5 5 0 0 0-7.1 0L12 9.3l-1.7-1.7a5 5 0 1 0-7.1 7.1L12 23l8.8-8.3a5 5 0 0 0 0-7.1z"/></svg>';
+      likeBtn.appendChild(document.createTextNode(" 좋아요 " + likeN));
+      likeBtn.classList.toggle("on", liked);
+    };
+    paintLike();
+    likeBtn.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      if (!t.post_id) { ntOpenTopic(t); return; }
+      liked = !liked; likeN += liked ? 1 : -1; paintLike();
+      try { liked ? await buddle.posts.like(t.post_id) : await buddle.posts.unlike(t.post_id); }
+      catch(_){ liked = !liked; likeN += liked ? 1 : -1; paintLike(); }
+    });
+    const cmtBtn = sec.el("button", { class:"nt-act", type:"button" });
+    cmtBtn.innerHTML = '<svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>';
+    cmtBtn.appendChild(document.createTextNode(" 댓글 " + (t.comment_count || 0)));
+    cmtBtn.addEventListener("click", (e) => { e.stopPropagation(); ntOpenTopic(t); });
+    const debateBtn = sec.el("button", { class:"nt-act debate", type:"button" });
+    debateBtn.innerHTML = '<svg viewBox="0 0 24 24"><path d="M8 10h8M8 14h5"/><path d="M21 12a9 9 0 1 1-4.5-7.8L21 3l-1 4.2A8.9 8.9 0 0 1 21 12z"/></svg>';
+    debateBtn.appendChild(document.createTextNode(" 토론"));
+    debateBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      if (t.post_id) location.href = "argument-chat.html?post=" + encodeURIComponent(t.post_id);
+      else ntOpenTopic(t);
+    });
+    acts.append(likeBtn, cmtBtn, debateBtn);
+    card.appendChild(acts);
+    card.addEventListener("click", () => ntOpenTopic(t));
+    return card;
+  }
+  function renderNewsTopics(topics){
+    const box = document.getElementById("ntSec");
+    const list = document.getElementById("ntList");
+    const items = Array.isArray(topics) ? topics : [];
+    if(!items.length){ box.style.display = "none"; return; }
+    list.replaceChildren();
+    items.forEach(t => reveal(list.appendChild(ntCard(t))));
+    box.style.display = "";
+  }
+
+  // 트렌딩 화제 칩 — 탭하면 관심주제에서 필터
+  function renderChips(rows){
+    const items = Array.isArray(rows) ? rows : [];
+    rchips.replaceChildren();
+    if(!items.length){ rchips.style.display="none"; return; }
+    items.forEach(t => {
+      const a = sec.el("a", { class:"rchip", href:`feed.html?tag=${encodeURIComponent(t.name)}` }, "#"+t.name);
+      rchips.appendChild(a);
+    });
+  }
+
   (async function boot(){
-    const authed=await buddle.requireAuth();
-    if(!authed||!buddle.auth.isAuthed()) return;
-    // 관리자 여부 확인 — is_admin이면 상단 방패 버튼 표시
-    buddle.users.me().then(me=>{
-      if(me&&me.is_admin){
-        const btn=document.getElementById("adminBtn");
-        if(btn) btn.style.display="flex";
-      }
+    const authed = await buddle.requireAuth();
+    if(!authed || !buddle.auth.isAuthed()) return;
+    buddle.users.me().then(me => {
+      if(me && me.is_admin){ const b=document.getElementById("adminBtn"); if(b) b.style.display="flex"; }
     }).catch(()=>{});
-    try{
-      const list=await buddle.personas.list();
-      const items=(Array.isArray(list)?list:(list&&list.items)||[]).filter(p=>p.is_active!==false);
-      if(!items.length) return;
-      myPersonas=items.map(p=>({id:p.id,name:p.name,desc:p.model_key||"기본 대화 모델"}));
-      renderMyList();
-      const nameById=new Map(items.map(p=>[p.id,p.name]));
-      const sessLists=await Promise.allSettled(items.map(p=>buddle.sessions.list(p.id)));
-      const all=[];
-      sessLists.forEach((res,idx)=>{
-        if(res.status==="fulfilled"&&Array.isArray(res.value)){
-          const pid=items[idx].id;
-          res.value.forEach(sess=>all.push({personaId:pid,name:nameById.get(pid)||"",ts:sess.last_active_at||sess.created_at}));
-        }
-      });
-      if(all.length){
-        all.sort((a,b)=>new Date(b.ts)-new Date(a.ts));
-        renderRecent(all.slice(0,5).map(r=>({personaId:r.personaId,name:r.name,sub:relTime(r.ts)})));
-      }
-    }catch(_){/* offline → demo 유지 */}
+    buddle.tags.trending({days:7,limit:8}).then(renderChips).catch(()=>{ rchips.style.display="none"; });
+    // 뉴스 화제 스트립 — 파이프라인이 없는 서버에선 조용히 생략(빈 상태 유지).
+    buddle.news.topics({limit:3, mode:"recommend"}).then(renderNewsTopics).catch(()=>{});
+    loadFeed();
   })();
 </script>
 </body>

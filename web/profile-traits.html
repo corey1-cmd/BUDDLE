@@ -1,0 +1,290 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>버들 — 성향 프로파일</title>
+<link rel="stylesheet" href="buddle.css">
+<style>
+  /* page-local: profile composition only */
+  .intro .bd-eyebrow{margin-bottom:var(--s2);}
+  .rights{display:flex;flex-direction:column;gap:var(--s2);margin-top:var(--s4);}
+  .right-item{display:flex;gap:var(--s3);align-items:flex-start;}
+  .right-item .n{flex:none;width:22px;height:22px;border-radius:50%;background:var(--willow-wash);color:var(--willow-press);font-size:var(--t-xs);font-weight:700;display:flex;align-items:center;justify-content:center;margin-top:1px;}
+  .right-item .t b{font-size:var(--t-sm);color:var(--ink);}
+  .right-item .t span{font-size:var(--t-xs);color:var(--ink-soft);}
+
+  .trait{padding:var(--s3) 0;border-bottom:1px solid var(--line);}
+  .trait:last-child{border-bottom:none;}
+  .trait .row1{display:flex;align-items:baseline;gap:var(--s2);}
+  .trait .name{font-size:var(--t-body);font-weight:600;color:var(--ink);}
+  .trait .desc{font-size:var(--t-xs);color:var(--ink-faint);}
+  .trait .val{margin-left:auto;font-variant-numeric:tabular-nums;font-weight:700;font-size:var(--t-sm);color:var(--willow-press);}
+  .trait .bd-meter{margin-top:var(--s2);}
+  .trait input[type=range]{width:100%;margin-top:var(--s2);accent-color:var(--willow);display:none;}
+  .editing .trait input[type=range]{display:block;}
+  .editing .trait .bd-meter{display:none;}
+
+  .meter-row{display:flex;align-items:center;gap:var(--s3);}
+  .meter-row .bd-meter{flex:1;}
+  .meter-row .pct{font-size:var(--t-sm);font-weight:700;color:var(--ink);min-width:48px;text-align:right;}
+  .hint{font-size:var(--t-xs);color:var(--ink-faint);margin-top:var(--s2);line-height:1.55;}
+
+  .optrow{display:flex;align-items:center;gap:var(--s3);}
+  .optrow .txt{flex:1;}
+  .optrow .txt b{font-size:var(--t-sm);color:var(--ink);display:block;margin-bottom:2px;}
+  .optrow .txt span{font-size:var(--t-xs);color:var(--ink-soft);}
+
+  .actions{display:flex;gap:var(--s2);margin-top:var(--s2);}
+  .actions .bd-btn{flex:1;}
+  .status{font-size:var(--t-xs);color:var(--ink-soft);min-height:16px;margin-top:var(--s3);text-align:center;}
+  .card-title{font-size:var(--t-h2);font-weight:600;color:var(--ink);margin-bottom:var(--s3);display:flex;align-items:center;gap:8px;}
+  .card-title svg{width:18px;height:18px;stroke:var(--willow);fill:none;stroke-width:1.8;}
+  section.bd-card{margin-bottom:var(--s4);}
+</style>
+</head>
+<body>
+<div class="bd-phone">
+
+  <div class="bd-top">
+    <a class="bd-back" href="profile.html" aria-label="프로필로">
+      <svg viewBox="0 0 24 24" width="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M15 18l-6-6 6-6"/></svg>
+    </a>
+    <h1 style="flex:1">성향 프로파일</h1>
+    <span class="bd-badge" id="modeBadge">추정값</span>
+  </div>
+
+  <section class="bd-card intro bd-reveal">
+    <div class="bd-eyebrow">투명하게 · 연결만을 위해</div>
+    <p class="bd-muted">버들이 대화와 글을 바탕으로 <b style="color:var(--ink)">추정</b>한 성향과 관심입니다. 비슷한 결의 사람·이야기와 <b style="color:var(--ink)">이어주는 용도로만</b> 쓰이며, 누군가를 배제하거나 차별하는 데는 쓰이지 않습니다. 단정이 아닌 추정이고 — 최종 결정권은 늘 본인에게 있어요.</p>
+    <div class="rights">
+      <div class="right-item"><div class="n">1</div><div class="t"><b>열람</b> <span>— 지금 이 화면</span></div></div>
+      <div class="right-item"><div class="n">2</div><div class="t"><b>수정</b> <span>— 직접 고치면 자동 추정이 멈춰요</span></div></div>
+      <div class="right-item"><div class="n">3</div><div class="t"><b>삭제</b> <span>— 언제든 비울 수 있어요</span></div></div>
+      <div class="right-item"><div class="n">4</div><div class="t"><b>거부</b> <span>— 매칭에서 빼둘 수 있어요</span></div></div>
+    </div>
+  </section>
+
+  <section class="bd-card bd-reveal" id="traitCard">
+    <div class="card-title"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 3v18M3 12h18"/></svg>성향 (Big Five)</div>
+    <div id="traits"></div>
+    <p class="hint" id="traitHint">막대는 0~1 사이 추정값이에요. ‘수정하기’를 누르면 직접 조정할 수 있고, 한 번이라도 직접 설정하면 그 값이 최종이 되어 자동 추정이 멈춥니다.</p>
+    <div class="actions">
+      <button id="editBtn" class="bd-btn">수정하기</button>
+      <button id="saveBtn" class="bd-btn bd-btn--primary" style="display:none">저장</button>
+      <button id="cancelBtn" class="bd-btn" style="display:none">취소</button>
+    </div>
+  </section>
+
+  <section class="bd-card bd-reveal">
+    <div class="card-title"><svg viewBox="0 0 24 24"><path d="M3 17l5-5 4 4 8-8"/></svg>추정 신뢰도</div>
+    <div class="meter-row"><div class="bd-meter"><i id="confBar" style="width:0%"></i></div><span class="pct" id="confPct">0%</span></div>
+    <p class="hint" id="evidenceTxt">아직 누적된 근거가 없어요. 페르소나와 대화할수록 추정이 차분히 정교해집니다 — 한 번의 말로는 거의 움직이지 않게 설계돼 있어요.</p>
+  </section>
+
+  <section class="bd-card bd-reveal">
+    <div class="card-title"><svg viewBox="0 0 24 24"><path d="M20.8 7.6a5 5 0 0 0-7.1 0L12 9.3l-1.7-1.7a5 5 0 1 0-7.1 7.1L12 23l8.8-8.3a5 5 0 0 0 0-7.1z"/></svg>관심 분야</div>
+    <p class="bd-muted" id="interestTxt" style="font-size:var(--t-sm)">아직 게시한 글이 없어 관심 지도가 비어 있어요. 글을 쓰면 그 결이 모여 ‘관심의 중심점’이 만들어지고, 매칭의 10%로만 쓰입니다.</p>
+  </section>
+
+  <section class="bd-card bd-reveal">
+    <div class="optrow">
+      <div class="txt"><b>매칭에 프로파일 사용 안 함</b>
+        <span>켜면 추정·관찰이 멈추고, 매칭은 콘텐츠·위치만으로 다시 계산됩니다.</span></div>
+      <label class="bd-switch"><input type="checkbox" id="optOut"><i></i></label>
+    </div>
+    <div class="actions" style="margin-top:var(--s4)">
+      <button class="bd-btn bd-btn--danger" id="deleteBtn" style="flex:none">프로파일 삭제</button>
+    </div>
+    <div class="status" id="status"></div>
+  </section>
+
+</div>
+
+<!-- bottom nav (Instagram식 5슬롯: 홈·관심주제·글쓰기(중앙)·내활동·프로필) -->
+<nav class="bd-nav">
+  <a href="home-dashboard.html"><svg viewBox="0 0 24 24"><path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/></svg>홈</a>
+  <a href="feed.html"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>관심주제</a>
+  <a href="compose.html" class="nav-create"><span class="plus"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></span>글쓰기</a>
+  <a href="inbox.html"><svg viewBox="0 0 24 24"><path d="M21 12A9 9 0 1 1 12 3v9z"/><path d="M12 3a9 9 0 0 1 9 9h-9z"/></svg>내 활동</a>
+  <a href="profile.html" class="on"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 5-6 8-6s6.5 2 8 6"/></svg>프로필</a>
+</nav>
+
+<script src="buddle.ux.js"></script>
+<script>
+/* ── 최소 보안 헬퍼 (SECURITY_FRONTEND 규약 부분집합: API 텍스트는 DOM API로만) ── */
+const sec = {
+  text(node, value){ node.textContent = value == null ? "" : String(value); },
+};
+
+/* ── 최소 API (api.js 규약 부분집합: sessionStorage 토큰 buddle.auth.v1, Bearer,
+      BUDDLE_API_BASE 오버라이드, 백엔드 부재 시 데모 폴백) ── */
+const api = (() => {
+  const BASE = window.BUDDLE_API_BASE || "";
+  const TOKEN_KEY = "buddle.auth.v1";
+  function token(){
+    try{
+      const raw = sessionStorage.getItem(TOKEN_KEY);
+      return raw ? (JSON.parse(raw).a || null) : null;
+    }catch{ return null; }
+  }
+  async function call(method, path, body){
+    const headers = { "Accept": "application/json" };
+    const t = token();
+    if (t) headers["Authorization"] = "Bearer " + t;
+    if (body !== undefined) headers["Content-Type"] = "application/json";
+    const res = await fetch(BASE + path, {
+      method, headers, body: body === undefined ? undefined : JSON.stringify(body),
+    });
+    if (res.status === 204) return null;
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    return res.json();
+  }
+  return {
+    hasToken: () => !!token(),
+    getProfile: () => call("GET", "/v1/me/profile"),
+    patchProfile: (payload) => call("PATCH", "/v1/me/profile", payload),
+    deleteProfile: () => call("DELETE", "/v1/me/profile"),
+  };
+})();
+
+/* ── 상태 ── */
+const TRAITS = [
+  { key:"o", name:"개방성",      desc:"새로움·호기심·상상" },
+  { key:"c", name:"성실성",      desc:"계획·꾸준함·체계" },
+  { key:"e", name:"외향성",      desc:"사람·모임에서 얻는 에너지" },
+  { key:"a", name:"우호성",      desc:"공감·배려·따뜻함" },
+  { key:"n", name:"정서 민감성", desc:"걱정·스트레스에 반응하는 정도" },
+];
+const NEUTRAL = { o:.5, c:.5, e:.5, a:.5, n:.5, confidence:0, evidence_count:0,
+                  has_interests:false, profile_opt_out:false, is_user_edited:false };
+let profile = { ...NEUTRAL };
+let demoMode = false;
+let editing = false;
+
+/* ── 렌더 ── */
+const $ = (id) => document.getElementById(id);
+
+function renderTraits(){
+  const wrap = $("traits");
+  wrap.replaceChildren();
+  for (const t of TRAITS){
+    const v = Math.max(0, Math.min(1, Number(profile[t.key])));
+    const row = document.createElement("div"); row.className = "trait";
+    const r1 = document.createElement("div"); r1.className = "row1";
+    const nm = document.createElement("span"); nm.className = "name"; sec.text(nm, t.name);
+    const ds = document.createElement("span"); ds.className = "desc"; sec.text(ds, t.desc);
+    const vl = document.createElement("span"); vl.className = "val";
+    sec.text(vl, v.toFixed(2));
+    r1.append(nm, ds, vl);
+    const bar = document.createElement("div"); bar.className = "bd-meter";
+    const fill = document.createElement("i"); fill.style.width = (v*100).toFixed(0) + "%";
+    bar.append(fill);
+    const slider = document.createElement("input");
+    slider.type = "range"; slider.min = "0"; slider.max = "1"; slider.step = "0.05";
+    slider.value = String(v); slider.dataset.key = t.key;
+    slider.setAttribute("aria-label", t.name + " 직접 설정");
+    slider.addEventListener("input", () => sec.text(vl, Number(slider.value).toFixed(2)));
+    row.append(r1, bar, slider);
+    wrap.append(row);
+  }
+}
+
+function renderMeta(){
+  const pct = Math.round(Number(profile.confidence) * 100);
+  $("confBar").style.width = pct + "%";
+  sec.text($("confPct"), pct + "%");
+  const n = Number(profile.evidence_count) || 0;
+  sec.text($("evidenceTxt"), n === 0
+    ? "아직 누적된 근거가 없습니다. 페르소나와 대화할수록 추정이 차분히 정교해집니다 — 한 번의 말로는 거의 움직이지 않게 설계되어 있어요."
+    : `대화 ${n}건의 신호를 누적한 추정입니다. 신뢰도는 근거가 쌓일수록 천천히 오르고, 100%에는 도달하지 않습니다 — 추정은 추정이니까요.`);
+  sec.text($("interestTxt"), profile.has_interests
+    ? "게시한 글들의 결이 모여 관심의 중심점이 만들어져 있습니다. 원문이 아니라 방향(임베딩 평균)만 저장되며, 매칭의 10%로만 쓰입니다."
+    : "아직 게시한 글이 없어 관심 지도가 비어 있습니다. 글을 쓰면 그 내용의 결이 모여 ‘관심의 중심점’이 만들어지고, 매칭의 10%로만 쓰입니다.");
+  $("optOut").checked = !!profile.profile_opt_out;
+  const badge = $("modeBadge");
+  if (demoMode){ badge.className = "badge demo"; sec.text(badge, "데모 모드"); }
+  else if (profile.is_user_edited){ badge.className = "badge"; sec.text(badge, "내가 설정함"); }
+  else { badge.className = "badge"; sec.text(badge, "추정값"); }
+}
+
+function setEditing(on){
+  editing = on;
+  $("traitCard").classList.toggle("editing", on);
+  $("editBtn").style.display = on ? "none" : "";
+  $("saveBtn").style.display = on ? "" : "none";
+  $("cancelBtn").style.display = on ? "" : "none";
+}
+
+function setStatus(msg){ sec.text($("status"), msg || ""); }
+
+/* ── 액션 ── */
+$("editBtn").addEventListener("click", () => setEditing(true));
+$("cancelBtn").addEventListener("click", () => { renderTraits(); setEditing(false); });
+
+$("saveBtn").addEventListener("click", async () => {
+  const payload = {};
+  document.querySelectorAll('#traits input[type=range]').forEach(s => {
+    payload[s.dataset.key] = Number(s.value);
+  });
+  setStatus("저장 중…");
+  if (demoMode){
+    Object.assign(profile, payload, { is_user_edited:true, confidence:1 });
+    renderTraits(); renderMeta(); setEditing(false);
+    setStatus("데모 모드: 이 탭에서만 반영되었습니다."); return;
+  }
+  try{
+    profile = normalize(await api.patchProfile(payload));
+    renderTraits(); renderMeta(); setEditing(false);
+    setStatus("저장되었습니다. 직접 설정한 값은 최종이며 자동 추정이 멈춥니다.");
+  }catch(e){ setStatus("저장 실패: " + e.message); }
+});
+
+$("optOut").addEventListener("change", async (ev) => {
+  const want = ev.target.checked;
+  if (demoMode){
+    profile.profile_opt_out = want; renderMeta();
+    setStatus(want ? "데모: 매칭에서 프로파일 제외(콘텐츠·위치만 사용)." : "데모: 프로파일 사용 재개."); return;
+  }
+  setStatus("적용 중…");
+  try{
+    profile = normalize(await api.patchProfile({ profile_opt_out: want }));
+    renderMeta();
+    setStatus(want ? "이제 매칭은 콘텐츠·위치만으로 계산됩니다." : "프로파일 사용을 재개했습니다.");
+  }catch(e){ ev.target.checked = !want; setStatus("적용 실패: " + e.message); }
+});
+
+$("deleteBtn").addEventListener("click", async () => {
+  if (!confirm("프로파일 추정값과 관심 중심점을 모두 삭제할까요?\n(계속 사용하면 처음부터 다시, 천천히 추정됩니다 — 거부를 원하면 위의 토글을 켜 두세요)")) return;
+  if (demoMode){
+    profile = { ...NEUTRAL }; renderTraits(); renderMeta();
+    setStatus("데모: 프로파일이 비워졌습니다."); return;
+  }
+  setStatus("삭제 중…");
+  try{
+    await api.deleteProfile();
+    profile = { ...NEUTRAL };
+    renderTraits(); renderMeta(); setEditing(false);
+    setStatus("프로파일이 삭제되었습니다. 이 화면의 값은 중립 초기값입니다.");
+  }catch(e){ setStatus("삭제 실패: " + e.message); }
+});
+
+/* ── 로드 (백엔드 부재/미로그인 → 데모 폴백: 파일 단독 열람 보장) ── */
+function normalize(p){ return { ...NEUTRAL, ...(p || {}) }; }
+
+(async function init(){
+  renderTraits(); renderMeta();
+  try{
+    if (!api.hasToken()) throw new Error("no token");
+    profile = normalize(await api.getProfile());
+    demoMode = false;
+  }catch{
+    demoMode = true;
+    profile = normalize({ o:.62, c:.48, e:.41, a:.71, n:.57, confidence:.34,
+      evidence_count:14, has_interests:true });
+  }
+  renderTraits(); renderMeta();
+})();
+</script>
+</body>
+</html>

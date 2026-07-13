@@ -71,6 +71,57 @@ async def collect_stats(db: AsyncSession) -> SystemStats:
     )
 
 
+# ── 관리자 관리 (슈퍼 관리자 전용) ──────────────────────────────────────────
+
+
+async def list_admins(db: AsyncSession) -> list[User]:
+    """관리자(is_admin=True) 목록 — 슈퍼 관리자 먼저, 그다음 이메일순."""
+    rows = (
+        (
+            await db.execute(
+                select(User)
+                .where(User.is_admin.is_(True))
+                .order_by(User.is_super_admin.desc(), User.email)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    return list(rows)
+
+
+async def grant_admin(db: AsyncSession, email: str) -> User:
+    """이메일로 사용자를 찾아 관리자 권한을 부여한다(멱등).
+
+    대상 계정은 이미 회원가입돼 있어야 한다 — 없으면 NotFound. 슈퍼 관리자만
+    부여할 수 있고(라우트에서 게이트), 새로 부여되는 권한은 '일반 관리자'다
+    (슈퍼 관리자 권한은 이 경로로 부여하지 않는다).
+    """
+    email = (email or "").strip()
+    user = (await db.execute(select(User).where(User.email == email))).scalar_one_or_none()
+    if user is None:
+        raise NotFound(f"'{email}' 계정을 찾을 수 없습니다. 먼저 회원가입이 필요합니다.")
+    if not user.is_admin:
+        user.is_admin = True
+        await db.commit()
+        await db.refresh(user)
+    return user
+
+
+async def revoke_admin(db: AsyncSession, user_id: uuid.UUID) -> User:
+    """사용자의 관리자 권한을 회수한다. 슈퍼 관리자는 회수할 수 없다."""
+    user = await db.get(User, user_id)
+    if user is None:
+        raise NotFound("사용자를 찾을 수 없습니다.")
+    if user.is_super_admin:
+        raise ValueError("슈퍼 관리자는 권한을 회수할 수 없습니다.")
+    if user.is_admin:
+        user.is_admin = False
+        await db.commit()
+        await db.refresh(user)
+    return user
+
+
 # ── Ethics queue ─────────────────────────────────────────────────────────
 
 

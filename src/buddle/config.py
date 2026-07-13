@@ -68,11 +68,36 @@ class Settings(BaseSettings):
     scheduler_enabled: bool = False
     knowledge_tick_interval_s: int = 300
     plaza_tick_interval_s: int = 180
-    # News ingestion: hourly fetch of open-web tech content (HN + dev.to).
+    # News ingestion cadence. 1시간 주기 — 피드 화제 업데이트엔 이 정도면
+    # 충분하다는 운영 판단(2분 실험 후 조정). seen-set/SimHash/guid UNIQUE
+    # 3중 중복 제거가 재수집을 전량 흡수한다.
     # Set to 0 to disable; requires SCHEDULER_ENABLED=true to run automatically.
     news_tick_interval_s: int = 3600
+    # 해외 RSS 한국어 배치 번역(틱당 1~2회 호출, 기사당 아님) — 실패 시 원문
+    # 공개(fail-open). 끄면 해외 기사가 원문(영문)으로 공개된다.
+    news_translate_foreign: bool = True
+    # 번역 엔진: "llm"=Gemini 배치(신문 문체 자연화 내장, 무료 클라우드 기본) |
+    # "marian"=MarianMT 완전 오프라인(외부 API 0회; 선택 의존성 `.[translate]`
+    # 필요, 상주 메모리 ~1GB — Render 무료 티어 512MB에선 켤 수 없어 기본값이
+    # llm이다). marian 미설치·로드 실패 시 llm으로 자동 폴백(무중단).
+    news_translate_engine: str = "llm"
+    # MarianMT 모델(en→ko). 언어쌍이 늘면 쌍별 설정으로 확장한다.
+    news_translate_marian_model: str = "Helsinki-NLP/opus-mt-tc-big-en-ko"
+    # 화제 카드 문안 정제(틱당 배치 1회): 키워드 대신 문장형 한국어 제목·요약·
+    # 키워드를 생성. 실패 시 결정론 폴백(대표 헤드라인=제목)으로 서빙 계속.
+    news_topic_refine_enabled: bool = True
+    # Wikipedia 배경지식 보강 — refine 뒤 화제 entities에 한국어 위키백과 요약을
+    # 붙인다(틱당 신규 조회 ≤12, Redis 캐시 7일). 실패 시 보강 없이 진행.
+    news_wiki_enrich_enabled: bool = True
+    # 공공데이터포털(data.go.kr) OpenAPI 인증키 — govapi 소스용. 미설정이면
+    # 해당 소스는 수집에서 조용히 스킵된다(로그만).
+    data_go_kr_service_key: str = ""
     # Minimum relevance score (0-1) for an article to be stored after AI analysis.
     news_relevance_threshold: float = 0.3
+    # Per-article LLM analysis in the news pipeline. Default OFF: it made one
+    # AI call per fetched article (60건 수집 = 60+회 → 무료 쿼터 소진·429 폭주).
+    # The default algorithmic path (ai/news/topics.py) needs zero API calls.
+    news_ai_analysis_enabled: bool = False
 
     # ── Observability: Sentry (optional)
     # No DSN (default) -> never imported/initialised; zero overhead.
@@ -122,7 +147,9 @@ class Settings(BaseSettings):
     # Shared with the seed_persona_models script. Set via env vars.
     persona_endpoint_url: str = ""
     persona_endpoint_api_key: str = ""
-    persona_model: str = "gemini-2.5-flash"  # 2.0-flash 무료 티어 폐지(limit 0); 2.5-flash는 무료 작동
+    persona_model: str = (
+        "gemini-2.5-flash"  # 2.0-flash 무료 티어 폐지(limit 0); 2.5-flash는 무료 작동
+    )
 
     # ── Embeddings (mediator content similarity)
     # BGE-M3 (1024-dim, multilingual SOTA) is the matching model; EMBED_DIM=1024

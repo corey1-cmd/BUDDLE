@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import contextlib
+
+from sqlalchemy import delete
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -54,3 +57,37 @@ async def update_me(
         await revoke_all_user_families(redis_client, user.id)
 
     return user
+
+
+async def delete_account(
+    db: AsyncSession,
+    redis_client: RedisClient,
+    user: User,
+    *,
+    password: str,
+) -> None:
+    """Permanently delete the account and its personal data (Play requirement).
+
+    Google Play requires apps that let users create an account to offer in-app
+    account deletion. We require the current password so the action is
+    deliberate (defends against a stolen/borrowed session).
+
+    Cascade behaviour (DB-level FKs, schema-defined):
+      - personas, sessions, likes, bookmarks, notifications, relationship,
+        user_profile → CASCADE (deleted with the user)
+      - posts.source_persona_id, comments.author_user_id → SET NULL (public
+        discourse is preserved but de-identified — the author link is gone)
+    After the row is gone we revoke every refresh-token family so any live
+    session dies immediately.
+    """
+    if not verify_password(password, user.password_hash):
+        raise InvalidCredentials("Password is incorrect.")
+
+    user_id = user.id
+    await db.execute(delete(User).where(User.id == user_id))
+    await db.commit()
+
+    # Best-effort: tokens can't outlive the account. (Redis failure must not
+    # resurrect the deleted row — the account is already gone from Postgres.)
+    with contextlib.suppress(Exception):
+        await revoke_all_user_families(redis_client, user_id)

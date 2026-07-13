@@ -3,6 +3,7 @@
 from buddle.services import (
     admin_service,
     auth_service,
+    bookmark_service,
     central_service,
     conversation_session_service,
     dialogue_service,
@@ -13,6 +14,7 @@ from buddle.services import (
     leukocyte_service,
     like_service,
     mediator_policy_service,
+    notification_service,
     persona_model_service,
     persona_service,
     plaza_service,
@@ -28,6 +30,7 @@ from buddle.services import (
 __all__ = [
     "admin_service",
     "auth_service",
+    "bookmark_service",
     "central_service",
     "conversation_session_service",
     "dialogue_service",
@@ -38,6 +41,7 @@ __all__ = [
     "leukocyte_service",
     "like_service",
     "mediator_policy_service",
+    "notification_service",
     "persona_model_service",
     "persona_service",
     "plaza_service",

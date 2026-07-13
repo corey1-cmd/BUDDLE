@@ -4,9 +4,6 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>buddle · 피드</title>
-<link rel="preconnect" href="https://fonts.googleapis.com" />
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Spline+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
 <script>
 /* === security.js (inlined: no external dependency) === */
 /* buddle frontend security utilities.
@@ -325,6 +322,8 @@
     get(id) { return request("GET", `/v1/posts/${id}`); },
     like(id) { return request("PUT", `/v1/plaza/posts/${id}/like`); },
     unlike(id) { return request("DELETE", `/v1/plaza/posts/${id}/like`); },
+    bookmark(id) { return request("PUT", `/v1/plaza/posts/${id}/bookmark`); },
+    unbookmark(id) { return request("DELETE", `/v1/plaza/posts/${id}/bookmark`); },
     comments(id) { return request("GET", `/v1/plaza/posts/${id}/comments`); },
     addComment(id, content, kind = "inform") {
       return request("POST", `/v1/plaza/posts/${id}/comments`, { content, kind });
@@ -333,13 +332,29 @@
 
   /* ── Feed / Inbox ──────────────────────────────────────── */
   const feed = {
-    list(cursor, tag) {
+    list(cursor, tag, q) {
       const qs = new URLSearchParams();
       if (cursor) qs.set("cursor", cursor);
       if (tag && tag !== "전체") qs.set("tag", tag);
-      const q = qs.toString();
-      return request("GET", `/v1/feed${q ? `?${q}` : ""}`);
+      if (q) qs.set("q", q);
+      const query = qs.toString();
+      return request("GET", `/v1/feed${query ? `?${query}` : ""}`);
     },
+  };
+
+  /* ── Bookmarks (저장한 글) / Notifications (알림) ──────── */
+  const bookmarks = {
+    list(limit = 30) { return request("GET", `/v1/bookmarks?limit=${limit}`); },
+  };
+  const notifications = {
+    list({ limit = 30, unreadOnly = false } = {}) {
+      const qs = new URLSearchParams({ limit: String(limit) });
+      if (unreadOnly) qs.set("unread_only", "true");
+      return request("GET", `/v1/notifications?${qs.toString()}`);
+    },
+    unreadCount() { return request("GET", "/v1/notifications/unread-count"); },
+    markRead(id) { return request("POST", `/v1/notifications/${id}/read`); },
+    markAllRead() { return request("POST", "/v1/notifications/read-all"); },
   };
   const inbox = {
     list(cursor) { return request("GET", `/v1/inbox${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ""}`); },
@@ -380,6 +395,22 @@
       if (q) qs.set("q", q);
       qs.set("limit", String(limit));
       return request("GET", `/v1/tags?${qs.toString()}`);
+    },
+    trending({ days = 7, limit = 10 } = {}) {
+      return request("GET", `/v1/tags/trending?days=${days}&limit=${limit}`);
+    },
+  };
+
+  /* ── News topics (무-LLM 화제 집계) ────────────────────── */
+  const news = {
+    // GET /v1/news/topics — 범위(동네|시|도|전국|해외)·주제·위치(선택) 필터.
+    topics({ scope = null, category = null, region = null, limit = 12, mode = null } = {}) {
+      const qs = new URLSearchParams({ limit: String(limit) });
+      if (scope) qs.set("scope", scope);
+      if (category) qs.set("category", category);
+      if (region) qs.set("region", region);
+      if (mode) qs.set("mode", mode);
+      return request("GET", `/v1/news/topics?${qs.toString()}`);
     },
   };
 
@@ -439,6 +470,7 @@
   global.buddle = {
     ApiError, setTokens, clearTokens, requireAuth,
     auth, users, personas, tags, posts, feed, inbox, sessions, knowledge, proximity, debate, contextNotes,
+    bookmarks, notifications, news,
     openDialogue,
   };
 })(window);
@@ -455,16 +487,41 @@
   *{box-sizing:border-box;margin:0;padding:0;}
   body{
     font-family:var(--body);color:var(--ink);min-height:100vh;
-    background:radial-gradient(900px 600px at 80% -10%, rgba(61,138,107,.06) 0%, transparent 60%),#FBFBFA;-webkit-font-smoothing:antialiased;
+    background:radial-gradient(900px 600px at 80% -10%, rgba(61,138,107,.06) 0%, transparent 60%),#F7F8FD;-webkit-font-smoothing:antialiased;
   }
-  .phone{max-width:460px;margin:0 auto;min-height:100vh;background:rgba(255,255,255,.8);backdrop-filter:blur(8px);display:flex;flex-direction:column;}
-  header{display:flex;align-items:center;gap:12px;padding:14px 16px;border-bottom:1px solid var(--line);position:sticky;top:0;background:rgba(255,255,255,.85);backdrop-filter:blur(10px);z-index:20;}
+  /* 웹 우선: 관리자 대시보드와 같은 넓은 중앙 정렬 비율(≈900px). 좁은 화면에선
+     자연히 전체 폭. 카드 목록은 아래에서 반응형 2열 그리드로 채운다. */
+  .phone{max-width:940px;margin:0 auto;min-height:100vh;background:rgba(255,255,255,.62);backdrop-filter:blur(22px) saturate(160%);display:flex;flex-direction:column;padding-bottom:84px;}
+  header{display:flex;align-items:center;gap:12px;padding:14px 16px;border-bottom:1px solid var(--line);position:sticky;top:0;background:rgba(255,255,255,.68);backdrop-filter:blur(24px) saturate(160%);z-index:20;}
   .back{width:38px;height:38px;border-radius:14px;border:1px solid var(--line);background:var(--surface);display:grid;place-items:center;cursor:pointer;flex:none;}
   .back svg{width:19px;height:19px;stroke:var(--gold);}
   header h1{font-family:var(--display);font-weight:600;font-size:19px;flex:1;color:var(--ink);}
   .debate-btn{display:flex;align-items:center;gap:6px;flex:none;font-family:var(--body);font-size:13px;font-weight:600;color:var(--willow-press);background:var(--willow-wash);border:1px solid transparent;border-radius:var(--r-pill);padding:7px 13px;cursor:pointer;transition:background var(--dur,.2s) var(--ease,ease);}
-  .debate-btn:hover{background:#E4E9FE;}
+  .debate-btn:hover{background:rgba(124,130,247,.14);}
   .debate-btn svg{width:16px;height:16px;}
+  /* 헤더 아이콘 버튼 (저장함·알림) — X/인스타식 상단 진입점 */
+  .hicon{position:relative;width:38px;height:38px;border-radius:14px;border:1px solid var(--line);background:var(--surface);display:grid;place-items:center;cursor:pointer;flex:none;transition:border-color .15s;}
+  .hicon:hover{border-color:var(--line-strong);}
+  .hicon svg{width:18px;height:18px;stroke:var(--ink-soft);fill:none;stroke-width:1.9;}
+  .hicon .badge{position:absolute;top:-5px;right:-5px;min-width:17px;height:17px;padding:0 4px;border-radius:999px;
+    background:linear-gradient(135deg,#F0716C,#F09A6C);color:#fff;font-size:10px;font-weight:700;line-height:17px;text-align:center;
+    box-shadow:0 2px 6px rgba(240,113,108,.4);display:none;}
+  .hicon .badge.on{display:block;}
+
+  /* 검색 — 피드 안 내용/화제 서버사이드 검색 */
+  .search-row{display:flex;align-items:center;gap:8px;margin-bottom:12px;}
+  .search-box{flex:1;display:flex;align-items:center;gap:8px;height:42px;border-radius:21px;border:1px solid var(--line);
+    background:var(--paper-sunken);padding:0 14px;transition:border-color .15s;}
+  .search-box:focus-within{border-color:var(--gold);background:var(--surface);}
+  .search-box svg{width:16px;height:16px;stroke:var(--ink-faint);fill:none;stroke-width:2;flex:none;}
+  .search-box input{flex:1;border:0;background:transparent;font-family:var(--body);font-size:14px;color:var(--ink);min-width:0;}
+  .search-box input:focus{outline:none;}
+  .search-clear{border:0;background:transparent;color:var(--ink-faint);font-size:16px;cursor:pointer;padding:2px;display:none;line-height:1;}
+  .search-clear.on{display:block;}
+  .search-hint{font-size:12.5px;color:var(--ink-faint);margin:-4px 0 10px 4px;}
+
+  /* 트렌딩 화제 카운트 뱃지 (칩 안 작은 숫자) */
+  .tchip .cnt{font-size:10.5px;font-weight:700;opacity:.75;margin-left:4px;}
 
   .body{flex:1;overflow-y:auto;padding:14px 16px 28px;}
 
@@ -472,7 +529,7 @@
   .topics{display:flex;gap:8px;overflow-x:auto;padding-bottom:12px;scrollbar-width:none;}
   .topics::-webkit-scrollbar{display:none;}
   .tchip{flex:none;padding:8px 14px;border-radius:999px;background:var(--paper-sunken);border:1px solid var(--line);font-size:13.5px;font-weight:500;color:var(--ink-soft);cursor:pointer;white-space:nowrap;transition:all .15s;}
-  .tchip.on{background:linear-gradient(135deg,#6F8FF5 0%,#A98DEE 55%,#F0AFDA 100%);color:#fff;border:1px solid rgba(255,255,255,.18);box-shadow:0 6px 16px rgba(108,100,225,.28),inset 0 1px 0 rgba(255,255,255,.45);}
+  .tchip.on{background:linear-gradient(135deg,#6D8CFF 0%,#7C6FF2 55%,#3A3480 100%);color:#fff;border:1px solid rgba(255,255,255,.18);box-shadow:0 6px 16px rgba(104,96,255,.26),inset 0 1px 0 rgba(255,255,255,.08);}
 
   /* post cards */
   .card{background:var(--surface);border:1px solid var(--line);border-radius:19px;padding:16px;margin-bottom:12px;cursor:pointer;transition:transform .12s,border-color .15s;}
@@ -482,7 +539,7 @@
   .by .who{flex:1;min-width:0;}
   .by .who strong{display:block;font-size:14px;font-weight:600;color:var(--ink);}
   .by .who small{font-size:11.5px;color:var(--ink-faint);}
-  .lang-badge{font-size:10px;font-weight:600;padding:3px 8px;border-radius:999px;background:rgba(92,124,240,.12);color:var(--gold);flex:none;}
+  .lang-badge{font-size:10px;font-weight:600;padding:3px 8px;border-radius:999px;background:rgba(124,130,247,.12);color:var(--gold);flex:none;}
   .card .excerpt{font-size:14.5px;line-height:1.55;color:var(--ink);display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;}
   .card .foot{display:flex;align-items:center;gap:16px;margin-top:12px;font-size:12.5px;color:var(--ink-soft);}
   .card .foot .it{display:flex;align-items:center;gap:5px;}
@@ -494,7 +551,7 @@
   .card .discuss:active{transform:scale(.95);}
   .card .discuss svg{width:13px;height:13px;stroke:#fff;fill:none;stroke-width:2;}
   .card .tags{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;}
-  .card .tags .t{font-size:11px;color:var(--gold);background:rgba(92,124,240,.08);padding:3px 9px;border-radius:999px;}
+  .card .tags .t{font-size:11px;color:var(--gold);background:rgba(124,130,247,.08);padding:3px 9px;border-radius:999px;}
 
   .loading,.empty{text-align:center;padding:40px 20px;color:var(--ink-soft);font-size:14px;}
   .more{width:100%;padding:13px;border:1px solid var(--line);border-radius:16px;background:var(--surface);color:var(--gold);font-family:var(--body);font-size:14px;font-weight:600;cursor:pointer;margin-top:4px;}
@@ -504,8 +561,10 @@
   .detail .by .av{width:46px;height:46px;border-radius:16px;font-size:19px;}
   .lang-tabs{display:inline-flex;background:var(--paper-sunken);border-radius:999px;padding:3px;margin-bottom:14px;}
   .lang-tabs button{border:0;background:transparent;font-family:var(--body);font-size:13.5px;font-weight:600;color:var(--ink-soft);padding:8px 16px;border-radius:999px;cursor:pointer;}
-  .lang-tabs button.on{background:linear-gradient(135deg,#6F8FF5 0%,#A98DEE 55%,#F0AFDA 100%);color:#fff;box-shadow:0 6px 16px rgba(108,100,225,.28),inset 0 1px 0 rgba(255,255,255,.45);}
-  .post-text{font-size:16px;line-height:1.7;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:19px;padding:18px;}
+  .lang-tabs button.on{background:linear-gradient(135deg,#6D8CFF 0%,#7C6FF2 55%,#3A3480 100%);color:#fff;box-shadow:0 6px 16px rgba(104,96,255,.26),inset 0 1px 0 rgba(255,255,255,.08);}
+  /* pre-line: 작성 줄바꿈 보존 — 화제 글([지금 화제])의 헤드라인 목록과
+     사용자 글의 문단이 한 덩어리로 접히지 않게 한다. */
+  .post-text{font-size:16px;line-height:1.7;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:19px;padding:18px;white-space:pre-line;}
   .actions{display:flex;gap:10px;margin:16px 0;}
   .act{flex:1;display:flex;align-items:center;justify-content:center;gap:7px;padding:12px;border:1px solid var(--line);border-radius:16px;background:var(--surface);color:var(--ink-soft);font-family:var(--body);font-size:14px;font-weight:600;cursor:pointer;transition:all .15s;}
   .act svg{width:17px;height:17px;stroke:currentColor;fill:none;}
@@ -519,12 +578,12 @@
   .comment .c-body{flex:1;min-width:0;}
   .comment .c-body .c-head{display:flex;align-items:center;gap:7px;margin-bottom:3px;}
   .comment .c-body strong{font-size:13px;font-weight:600;color:var(--ink);}
-  .comment .c-kind{font-size:9.5px;font-weight:600;padding:2px 7px;border-radius:999px;background:rgba(92,124,240,.10);color:var(--gold);}
+  .comment .c-kind{font-size:9.5px;font-weight:600;padding:2px 7px;border-radius:999px;background:rgba(124,130,247,.10);color:var(--gold);}
   .comment .c-text{font-size:13.5px;line-height:1.5;color:var(--ink-soft);}
   /* argument-AI entry buttons */
   .ai-row{display:flex;gap:8px;margin:14px 0;flex-wrap:wrap;}
   .ai-act{flex:1;min-width:140px;display:flex;align-items:center;justify-content:center;gap:7px;padding:11px 12px;border-radius:13px;border:1px solid var(--willow);background:var(--willow-wash);color:var(--willow-press);font-family:var(--body);font-size:13px;font-weight:600;cursor:pointer;transition:background var(--dur,.2s) var(--ease,ease);}
-  .ai-act:hover{background:#E4E9FE;}
+  .ai-act:hover{background:rgba(124,130,247,.14);}
   .ai-act svg{width:16px;height:16px;}
   /* "이 화제를 토론으로 발전시키기" — debate entry from a post */
   .debate-entry{margin:14px 0;padding:13px 14px;background:var(--paper-sunken);border:1px solid var(--line);border-radius:14px;}
@@ -543,21 +602,21 @@
   .ctx-kind{flex:none;font-size:10.5px;font-weight:700;color:var(--willow-press);background:var(--willow-wash);border-radius:999px;padding:2px 8px;margin-top:1px;}
   .ctx-body{font-size:13px;line-height:1.5;color:var(--ink-soft);}
 
-  .composer{position:sticky;bottom:0;background:rgba(255,255,255,.9);backdrop-filter:blur(10px);border-top:1px solid var(--line);padding:12px 16px calc(12px + env(safe-area-inset-bottom));margin:0 -16px -28px;}
+  .composer{position:sticky;bottom:0;background:rgba(255,255,255,.72);backdrop-filter:blur(24px) saturate(160%);border-top:1px solid var(--line);padding:12px 16px calc(12px + env(safe-area-inset-bottom));margin:0 -16px -28px;}
   .kind-row{display:flex;gap:7px;margin-bottom:9px;}
-  .kind{padding:6px 12px;border-radius:999px;border:1px solid var(--line);background:rgba(255,255,255,.88);font-size:12px;font-weight:600;color:var(--ink-soft);cursor:pointer;}
+  .kind{padding:6px 12px;border-radius:999px;border:1px solid var(--line);background:rgba(255,255,255,.7);font-size:12px;font-weight:600;color:var(--ink-soft);cursor:pointer;}
   .kind.on{border-color:var(--coral);background:rgba(110,124,240,.22);color:var(--gold);}
   .c-input-row{display:flex;align-items:flex-end;gap:9px;}
   .c-input-row textarea{flex:1;border:1px solid var(--line);border-radius:16px;padding:11px 14px;font-family:var(--body);font-size:14.5px;resize:none;max-height:100px;line-height:1.4;color:var(--ink);background:var(--paper-sunken);}
   .c-input-row textarea:focus{outline:none;border-color:var(--coral);}
-  .c-send{width:42px;height:42px;border-radius:15px;border:1px solid rgba(255,255,255,.18);background:linear-gradient(135deg,#6F8FF5 0%,#A98DEE 55%,#F0AFDA 100%);display:grid;place-items:center;cursor:pointer;flex:none;box-shadow:0 6px 16px rgba(108,100,225,.28),inset 0 1px 0 rgba(255,255,255,.45);}
+  .c-send{width:42px;height:42px;border-radius:15px;border:1px solid rgba(255,255,255,.18);background:linear-gradient(135deg,#6D8CFF 0%,#7C6FF2 55%,#3A3480 100%);display:grid;place-items:center;cursor:pointer;flex:none;box-shadow:0 6px 16px rgba(104,96,255,.26),inset 0 1px 0 rgba(255,255,255,.08);}
   .c-send svg{width:19px;height:19px;stroke:#fff;fill:none;}
   .c-send:disabled{opacity:.5;}
 
   /* 인스타식 글쓰기 배너 — 피드 하단 sticky, (+)로 만들기 화면 진입 */
   .compose-banner{position:sticky;bottom:0;z-index:15;display:flex;align-items:center;gap:11px;
     margin:0 -16px -28px;padding:12px 16px calc(12px + env(safe-area-inset-bottom));
-    background:rgba(255,255,255,.92);backdrop-filter:saturate(180%) blur(12px);border-top:1px solid var(--line);}
+    background:rgba(255,255,255,.74);backdrop-filter:saturate(180%) blur(12px);border-top:1px solid var(--line);}
   .cb-ava{width:38px;height:38px;border-radius:13px;flex:none;display:grid;place-items:center;
     font-family:var(--display);font-weight:600;font-size:16px;color:#fff;background:var(--accent-grad);box-shadow:var(--shadow-pop-sm);}
   .cb-prompt{flex:1;height:42px;border-radius:21px;border:1px solid var(--line-strong);background:var(--paper-sunken);
@@ -569,7 +628,7 @@
   .cb-plus svg{width:22px;height:22px;stroke:#fff;fill:none;stroke-width:2.4;}
   /* "이어가던 대화" 빠른 진입 줄 — 배너 위 작은 칩들 */
   .cb-resume{position:sticky;bottom:67px;z-index:15;display:flex;gap:8px;overflow-x:auto;margin:0 -16px;
-    padding:10px 16px;scrollbar-width:none;background:linear-gradient(180deg,transparent,rgba(255,255,255,.9) 40%);}
+    padding:10px 16px;scrollbar-width:none;background:linear-gradient(180deg,transparent,rgba(255,255,255,.72) 40%);}
   .cb-resume::-webkit-scrollbar{display:none;}
   .cb-rchip{flex:none;display:flex;align-items:center;gap:7px;padding:7px 13px 7px 7px;border-radius:999px;
     background:var(--paper-raised);border:1px solid var(--line);cursor:pointer;transition:border-color .15s;white-space:nowrap;}
@@ -579,6 +638,94 @@
   .cb-rchip .rt{display:flex;flex-direction:column;line-height:1.15;}
   .cb-rchip .rt b{font-size:12.5px;font-weight:600;color:var(--ink);}
   .cb-rchip .rt small{font-size:10.5px;color:var(--ink-faint);}
+
+  /* ── 지금 화제 (뉴스 무-LLM 자동 집계) — 필터로 탐색, 위치 자동 매칭 없음 ── */
+  .news-sec{margin:2px 0 16px;padding:14px;border:1px solid var(--line);border-radius:19px;
+    background:linear-gradient(158deg,rgba(255,255,255,.05) 0%,rgba(255,255,255,.015) 45%,transparent 65%),var(--paper-raised);
+    box-shadow:0 6px 22px rgba(23,26,60,.07),inset 0 1px 0 rgba(255,255,255,.09);}
+  .ns-head{display:flex;align-items:baseline;gap:8px;margin-bottom:10px;}
+  .ns-head h2{font-family:var(--display);font-size:16px;font-weight:600;color:var(--ink);}
+  .ns-head small{font-size:11.5px;color:var(--ink-faint);}
+  .ns-row{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;margin-bottom:8px;}
+  .ns-row::-webkit-scrollbar{display:none;}
+  .ns-chip{flex:none;padding:6px 12px;border-radius:999px;border:1px solid var(--line);background:var(--paper-sunken);
+    font-family:var(--body);font-size:12.5px;font-weight:600;color:var(--ink-soft);cursor:pointer;white-space:nowrap;transition:all .15s;}
+  .ns-chip.on{background:var(--accent-grad);color:#fff;border-color:rgba(255,255,255,.18);box-shadow:var(--shadow-pop-sm);}
+  .ns-loc{display:flex;align-items:center;gap:8px;margin-bottom:10px;}
+  .ns-loc input{flex:1;height:36px;border-radius:12px;border:1px solid var(--line);background:var(--paper-sunken);
+    padding:0 12px;font-family:var(--body);font-size:13px;color:var(--ink);}
+  .ns-loc input:focus{outline:none;border-color:var(--gold);}
+  .ns-loc input:disabled{opacity:.45;}
+  .nt-card{padding:11px 12px;border:1px solid var(--line);border-radius:14px;background:var(--paper-sunken);margin-bottom:8px;cursor:pointer;transition:border-color .15s,transform .12s;}
+  .nt-card:hover{border-color:var(--line-strong);}
+  .nt-card:active{transform:scale(.99);}
+  .nt-card:last-child{margin-bottom:0;}
+  /* 홈에서 넘어온 화제 하이라이트 (feed.html?news_topic=…) */
+  .nt-card.hl{border-color:var(--willow);box-shadow:0 0 0 3px var(--willow-wash);}
+  /* 정부·공공기관 출처가 섞인 화제 — 언론사 출처와 구분되는 파란 테두리 */
+  .nt-card.gov{border-color:#191970;box-shadow:0 0 0 3px rgba(25,25,112,.12);}
+  .nt-badge.gov{background:rgba(25,25,112,.14);color:#191970;font-weight:800;}
+  /* 참여 유도 줄 — 카드 탭 = 화제 글(좋아요·댓글·토론)로 */
+  .nt-join{display:flex;align-items:center;gap:6px;margin-top:8px;font-size:12px;font-weight:600;color:var(--willow-text);}
+  .nt-join svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2;}
+  .nt-top{display:flex;align-items:center;gap:7px;flex-wrap:wrap;}
+  .nt-name{font-size:14.5px;font-weight:700;color:var(--ink);}
+  .nt-badge{font-size:10.5px;font-weight:700;padding:2px 8px;border-radius:999px;background:var(--willow-wash);color:var(--willow-text);}
+  .nt-meta{font-size:11.5px;color:var(--ink-faint);margin-left:auto;}
+  .nt-title{display:block;font-size:15px;font-weight:700;line-height:1.45;color:var(--ink);}
+  .nt-sum{margin-top:6px;font-size:13px;line-height:1.55;color:var(--ink-soft);}
+  .nt-kws{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;}
+  .nt-kw{font-size:11px;font-weight:600;color:var(--willow-text);background:var(--willow-wash);border-radius:999px;padding:2px 9px;}
+  .nt-srcrow{display:flex;align-items:center;gap:6px;margin-top:9px;font-size:12px;font-weight:600;color:var(--ink-faint);}
+  .nt-srcrow svg{width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:2;}
+  /* 카드 액션 줄 — 좋아요(카드 내 토글)·댓글(상세)·토론(논증 대화) */
+  .nt-acts{display:flex;align-items:center;gap:14px;margin-top:10px;}
+  .nt-act{display:flex;align-items:center;gap:6px;font-size:12.5px;font-weight:600;color:var(--ink-soft);
+    background:none;border:0;cursor:pointer;padding:4px 2px;font-family:var(--body);}
+  .nt-act svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:1.9;}
+  .nt-act.on{color:var(--willow-text);}
+  .nt-act.debate{margin-left:auto;color:#fff;background:var(--accent-grad);border-radius:999px;
+    padding:7px 14px;box-shadow:var(--shadow-pop-sm);}
+  .nt-act.debate svg{stroke:#fff;}
+  /* 상세의 "관련 기사" 출처 목록 (화제 글 전용) */
+  .src-box{margin:14px 0;padding:13px 14px;background:var(--paper-sunken);border:1px solid var(--line);border-radius:14px;}
+  .src-box .sb-head{font-size:13px;font-weight:700;color:var(--ink-soft);margin-bottom:9px;}
+  .src-item{display:block;padding:7px 0 7px 9px;border-top:1px solid var(--line);border-left:3px solid transparent;text-decoration:none;}
+  .src-item:first-of-type{border-top:none;padding-top:0;}
+  /* 정부·공공기관 출처(공공누리 1유형 이상) — 언론사와 다른 파란 강조선 */
+  .src-item.gov{border-left-color:#191970;}
+  .src-item .src-gov-tag{display:inline-block;margin-left:6px;font-size:10.5px;font-weight:800;color:#191970;
+    background:rgba(25,25,112,.12);border-radius:999px;padding:1px 7px;vertical-align:middle;}
+  .src-item b{display:block;font-size:13px;font-weight:600;line-height:1.45;color:var(--ink);}
+  .src-item small{font-size:11.5px;color:var(--ink-faint);}
+  .src-item:hover b{color:var(--willow-text);}
+  .nt-heads{margin-top:7px;display:flex;flex-direction:column;gap:4px;}
+  .nt-heads a{font-size:12.5px;line-height:1.45;color:var(--ink-soft);text-decoration:none;display:block;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .nt-heads a:hover{color:var(--gold);}
+  .nt-heads a::before{content:"· ";color:var(--ink-faint);}
+  .ns-empty{text-align:center;font-size:12.5px;color:var(--ink-faint);padding:16px 6px;}
+
+  /* ── 웹 우선 레이아웃: 넓은 중앙 컬럼(관리자 비율) + 카드는 한 줄에 하나 ──
+     카드 아래에 주요 주장이 붙는 구조라 2열보다 1열이 읽기 흐름에 맞다. */
+  #feedList, #nsList{display:grid;grid-template-columns:1fr;gap:14px;align-items:start;}
+  #feedList > *, #nsList > *{margin-bottom:0;}
+  /* 상세(단일 글)는 읽기 좋은 좁은 중앙 컬럼 유지 */
+  #detailView{max-width:680px;margin:0 auto;width:100%;}
+  /* 넓은 화면에선 본문 좌우 여백을 조금 더 */
+  @media (min-width:760px){ .body{padding-left:24px;padding-right:24px;} }
+
+  /* 카드 하단 '주요 주장' — 이 글/화제에서 나온 대표 주장(≤3). 없으면 미표시 */
+  .kb-item{font-size:13px;line-height:1.55;color:var(--ink-soft);padding:6px 0;border-bottom:1px dashed var(--line);}
+  .kb-item:last-of-type{border-bottom:none;}
+  .kb-item b{color:var(--ink);}
+  .kb-link{color:var(--willow-text);font-weight:600;text-decoration:none;font-size:12px;white-space:nowrap;}
+  .kb-lic{display:block;margin-top:8px;font-size:11px;color:var(--ink-faint);}
+  .nt-badge.urgent{background:rgba(224,90,90,.14);color:#D64545;font-weight:800;}
+  .pc-claims{margin-top:11px;padding-top:10px;border-top:1px dashed var(--line);display:flex;flex-direction:column;gap:6px;}
+  .pc-claims-h{font-size:11px;font-weight:700;letter-spacing:.04em;color:var(--willow-text);}
+  .pc-claim{position:relative;padding-left:14px;font-size:13px;line-height:1.5;color:var(--ink-soft);}
+  .pc-claim::before{content:"“";position:absolute;left:0;top:-1px;font-family:var(--display);font-weight:700;color:var(--willow);}
 
   .hidden{display:none;}
 </style>
@@ -594,11 +741,38 @@
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg>
       <span>토론</span>
     </button>
+    <button class="hicon" id="savedBtn" aria-label="저장한 글" title="저장한 글">
+      <svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
+    </button>
+    <button class="hicon" id="notifBtn" aria-label="알림" title="알림">
+      <svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+      <span class="badge" id="notifBadge"></span>
+    </button>
   </header>
 
   <div class="body">
     <!-- ===== LIST VIEW ===== -->
     <div id="listView">
+      <div class="search-row">
+        <div class="search-box">
+          <svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+          <input id="searchInput" type="search" placeholder="화제·글 내용 검색" maxlength="100" autocomplete="off" />
+          <button class="search-clear" id="searchClear" aria-label="검색 지우기">✕</button>
+        </div>
+      </div>
+      <div class="search-hint" id="searchHint" style="display:none"></div>
+
+      <!-- 지금 화제: 뉴스 헤드라인 무-LLM 집계. 위치 자동 매칭 없이 필터(범위/주제/위치)로 탐색 -->
+      <section class="news-sec" id="newsSec" style="display:none">
+        <div class="ns-head"><h2>지금 화제</h2><small>뉴스 헤드라인 자동 집계</small></div>
+        <div class="ns-row" id="nsScope"></div>
+        <div class="ns-row" id="nsCat"></div>
+        <div class="ns-loc">
+          <input id="nsRegion" type="search" placeholder="위치(선택) — 예: 성남, 마포구" maxlength="40" autocomplete="off" />
+        </div>
+        <div id="nsList"></div>
+      </section>
+
       <div class="topics" id="topics"></div>
       <div id="feedList"><div class="loading">불러오는 중…</div></div>
     </div>
@@ -607,22 +781,38 @@
     <div id="detailView" class="detail hidden"></div>
   </div>
 
-  <!-- 이어가던 대화 (배너 위 빠른 진입) -->
-  <div class="cb-resume" id="resumeRow"></div>
-  <!-- 인스타식 글쓰기 배너 -->
-  <div class="compose-banner" id="composeBanner">
-    <div class="cb-ava" id="cbAva">초</div>
-    <div class="cb-prompt" id="cbPrompt" role="button" tabindex="0">생각을 적어볼까요…</div>
-    <button class="cb-plus" id="cbPlus" aria-label="새 글 만들기">
-      <svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
-    </button>
-  </div>
 </div>
+
+<!-- bottom nav (Instagram식 5슬롯: 홈·관심주제·글쓰기(중앙)·내활동·프로필) -->
+<nav class="bd-nav">
+  <a href="home-dashboard.html"><svg viewBox="0 0 24 24"><path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/></svg>홈</a>
+  <a href="feed.html" class="on"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>관심주제</a>
+  <a href="compose.html" class="nav-create"><span class="plus"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></span>글쓰기</a>
+  <a href="inbox.html"><svg viewBox="0 0 24 24"><path d="M21 12A9 9 0 1 1 12 3v9z"/><path d="M12 3a9 9 0 0 1 9 9h-9z"/></svg>내 활동</a>
+  <a href="profile.html"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 5-6 8-6s6.5 2 8 6"/></svg>프로필</a>
+</nav>
 
 <script>
   sec.harden();
 
   const $ = (id) => document.getElementById(id);
+
+  // 스크롤 진입 시 카드가 아래에서 부드럽게 떠오르는 효과(관리자 대시보드와 동일).
+  // 동작 축소 선호/미지원 시 no-op(카드는 그대로 보임). 동적으로 추가되는 카드마다
+  // reveal(el) 로 관찰만 걸면 된다.
+  const _revealIO = ("IntersectionObserver" in window) &&
+    !(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches)
+    ? new IntersectionObserver(function (es) {
+        es.forEach(function (e) { if (e.isIntersecting) { e.target.classList.add("in"); _revealIO.unobserve(e.target); } });
+      }, { rootMargin: "0px 0px -6% 0px", threshold: 0.06 })
+    : null;
+  function reveal(el) {
+    if (!el || !_revealIO) return el;
+    el.classList.add("bd-reveal", "bd-js-reveal");
+    _revealIO.observe(el);
+    return el;
+  }
+
   // 모든 페르소나가 하나의 시그니처 그라데이션 정체성을 공유 (이니셜만 다름)
   const palOf = (_s) => ["var(--accent-grad)", "#fff"];
   function hash(s){let h=0;for(let i=0;i<s.length;i++){h=(h<<5)-h+s.charCodeAt(i)|0;}return h;}
@@ -630,23 +820,7 @@
   const params = new URLSearchParams(location.search);
   let postId = params.get("post");
 
-  // demo fallback feed (offline preview)
-  const DEMO_TOPICS = ["전체","일상","산책","음악","독서","글쓰기"];
-  const DEMO_FEED = [
-    { id:"d1", source_persona:{name:"초록"}, content_transformed:"오늘 동네를 천천히 걸었습니다. 강가를 따라 이어지는 산책 코스가 특히 마음에 들었어요. 한적한 길을 함께 걸으며 이야기 나눌 분이 있다면 좋겠습니다.", source_language:"ko", tags:["산책","일상"], like_count:12, comment_count:3 },
-    { id:"d2", source_persona:{name:"물결"}, content_transformed:"요즘 듣는 앨범이 하나 있는데, 비 오는 날 창가에서 들으면 마음이 차분해져요. 잔잔한 피아노와 약간의 재즈가 섞인 곡들이에요.", source_language:"ko", tags:["음악"], like_count:8, comment_count:1 },
-    { id:"d3", source_persona:{name:"햇살"}, content_transformed:"A short story I've been writing finally found its ending today. Sometimes the quiet mornings give you the words you've been searching for.", source_language:"en", tags:["글쓰기","독서"], like_count:21, comment_count:5 },
-  ];
-  const DEMO_POST = {
-    id:"d1", source_persona:{name:"초록"}, source_language:"ko",
-    content_transformed:"오늘 동네를 천천히 걸었습니다. 강가를 따라 이어지는 산책 코스가 특히 마음에 들었어요. 한적한 길을 함께 걸으며 이야기 나눌 분이 있다면 좋겠습니다. 관심 있으신 분, 편하게 말 걸어 주세요.",
-    translations:{ en:"I took a slow walk around my neighborhood today. The riverside trail was especially lovely. I'd love to find someone to walk these quiet paths and chat along the way. Feel free to reach out." },
-    tags:["산책","일상"], like_count:12,
-  };
-  const DEMO_COMMENTS = [
-    { author:"물결", kind:"empathize", content:"강가 산책 정말 좋죠. 저도 아침에 자주 걸어요." },
-    { author:"햇살", kind:"question", content:"어느 구간을 주로 걸으세요? 추천 부탁드려요." },
-  ];
+  // 실데이터 전용 — 데모 폴백 없음. API 실패/빈 결과는 빈 상태로 표시한다.
 
   const KIND_LABEL = { inform:"정보", empathize:"공감", question:"질문" };
   const langName = (l) => (l === "en" ? "English" : "한국어");
@@ -663,6 +837,57 @@
 
   /* ── LIST ── */
   let currentTopic = "전체";
+  let currentQuery = "";
+
+  /* ── 검색 (서버사이드 q=) ── */
+  // 입력 350ms 디바운스 → 커서 리셋 후 재조회. 클라이언트 필터가 아니라
+  // 서버 검색이므로 뒷페이지 매칭도 정확히 찾는다(태그 필터와 같은 원리).
+  let searchTimer = null;
+  function bindSearch() {
+    const input = $("searchInput"), clearBtn = $("searchClear");
+    if (!input) return;
+    input.addEventListener("input", () => {
+      clearBtn.classList.toggle("on", input.value.length > 0);
+      clearTimeout(searchTimer);
+      searchTimer = setTimeout(() => {
+        const v = input.value.trim();
+        if (v === currentQuery) return;
+        currentQuery = v;
+        nextCursor = null;
+        updateSearchHint();
+        loadFeed();
+      }, 350);
+    });
+    clearBtn.addEventListener("click", () => {
+      input.value = ""; clearBtn.classList.remove("on");
+      if (!currentQuery) return;
+      currentQuery = ""; nextCursor = null;
+      updateSearchHint();
+      loadFeed();
+    });
+  }
+  function updateSearchHint() {
+    const hint = $("searchHint");
+    if (!hint) return;
+    if (currentQuery) {
+      hint.style.display = "";
+      hint.textContent = `"${currentQuery}" 검색 결과`;
+    } else { hint.style.display = "none"; }
+  }
+
+  /* ── 알림 뱃지 ── */
+  async function refreshNotifBadge() {
+    const badge = $("notifBadge");
+    if (!badge) return;
+    try {
+      const authed = buddle.auth && buddle.auth.isAuthed && buddle.auth.isAuthed();
+      if (!authed) return;
+      const res = await buddle.notifications.unreadCount();
+      const n = (res && res.count) || 0;
+      badge.textContent = n > 99 ? "99+" : String(n);
+      badge.classList.toggle("on", n > 0);
+    } catch (_) { /* offline → no badge */ }
+  }
 
   // Show the "토론" button only when a specific topic is active, and make it
   // open that topic's debate dashboard (resolving the tag name → id).
@@ -747,12 +972,16 @@
     location.href = "debate-dashboard.html?" + qs.toString();
   }
 
+  // topics: 문자열 또는 {name, count} — count가 있으면 트렌딩 칩(＃화제 12)으로.
   function renderTopics(topics) {
     const box = $("topics"); box.innerHTML = "";
-    topics.forEach((t, i) => {
-      const chip = sec.el("div", { class: "tchip" + (t === currentTopic ? " on" : "") }, t);
+    topics.forEach((t) => {
+      const name = (t && typeof t === "object") ? t.name : t;
+      const count = (t && typeof t === "object") ? t.count : null;
+      const chip = sec.el("div", { class: "tchip" + (name === currentTopic ? " on" : "") }, name);
+      if (count != null && name !== "전체") chip.appendChild(sec.el("span", { class: "cnt" }, String(count)));
       chip.addEventListener("click", () => {
-        currentTopic = t;
+        currentTopic = name;
         [...box.children].forEach(c => c.classList.remove("on"));
         chip.classList.add("on");
         updateDebateButton();
@@ -763,8 +992,273 @@
     });
   }
 
+  // 트렌딩 화제 칩: 최근 7일 공개글 수 기준 서버 집계. 실패(오프라인/구버전
+  // 서버) 시 첫 페이지 아이템에서 태그를 추출하는 기존 방식으로 폴백.
+  async function loadTrendingTopics(fallbackItems) {
+    try {
+      const trend = await buddle.tags.trending({ days: 7, limit: 8 });
+      if (Array.isArray(trend) && trend.length) {
+        renderTopics(["전체", ...trend.map(t => ({ name: t.name, count: t.post_count }))]);
+        return true;
+      }
+    } catch (_) { /* fall back below */ }
+    const names = [];
+    (fallbackItems || []).forEach(it => (it.tags || []).forEach(t => {
+      const n = tagName(t); if (n && !names.includes(n)) names.push(n);
+    }));
+    renderTopics(["전체", ...names.slice(0, 8)]);
+    return false;
+  }
+
+  /* ── 지금 화제 (뉴스 무-LLM 집계) ──────────────────────────
+   * GET /v1/news/topics — 범위(우리 동네/시/도/전국/해외)·주제·위치(선택) 필터.
+   * 위치 자동 매칭은 하지 않는다: 동네 이슈(가로등 고장)에만 위치가 중요하고
+   * 전국 이슈(AI 규제 법안)엔 불필요하므로 사용자가 필터로 직접 좁힌다. */
+  const NS_SCOPES = [["", "전체"], ["동네", "우리 동네"], ["시", "우리 시"], ["도", "우리 도"], ["전국", "전국"], ["해외", "해외"]];
+  const NS_CATS = [["", "전체"], ["환경", "환경"], ["교육", "교육"], ["경제", "경제"], ["정치", "정치"], ["기술", "기술"]];
+  const nsFilter = { scope: "", category: "", region: "" };
+
+  function nsRenderChips(boxId, defs, key) {
+    const box = $(boxId); box.replaceChildren();
+    defs.forEach(([val, label]) => {
+      const chip = sec.el("button", { class: "ns-chip" + (nsFilter[key] === val ? " on" : ""), type: "button" }, label);
+      chip.addEventListener("click", () => {
+        nsFilter[key] = val;
+        [...box.children].forEach(c => c.classList.remove("on"));
+        chip.classList.add("on");
+        if (key === "scope") nsSyncRegionInput();
+        loadNewsTopics();
+      });
+      box.appendChild(chip);
+    });
+  }
+
+  // 전국/해외에선 위치 입력이 무의미 — 비활성화로 그 사실을 UI에 드러낸다.
+  function nsSyncRegionInput() {
+    const input = $("nsRegion");
+    const pointless = nsFilter.scope === "전국" || nsFilter.scope === "해외";
+    input.disabled = pointless;
+    if (pointless && input.value) { input.value = ""; nsFilter.region = ""; }
+  }
+
+  let nsSeq = 0;
+  // 홈 화제 카드에서 넘어올 때(feed.html?news_topic=…) 그 화제를 최상단에
+  // 하이라이트로 고정한다 — 첫 렌더 1회만 스크롤.
+  const nsPinName = (params.get("news_topic") || "").trim();
+  let nsPinScrolled = false;
+  async function loadNewsTopics() {
+    const box = $("newsSec"), list = $("nsList");
+    const mySeq = ++nsSeq;
+    let topics = [];
+    try {
+      topics = await buddle.news.topics({
+        scope: nsFilter.scope || null,
+        category: nsFilter.category || null,
+        region: nsFilter.region || null,
+        limit: 12,
+        mode: "interest",  // 피드 = 사용자가 관심 가질 화제 우선
+      });
+    } catch (_) {
+      // 뉴스 파이프라인이 없는(구버전/오프라인) 서버 → 섹션 자체를 숨긴다.
+      if (mySeq === nsSeq && !box.dataset.ready) box.style.display = "none";
+      return;
+    }
+    if (mySeq !== nsSeq) return;   // 늦은 응답이 최신 필터 결과를 덮지 않게
+    box.style.display = ""; box.dataset.ready = "1";
+    list.replaceChildren();
+    if (!Array.isArray(topics) || !topics.length) {
+      list.appendChild(sec.el("div", { class: "ns-empty" },
+        "이 필터에 잡힌 화제가 아직 없어요. 범위나 주제를 넓혀보세요."));
+      return;
+    }
+    if (nsPinName) {
+      const i = topics.findIndex(t => (t.name || "") === nsPinName);
+      if (i > 0) topics.unshift(topics.splice(i, 1)[0]);
+    }
+    topics.forEach(t => reveal(list.appendChild(nsTopicCard(t, nsPinName && t.name === nsPinName))));
+    if (nsPinName && !nsPinScrolled) {
+      nsPinScrolled = true;
+      setTimeout(() => box.scrollIntoView({ behavior: "smooth" }), 250);
+    }
+  }
+
+  function nsTopicCard(t, highlight) {
+    // 피드 카드는 화제와 태그만 — 요약·관련 보도는 상세 페이지 전용.
+    // 액션: 좋아요(카드에서 바로) · 댓글(상세) · 토론(논증 대화).
+    const card = sec.el("div", { class: "nt-card" + (highlight ? " hl" : "") + (t.is_gov_source ? " gov" : "") });
+    const top = sec.el("div", { class: "nt-top" });
+    top.appendChild(sec.el("span", { class: "nt-badge" }, t.category || "사회"));
+    const scopeLabel = t.region ? `${t.scope} · ${t.region}` : (t.scope || "");
+    if (scopeLabel) top.appendChild(sec.el("span", { class: "nt-badge" }, scopeLabel));
+    if (t.urgent) top.appendChild(sec.el("span", { class: "nt-badge urgent" }, "긴급"));
+    if (t.trend === "상승") top.appendChild(sec.el("span", { class: "nt-badge" }, "↑ 상승"));
+    if (t.is_gov_source) top.appendChild(sec.el("span", { class: "nt-badge gov" }, "정부출처"));
+    card.appendChild(top);
+
+    card.appendChild(sec.el("b", { class: "nt-title" }, t.title || ("#" + (t.name || ""))));
+    const kws = Array.isArray(t.keywords) ? t.keywords : [];
+    if (kws.length) {
+      const kb = sec.el("div", { class: "nt-kws" });
+      kws.slice(0, 5).forEach(k => kb.appendChild(sec.el("span", { class: "nt-kw" }, "#" + k)));
+      card.appendChild(kb);
+    }
+
+    const acts = sec.el("div", { class: "nt-acts" });
+    // 좋아요 — 화제 글에 바로 토글(글이 아직 없으면 상세 폴백과 동일하게 이동)
+    let liked = false, likeN = t.like_count || 0;
+    const likeBtn = sec.el("button", { class: "nt-act", type: "button" });
+    const paintLike = () => {
+      likeBtn.innerHTML = '<svg viewBox="0 0 24 24"><path d="M20.8 7.6a5 5 0 0 0-7.1 0L12 9.3l-1.7-1.7a5 5 0 1 0-7.1 7.1L12 23l8.8-8.3a5 5 0 0 0 0-7.1z"/></svg>';
+      likeBtn.appendChild(document.createTextNode(" 좋아요 " + likeN));
+      likeBtn.classList.toggle("on", liked);
+    };
+    paintLike();
+    likeBtn.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      if (!t.post_id) { nsOpenTopic(t); return; }
+      liked = !liked; likeN += liked ? 1 : -1; paintLike();
+      try { liked ? await buddle.posts.like(t.post_id) : await buddle.posts.unlike(t.post_id); }
+      catch (_) { liked = !liked; likeN += liked ? 1 : -1; paintLike(); }
+    });
+    // 댓글 — 상세(화제 글)로
+    const cmtBtn = sec.el("button", { class: "nt-act", type: "button" });
+    cmtBtn.innerHTML = '<svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>';
+    cmtBtn.appendChild(document.createTextNode(" 댓글 " + (t.comment_count || 0)));
+    cmtBtn.addEventListener("click", (e) => { e.stopPropagation(); nsOpenTopic(t); });
+    // 토론 — 논증 대화로 직행
+    const debateBtn = sec.el("button", { class: "nt-act debate", type: "button" });
+    debateBtn.innerHTML = '<svg viewBox="0 0 24 24"><path d="M8 10h8M8 14h5"/><path d="M21 12a9 9 0 1 1-4.5-7.8L21 3l-1 4.2A8.9 8.9 0 0 1 21 12z"/></svg>';
+    debateBtn.appendChild(document.createTextNode(" 토론"));
+    debateBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      if (t.post_id) location.href = "argument-chat.html?post=" + encodeURIComponent(t.post_id);
+      else nsOpenTopic(t);
+    });
+    acts.append(likeBtn, cmtBtn, debateBtn);
+    card.appendChild(acts);
+
+    // 카드 탭 = 상세 페이지(요약·해석·관련 보도·전체 상호작용)로.
+    card.addEventListener("click", () => nsOpenTopic(t));
+    return card;
+  }
+
+  function nsOpenTopic(t) {
+    if (t.post_id) {
+      // 상세 폴백이 태그 필터로 이 글을 찾을 수 있게 tag도 함께 넘긴다.
+      const qs = new URLSearchParams({ post: t.post_id });
+      if (t.name) qs.set("tag", t.name);
+      location.href = "feed.html?" + qs.toString();
+      return;
+    }
+    // 글 승격 전(다음 tick 대기 등) — 같은 이름의 화제 태그 피드로 폴백.
+    if (t.name) {
+      currentTopic = t.name;
+      updateDebateButton();
+      nextCursor = null;
+      loadFeed();
+    }
+  }
+
+  function bindNewsFilters() {
+    nsRenderChips("nsScope", NS_SCOPES, "scope");
+    nsRenderChips("nsCat", NS_CATS, "category");
+    const input = $("nsRegion");
+    let timer = null;
+    input.addEventListener("input", () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        const v = input.value.trim();
+        if (v === nsFilter.region) return;
+        nsFilter.region = v;
+        loadNewsTopics();
+      }, 350);
+    });
+    nsSyncRegionInput();
+    loadNewsTopics();
+  }
+
+  // 화제 글([지금 화제]) 파싱 — 본문 구조에서 제목·유형을 뽑는다.
+  function parseTopicPost(text) {
+    const lines = (text || "").split("\n");
+    const title = (lines[0] || "").replace(/^\[지금 화제\]\s*/, "").trim();
+    let badge = "";
+    for (const ln of lines) { if (ln.startsWith("유형:")) { badge = ln.slice(3).trim(); break; } }
+    return { title, badge };
+  }
+
+  // 카드 하단 '주요 주장' 블록 — claims(≤3)가 있으면 붙이고, 없으면 아무것도
+  // 렌더하지 않는다(빈 라벨·자리 표시 금지).
+  function claimsBlock(item) {
+    const cs = Array.isArray(item.claims) ? item.claims.filter(Boolean) : [];
+    if (!cs.length) return null;
+    const box = sec.el("div", { class: "pc-claims" });
+    box.appendChild(sec.el("div", { class: "pc-claims-h" }, "주요 주장"));
+    cs.slice(0, 3).forEach(c => box.appendChild(sec.el("div", { class: "pc-claim" }, c)));
+    return box;
+  }
+
+  // 피드에 흐르는 화제 글은 텍스트 덩어리가 아니라 화제 카드 형식으로.
+  function topicPostCard(item) {
+    const { title, badge } = parseTopicPost(item.content_transformed);
+    const bits = badge.split("·").map(b => b.trim()).filter(Boolean);
+    const isGov = bits.includes("정부출처");
+    const card = sec.el("div", { class: "nt-card" + (isGov ? " gov" : "") });
+    if (bits.length) {
+      const top = sec.el("div", { class: "nt-top" });
+      bits.slice(0, 3).forEach(b => top.appendChild(
+        sec.el("span", { class: "nt-badge" + (b === "정부출처" ? " gov" : "") }, b)));
+      card.appendChild(top);
+    }
+    card.appendChild(sec.el("b", { class: "nt-title" }, title || "지금 화제"));
+    const tags = (item.tags || []).map(tagName).filter(Boolean);
+    if (tags.length) {
+      const kb = sec.el("div", { class: "nt-kws" });
+      tags.slice(0, 5).forEach(t => kb.appendChild(sec.el("span", { class: "nt-kw" }, "#" + t)));
+      card.appendChild(kb);
+    }
+    const claimsEl = claimsBlock(item);
+    if (claimsEl) card.appendChild(claimsEl);
+    const openDetail = () => {
+      try { sessionStorage.setItem("buddle.feed.item." + item.id, JSON.stringify(item)); } catch (_) {}
+      const qs = new URLSearchParams({ post: item.id });
+      if (tags[0]) qs.set("tag", tags[0]);
+      location.href = "feed.html?" + qs.toString();
+    };
+    const acts = sec.el("div", { class: "nt-acts" });
+    let liked = false, likeN = item.like_count || 0;
+    const likeBtn = sec.el("button", { class: "nt-act", type: "button" });
+    const paintLike = () => {
+      likeBtn.innerHTML = '<svg viewBox="0 0 24 24"><path d="M20.8 7.6a5 5 0 0 0-7.1 0L12 9.3l-1.7-1.7a5 5 0 1 0-7.1 7.1L12 23l8.8-8.3a5 5 0 0 0 0-7.1z"/></svg>';
+      likeBtn.appendChild(document.createTextNode(" 좋아요 " + likeN));
+      likeBtn.classList.toggle("on", liked);
+    };
+    paintLike();
+    likeBtn.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      liked = !liked; likeN += liked ? 1 : -1; paintLike();
+      try { liked ? await buddle.posts.like(item.id) : await buddle.posts.unlike(item.id); }
+      catch (_) { liked = !liked; likeN += liked ? 1 : -1; paintLike(); }
+    });
+    const cmtBtn = sec.el("button", { class: "nt-act", type: "button" });
+    cmtBtn.innerHTML = '<svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>';
+    cmtBtn.appendChild(document.createTextNode(" 댓글 " + (item.comment_count || 0)));
+    cmtBtn.addEventListener("click", (e) => { e.stopPropagation(); openDetail(); });
+    const debateBtn = sec.el("button", { class: "nt-act debate", type: "button" });
+    debateBtn.innerHTML = '<svg viewBox="0 0 24 24"><path d="M8 10h8M8 14h5"/><path d="M21 12a9 9 0 1 1-4.5-7.8L21 3l-1 4.2A8.9 8.9 0 0 1 21 12z"/></svg>';
+    debateBtn.appendChild(document.createTextNode(" 토론"));
+    debateBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      location.href = "argument-chat.html?post=" + encodeURIComponent(item.id);
+    });
+    acts.append(likeBtn, cmtBtn, debateBtn);
+    card.appendChild(acts);
+    card.addEventListener("click", openDetail);
+    return card;
+  }
+
   function postCard(item) {
-    const persona = (item.source_persona && item.source_persona.name) || "익명";
+    if ((item.author_label || "") === "지금 화제") return topicPostCard(item);
+    const persona = (item.source_persona && item.source_persona.name) || item.author_label || "익명";
     const [bg, fg] = palOf(persona);
     const card = sec.el("div", { class: "card" });
 
@@ -780,6 +1274,7 @@
     }
 
     const ex = sec.el("div", { class: "excerpt" }, item.content_transformed || "");
+    const claimsEl = claimsBlock(item);  // 주요 주장(≤3) — 없으면 null
 
     const foot = sec.el("div", { class: "foot" });
     if (item.like_count != null) foot.appendChild(metaItem("heart", item.like_count));
@@ -796,6 +1291,7 @@
     foot.appendChild(discuss);
 
     card.appendChild(by); card.appendChild(ex);
+    if (claimsEl) card.appendChild(claimsEl);
     card.appendChild(foot);
 
     if (Array.isArray(item.tags) && item.tags.length) {
@@ -846,43 +1342,64 @@
     const box = $("feedList");
     if (!cursor) box.innerHTML = '<div class="loading">불러오는 중…</div>';
     const tagParam = currentTopic === "전체" ? null : currentTopic;
-    let items = DEMO_FEED, fromApi = false;
+    let items = [], fromApi = false;
     try {
-      // 서버사이드 태그 필터: 필터를 쿼리에 위임한다. 클라이언트에서 커서
-      // 페이지를 거르면 뒷페이지의 매칭이 조용히 누락돼 페이지네이션과
+      // 서버사이드 태그 필터 + 검색: 필터를 쿼리에 위임한다. 클라이언트에서
+      // 커서 페이지를 거르면 뒷페이지의 매칭이 조용히 누락돼 페이지네이션과
       // "더 보기"가 깨지기 때문(백엔드 get_feed 주석과 동일한 이유).
-      const page = await buddle.feed.list(cursor, tagParam);
+      const page = await buddle.feed.list(cursor, tagParam, currentQuery || null);
       if (page && Array.isArray(page.items)) {
         items = page.items; fromApi = true;
         nextCursor = page.next_cursor || null;        // FeedPage.next_cursor
       }
-    } catch (_) { nextCursor = null; /* offline → demo */ }
+    } catch (_) { nextCursor = null; /* offline → 빈 상태 */ }
 
     // 토픽 칩은 '전체' 첫 페이지에서 1회만 구성한다(필터된 페이지로 만들면
-    // 칩 목록이 그 태그만 남는 문제가 생긴다). 데모면 데모 태그로.
-    if (!topicsRendered && currentTopic === "전체" && !cursor) {
-      const names = [];
-      items.forEach(it => (it.tags || []).forEach(t => {
-        const n = tagName(t); if (n && !names.includes(n)) names.push(n);
-      }));
-      renderTopics(["전체", ...(names.length ? names.slice(0, 8) : DEMO_TOPICS.slice(1))]);
+    // 칩 목록이 그 태그만 남는 문제가 생긴다). 트렌딩 집계 우선, 데모 폴백.
+    if (!topicsRendered && currentTopic === "전체" && !cursor && !currentQuery) {
+      loadTrendingTopics(items);
       topicsRendered = true;
     }
 
     // 데모(offline) 폴백일 때만 클라이언트에서 거른다(서버 필터를 못 쓰므로).
-    const list = (!fromApi && tagParam)
+    let list = (!fromApi && tagParam)
       ? items.filter(it => Array.isArray(it.tags) && it.tags.map(tagName).includes(tagParam))
       : items;
-    if (!cursor) box.innerHTML = "";
-    const oldMore = $("feedMore"); if (oldMore) oldMore.remove();
-    if (!cursor && !list.length) { box.appendChild(sec.el("div", { class: "empty" }, "아직 글이 없어요.")); return; }
-    list.forEach(it => box.appendChild(postCard(it)));
-    if (fromApi && nextCursor) {
-      const more = sec.el("button", { class: "act", id: "feedMore" }, "더 보기");
-      more.style.margin = "12px auto"; more.style.display = "block";
-      more.addEventListener("click", () => loadFeed(nextCursor));
-      box.appendChild(more);
+    if (!fromApi && currentQuery) {
+      const q = currentQuery.toLowerCase();
+      list = list.filter(it => (it.content_transformed || "").toLowerCase().includes(q));
     }
+    if (!cursor) box.innerHTML = "";
+    if (!cursor && !list.length) {
+      ensureFeedSentinel();  // 빈 첫 페이지 → 센티널 제거
+      box.appendChild(sec.el("div", { class: "empty" },
+        currentQuery ? `"${currentQuery}"에 대한 글을 찾지 못했어요.` : "아직 글이 없어요."));
+      return;
+    }
+    list.forEach(it => reveal(box.appendChild(postCard(it))));
+    ensureFeedSentinel();
+  }
+
+  // 인스타식 무한 스크롤 — 하단 800px 전에 다음 페이지를 자동 로드.
+  let feedIO = null, loadingMore = false;
+  function ensureFeedSentinel() {
+    const box = $("feedList");
+    let sn = $("feedSentinel");
+    if (!nextCursor) { if (sn) sn.remove(); return; }
+    if (!sn) {
+      sn = sec.el("div", { id: "feedSentinel" });
+      sn.style.height = "1px";
+      if (!feedIO) {
+        feedIO = new IntersectionObserver((es) => {
+          if (es.some(e => e.isIntersecting) && nextCursor && !loadingMore) {
+            loadingMore = true;
+            loadFeed(nextCursor).finally(() => { loadingMore = false; });
+          }
+        }, { rootMargin: "800px 0px" });
+      }
+      feedIO.observe(sn);
+    }
+    box.appendChild(sn);  // 항상 목록 끝으로
   }
 
   /* ── DETAIL ── */
@@ -891,8 +1408,6 @@
   async function loadDetail(id) {
     $("title").textContent = "글";
     $("listView").classList.add("hidden");
-    $("composeBanner").classList.add("hidden");
-    $("resumeRow").classList.add("hidden");
     const view = $("detailView"); view.classList.remove("hidden");
     view.innerHTML = '<div class="loading">불러오는 중…</div>';
 
@@ -908,12 +1423,22 @@
       try { post = await buddle.posts.get(id); }
       catch (_) {
         try {
-          const page = await buddle.feed.list();
+          // 화제 카드(feed.html?post=…&tag=…)처럼 스태시 없이 진입한 경우:
+          // 태그 필터 피드가 그 글을 1페이지 안에 담고 있을 확률이 가장 높다.
+          const tagHint = (params.get("tag") || "").trim() || null;
+          let page = await buddle.feed.list(null, tagHint);
           post = ((page && page.items) || []).find(it => it.id === id) || null;
+          if (!post && tagHint) {
+            page = await buddle.feed.list();
+            post = ((page && page.items) || []).find(it => it.id === id) || null;
+          }
         } catch (_) {}
       }
     }
-    if (!post) { post = DEMO_POST; comments = DEMO_COMMENTS; }
+    if (!post) {
+      view.innerHTML = '<div class="loading">글을 찾을 수 없어요. 삭제됐거나 아직 전달되지 않았을 수 있습니다.</div>';
+      return;
+    }
     try {
       const c = await buddle.posts.comments(id);
       if (Array.isArray(c)) comments = c;
@@ -921,6 +1446,56 @@
     postData = post;
     curLang = post.source_language || "ko";
     renderDetail(post, Array.isArray(comments) ? comments : []);
+  }
+
+  // 화제 글의 관련 기사 목록: 화제 캐시에서 태그명으로 매칭해 출처를 그린다.
+  async function loadTopicSources(post, wrap) {
+    const tags = Array.isArray(post.tags) ? post.tags.map(tagName) : [];
+    const nameHint = (params.get("tag") || "").trim() || tags[0] || "";
+    if (!nameHint) return;
+    let topics = [];
+    try { topics = await buddle.news.topics({ limit: 24 }); } catch (_) { return; }
+    const t = (topics || []).find(x => (x.name || "") === nameHint)
+      || (topics || []).find(x => tags.includes(x.name || ""));
+    if (!t || !Array.isArray(t.headlines) || !t.headlines.length) return;
+    const box = sec.el("div", { class: "src-box" });
+    box.appendChild(sec.el("div", { class: "sb-head" }, `관련 기사 ${t.count || t.headlines.length}건`));
+    t.headlines.forEach(h => {
+      const isGov = !!h && (h.rights === "kogl_type1" || h.rights === "public_domain");
+      const a = sec.el("a", {
+        class: "src-item" + (isGov ? " gov" : ""),
+        href: sec.safeUrl(h && h.url), target: "_blank", rel: "noopener noreferrer",
+      });
+      a.appendChild(sec.el("b", null, (h && h.title) || ""));
+      const meta = [(h && h.source) || "", (h && h.date) || ""].filter(Boolean).join(" · ");
+      if (meta) a.appendChild(sec.el("small", null, meta));
+      if (isGov) a.appendChild(sec.el("span", { class: "src-gov-tag" }, "정부·공공기관"));
+      box.appendChild(a);
+    });
+    wrap.appendChild(box);
+
+    // 배경지식 — 화제 등장 인물·기관의 위키백과 요약(있을 때만). 출처(위키백과
+    // 링크)와 CC BY-SA 4.0 표기는 생략하지 않는다.
+    if (Array.isArray(t.entity_briefs) && t.entity_briefs.length) {
+      const kb = sec.el("div", { class: "src-box" });
+      kb.appendChild(sec.el("div", { class: "sb-head" }, "배경지식"));
+      t.entity_briefs.slice(0, 3).forEach(b => {
+        const item = sec.el("div", { class: "kb-item" });
+        item.appendChild(sec.el("b", null, b.name || ""));
+        item.appendChild(document.createTextNode(" — " + (b.summary || "")));
+        if (b.url) {
+          item.appendChild(document.createTextNode(" "));
+          item.appendChild(sec.el("a", {
+            class: "kb-link", href: sec.safeUrl(b.url),
+            target: "_blank", rel: "noopener noreferrer",
+          }, "위키백과 ↗"));
+        }
+        kb.appendChild(item);
+      });
+      kb.appendChild(sec.el("small", { class: "kb-lic" },
+        "출처: 한국어 위키백과 (CC BY-SA 4.0)"));
+      wrap.appendChild(kb);
+    }
   }
 
   // "이 글의 부가 맥락" — notes saved from argument-AI conversations.
@@ -943,7 +1518,7 @@
   function renderDetail(post, comments) {
     const view = $("detailView");
     view.innerHTML = "";
-    const persona = (post.source_persona && post.source_persona.name) || "익명";
+    const persona = (post.source_persona && post.source_persona.name) || post.author_label || "익명";
     const [bg, fg] = palOf(persona);
 
     // author
@@ -978,66 +1553,33 @@
     const text = sec.el("div", { class: "post-text", id: "postText" }, textFor(post, curLang));
     view.appendChild(text);
 
-    // actions
+    // actions — 좋아요 · 댓글 · 토론 (인스타식 3버튼). 저장/신고와 대화 진입
+    // 버튼들은 제거했다: 댓글은 바로 아래 입력창으로, 토론은 토론장으로 이어진다.
     const actions = sec.el("div", { class: "actions" });
     const likeBtn = sec.el("button", { class: "act" });
     likeBtn.innerHTML = '<svg viewBox="0 0 24 24"><path stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M19 14c1.5-1.5 3-3.3 3-5.5A4.5 4.5 0 0 0 12 5 4.5 4.5 0 0 0 2 8.5C2 10.7 3.5 12.5 5 14l7 7z"/></svg>';
     likeBtn.appendChild(sec.el("span", null, "좋아요" + (post.like_count != null ? ` ${post.like_count}` : "")));
     likeBtn.addEventListener("click", () => toggleLike(post, likeBtn));
-    const reportBtn = sec.el("button", { class: "act" });
-    reportBtn.innerHTML = '<svg viewBox="0 0 24 24"><path stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><path stroke-width="1.8" stroke-linecap="round" d="M4 22v-7"/></svg>';
-    reportBtn.appendChild(sec.el("span", null, "신고"));
-    reportBtn.addEventListener("click", () => alert("신고가 접수되었습니다. 검토 후 조치됩니다."));
-    actions.appendChild(likeBtn); actions.appendChild(reportBtn);
+    // 댓글 — (기존 저장 자리) 누르면 하단 입력창으로 부드럽게 내려가 바로 쓴다.
+    const commentBtn = sec.el("button", { class: "act" });
+    commentBtn.innerHTML = '<svg viewBox="0 0 24 24"><path stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>';
+    commentBtn.appendChild(sec.el("span", null, "댓글" + (comments.length ? ` ${comments.length}` : "")));
+    commentBtn.addEventListener("click", focusComposer);
+    // 토론 — (기존 신고 자리) 이 화제를 토론장으로 발전시킨다.
+    const debateActBtn = sec.el("button", { class: "act" });
+    debateActBtn.innerHTML = '<svg viewBox="0 0 24 24"><path stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M3 12h4l3-8 4 16 3-8h4"/></svg>';
+    debateActBtn.appendChild(sec.el("span", null, "토론"));
+    debateActBtn.addEventListener("click", () => openDebateFromPost(post));
+    actions.appendChild(likeBtn); actions.appendChild(commentBtn); actions.appendChild(debateActBtn);
     view.appendChild(actions);
 
-    // argument-AI entry points: talk to this post's claim, or its author's AI.
-    const aiRow = sec.el("div", { class: "ai-row" });
-    const claimBtn = sec.el("button", { class: "ai-act" });
-    claimBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>';
-    claimBtn.appendChild(sec.el("span", null, "이 글의 주장과 대화"));
-    claimBtn.addEventListener("click", () => {
-      location.href = "argument-chat.html?post=" + encodeURIComponent(post.id) + "&mode=claim";
-    });
-    const authorBtn = sec.el("button", { class: "ai-act" });
-    authorBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 4-6 8-6s8 2 8 6"/></svg>';
-    authorBtn.appendChild(sec.el("span", null, "이 사람의 생각과 대화"));
-    authorBtn.addEventListener("click", () => {
-      location.href = "argument-chat.html?post=" + encodeURIComponent(post.id) + "&mode=author";
-    });
-    aiRow.appendChild(claimBtn); aiRow.appendChild(authorBtn);
-    view.appendChild(aiRow);
-
-    // "토론으로 발전" — develop a topic from the post into the debate space.
-    // Light participation (like/comment) stays above; this turns a post's topic
-    // into structured public discourse (공론장). Two cases:
-    //   - post has tags → chips to those topics + "새 화제로 시작"
-    //   - post has no tags → "이 글로 토론 시작하기" (name the topic, then seed)
-    const postTags = Array.isArray(post.tags) ? post.tags : [];
-    const debateWrap = sec.el("div", { class: "debate-entry" });
-    const head = sec.el("div", { class: "de-head" });
-    head.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg>';
-    head.appendChild(sec.el("span", null, postTags.length ? "이 화제를 토론으로 발전시키기" : "이 글로 토론 시작하기"));
-    debateWrap.appendChild(head);
-
-    const chips = sec.el("div", { class: "de-chips" });
-    postTags.slice(0, 4).forEach(t => {
-      const name = tagName(t);
-      const tid = (t && typeof t === "object") ? t.id : null;
-      const chip = sec.el("button", { class: "de-chip", type: "button" });
-      chip.appendChild(sec.el("span", null, "#" + name));
-      chip.innerHTML += '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>';
-      chip.addEventListener("click", () => openDebateForTag(name, tid));
-      chips.appendChild(chip);
-    });
-    // "+ 새 화제로 시작" (always) / for an untagged post this is the only path.
-    const seedChip = sec.el("button", { class: "de-chip de-seed", type: "button" });
-    seedChip.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>';
-    seedChip.appendChild(sec.el("span", null, postTags.length ? "새 화제로 시작" : "화제를 정해 시작"));
-    seedChip.addEventListener("click", () => startDebateFromPost(post));
-    chips.appendChild(seedChip);
-    debateWrap.appendChild(chips);
-    view.appendChild(debateWrap);
+    // 화제 글([지금 화제])이면 관련 기사 출처 목록 — 언론사·제목·발행일과
+    // 원문 링크를 절대 생략하지 않는다(즉시 원문 이동 가능해야 한다).
+    if (post.author_label === "지금 화제") {
+      const srcWrap = sec.el("div", { id: "topicSources" });
+      view.appendChild(srcWrap);
+      loadTopicSources(post, srcWrap);
+    }
 
     // "이 글의 부가 맥락" — context notes saved from argument-AI chats.
     const notesWrap = sec.el("div", { id: "ctxNotes" });
@@ -1090,7 +1632,7 @@
       kindRow.appendChild(chip);
     });
     const row = sec.el("div", { class: "c-input-row" });
-    const ta = sec.el("textarea", { rows: "1", placeholder: "댓글을 남겨보세요…" });
+    const ta = sec.el("textarea", { id: "commentInput", rows: "1", placeholder: "댓글을 남겨보세요…" });
     ta.addEventListener("input", () => {
       ta.style.height = "auto"; ta.style.height = Math.min(ta.scrollHeight, 100) + "px";
       sendBtn.disabled = ta.value.trim() === "";
@@ -1127,50 +1669,68 @@
     } catch (_) { /* offline preview no-op */ }
   }
 
+  // 댓글 버튼 → 하단 입력창으로 부드럽게 이동 + 포커스(반응형 글쓰기).
+  function focusComposer() {
+    const ta = document.getElementById("commentInput");
+    if (!ta) return;
+    ta.scrollIntoView({ behavior: "smooth", block: "center" });
+    setTimeout(() => { try { ta.focus({ preventScroll: true }); } catch (_) { ta.focus(); } }, 320);
+  }
+
+  // 토론 버튼 → 이 글의 화제를 토론장으로. 태그가 있으면 그 화제의 토론
+  // 대시보드로 바로, 없으면 화제 이름을 정해 토론을 시작한다.
+  function openDebateFromPost(post) {
+    const tags = Array.isArray(post.tags) ? post.tags : [];
+    if (tags.length) {
+      const t = tags[0];
+      openDebateForTag(tagName(t), (t && typeof t === "object") ? t.id : null);
+    } else {
+      startDebateFromPost(post);
+    }
+  }
+
+  let saved = false;
+  async function toggleBookmark(post, btn) {
+    saved = !saved;
+    btn.classList.toggle("liked", saved);   // 동일한 활성 스타일 재사용
+    const span = btn.querySelector("span");
+    if (span) span.textContent = saved ? "저장됨" : "저장";
+    try {
+      if (saved) await buddle.posts.bookmark(post.id);
+      else await buddle.posts.unbookmark(post.id);
+    } catch (_) { /* offline preview no-op */ }
+  }
+
   function onBack() {
     if (postId) { location.href = "feed.html"; }
     else if (history.length > 1) history.back();
     else location.href = "home-dashboard.html";
   }
 
-  /* ── 인스타식 글쓰기 배너 + 이어가던 대화 ──────────────────── */
-  // 만들기 화면(0) = compose.html. (+)/프롬프트 모두 거기서 페르소나 고르고 대화형 작성.
-  function goCompose() { location.href = "compose.html"; }
-  $("cbPlus").addEventListener("click", goCompose);
-  $("cbPrompt").addEventListener("click", goCompose);
-  $("cbPrompt").addEventListener("keydown", e => {
-    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); goCompose(); }
-  });
-
-  // 이어가던 대화: 최근 대화 스레드로 바로 진입 (chat.html?persona=…).
-  // 데모 시드; 통합 시 GET /v1/personas + 최근 세션으로 대체.
-  const RESUME = [
-    { persona: "p1", ava: "초", name: "초록", last: "강가 코스 얘기 중" },
-    { persona: "p4", ava: "바", name: "바람", last: "주말 러닝 모임" },
-    { persona: "p2", ava: "물", name: "물결", last: "잔잔한 곡 추천" },
-  ];
-  function renderResume() {
-    const row = $("resumeRow");
-    row.replaceChildren();
-    RESUME.forEach(r => {
-      const chip = sec.el("button", { class: "cb-rchip" });
-      chip.innerHTML = `<span class="ra">${sec.esc(r.ava)}</span>
-        <span class="rt"><b>${sec.esc(r.name)}</b><small>${sec.esc(r.last)}</small></span>`;
-      chip.addEventListener("click", () => {
-        location.href = `chat.html?persona=${encodeURIComponent(r.persona)}`;
-      });
-      row.appendChild(chip);
-    });
-  }
-
-  // init — 소프트 인증 게이트: 백엔드 가동+비로그인 → login?next, 미가동 → 데모 유지.
+  // init — 인증 게이트 후 실데이터 로드.
   (async function boot() {
     const db = $("debateBtn");
     if (db) db.addEventListener("click", openDebate);
-    renderResume();
+    $("savedBtn").addEventListener("click", () => { location.href = "bookmarks.html"; });
+    $("notifBtn").addEventListener("click", () => { location.href = "notifications.html"; });
+    bindSearch();
+    // 홈 트렌딩 칩(feed.html?tag=…)에서 넘어온 태그 필터를 반영한다 —
+    // 파라미터를 읽지 않으면 칩 탭이 조용히 무필터 피드로 떨어진다.
+    const tagParam = (params.get("tag") || "").trim();
+    if (tagParam && !postId) { currentTopic = tagParam; updateDebateButton(); }
     await buddle.requireAuth();
-    if (postId) loadDetail(postId);
-    else loadFeed();
+    refreshNotifBadge();
+    if (postId) { loadDetail(postId); return; }
+    if (tagParam) {
+      // 필터 상태로 시작해도 칩 줄은 전체 트렌딩으로 구성해 '전체' 복귀를 남겨둔다.
+      loadTrendingTopics([]); topicsRendered = true;
+    }
+    loadFeed();
+    bindNewsFilters();
+    // 홈의 "지금 화제" 카드(feed.html#news)에서 진입 시 섹션으로 스크롤.
+    if (location.hash === "#news") {
+      setTimeout(() => { const s = $("newsSec"); if (s) s.scrollIntoView({ behavior: "smooth" }); }, 400);
+    }
   })();
 </script>
 </body>

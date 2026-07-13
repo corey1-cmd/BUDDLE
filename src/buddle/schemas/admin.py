@@ -6,9 +6,33 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, EmailStr
 
 from buddle.db.models.enums import AlertStatus, AuthorityStateEnum
+
+
+class AdminUserRead(BaseModel):
+    """관리자 목록 항목 — 슈퍼 관리자 관리 화면용.
+
+    email 은 검증형(EmailStr)이 아니라 str 로 둔다: 이미 저장된 계정을 그대로
+    표시할 뿐이고, 시드 계정의 예약 TLD(예: '@buddle.local')를 EmailStr 이
+    거부해 목록 전체가 500 나는 것을 막는다.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    email: str
+    is_admin: bool
+    is_super_admin: bool
+    is_active: bool
+    created_at: datetime
+
+
+class AdminGrantRequest(BaseModel):
+    """이메일로 관리자 권한을 부여한다(해당 계정은 이미 가입돼 있어야 함)."""
+
+    email: EmailStr
 
 
 class SystemStats(BaseModel):

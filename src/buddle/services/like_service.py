@@ -28,7 +28,7 @@ async def _public_post_or_404(db: AsyncSession, post_id: uuid.UUID) -> Post:
 
 async def like_post(db: AsyncSession, user_id: uuid.UUID, post_id: uuid.UUID) -> bool:
     """Like a post (idempotent). Returns True if a new like was created."""
-    await _public_post_or_404(db, post_id)
+    post = await _public_post_or_404(db, post_id)
     existing = (
         await db.execute(
             select(PostLike.id).where(PostLike.user_id == user_id, PostLike.post_id == post_id)
@@ -37,10 +37,25 @@ async def like_post(db: AsyncSession, user_id: uuid.UUID, post_id: uuid.UUID) ->
     if existing is not None:
         return False  # already liked — no-op
     db.add(PostLike(user_id=user_id, post_id=post_id))
+    # Notify the post's owner in the same transaction (atomic with the like;
+    # skipped for self-likes and AI-authored posts). Label stays None — the
+    # UI renders anonymous likers, we never leak the liker's email.
+    from buddle.db.models.enums import AuthorKind, NotificationKind
+    from buddle.services.notification_service import notify_post_event
+
+    await notify_post_event(
+        db,
+        post,
+        kind=NotificationKind.LIKE,
+        actor_kind=AuthorKind.HUMAN,
+        actor_label=None,
+        actor_user_id=user_id,
+    )
     try:
         await db.commit()
     except IntegrityError:
-        # Concurrent like won the race; the end state is still "liked".
+        # Concurrent like won the race; the end state is still "liked"
+        # (the rollback also discards the duplicate notification).
         await db.rollback()
         return False
     return True

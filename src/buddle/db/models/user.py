@@ -41,6 +41,11 @@ class User(Base):
     )
     persona_quota: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("3"))
     is_admin: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+    # 슈퍼 관리자 — 다른 사용자에게 관리자 권한을 부여/회수할 수 있는 상위 권한.
+    # 일반 관리자(is_admin)는 admin 화면은 쓸 수 있어도 관리자 관리는 할 수 없다.
+    is_super_admin: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("false")
+    )
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()

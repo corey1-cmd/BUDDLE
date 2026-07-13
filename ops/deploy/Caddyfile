@@ -1,0 +1,19 @@
+# buddle 리버스 프록시 — 자동 HTTPS (Let's Encrypt)
+#
+# BUDDLE_DOMAIN 환경변수로 사이트 주소를 받는다 (compose가 주입).
+# sslip.io(예: 1.2.3.4.sslip.io)는 별도 DNS 설정 없이 HTTP-01 발급이 된다.
+#
+# WebSocket(/v1/ws/*)은 Caddy reverse_proxy가 Upgrade 헤더를 자동 처리한다.
+
+{$BUDDLE_DOMAIN} {
+	encode zstd gzip
+
+	reverse_proxy buddle-api:8000
+
+	# 앱이 자체 보안 헤더 미들웨어를 갖고 있으므로 여기선 전송 계층만 담당.
+	header {
+		# TLS 종단이 여기이므로 HSTS는 프록시에서 한 번 더 보장
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		-Server
+	}
+}

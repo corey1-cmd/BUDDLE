@@ -1,0 +1,45 @@
+name: buddle_app
+description: "buddle — AI가 매개하는 사람과 사람의 대화 (안드로이드 클로즈드 베타)"
+publish_to: 'none'
+
+version: 0.1.0+1
+
+environment:
+  sdk: ^3.5.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # 상태관리 (스펙 §3: Riverpod)
+  flutter_riverpod: ^2.5.1
+  # HTTP / WebSocket (스펙 §3: dio + web_socket_channel)
+  dio: ^5.5.0
+  web_socket_channel: ^3.0.1
+  # 토큰 보안 저장 (스펙 §3: OS 보안 저장소)
+  flutter_secure_storage: ^9.2.2
+  # 위치 매칭 (opt-in GPS)
+  geolocator: ^13.0.1
+  # 뉴스 원문 링크 열기 (권리엔진: 읽기는 원 출처에서)
+  url_launcher: ^6.3.0
+  cupertino_icons: ^1.0.8
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+
+flutter:
+  uses-material-design: true
+
+  # Pretendard — 라틴+한글 통합 프리미엄 UI 서체 (웹 buddle.css와 동일 계열).
+  # 시스템 폰트 폴백 시 한글/라틴이 다른 얼굴로 섞여 깨져 보이는 문제를 막는다.
+  fonts:
+    - family: Pretendard
+      fonts:
+        - asset: assets/fonts/Pretendard-Regular.ttf
+          weight: 400
+        - asset: assets/fonts/Pretendard-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/Pretendard-Bold.ttf
+          weight: 700

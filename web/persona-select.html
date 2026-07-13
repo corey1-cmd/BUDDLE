@@ -4,9 +4,6 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>buddle · 페르소나 선택</title>
-<link rel="preconnect" href="https://fonts.googleapis.com" />
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Spline+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
 <link rel="stylesheet" href="buddle.css">
 <style>
   /* ── Sprout design system ───────────────────────────────────────── */
@@ -16,11 +13,12 @@
     font-family: var(--body);
     color: var(--ink);
     background:
-      radial-gradient(1200px 700px at 78% -8%, transparent 0%, transparent 55%),
-      radial-gradient(1000px 620px at 10% 12%, transparent 0%, transparent 52%),
-      radial-gradient(900px 600px at 50% 108%, transparent 0%, transparent 55%),
-      radial-gradient(760px 520px at 92% 70%, transparent 0%, transparent 50%),
+      radial-gradient(1200px 700px at 78% -8%, rgba(124,108,255,.14) 0%, transparent 55%),
+      radial-gradient(1000px 620px at 10% 12%, rgba(84,130,255,.09) 0%, transparent 52%),
+      radial-gradient(900px 600px at 50% 108%, rgba(96,88,220,.09) 0%, transparent 55%),
+      radial-gradient(760px 520px at 92% 70%, rgba(110,100,240,.06) 0%, transparent 50%),
       var(--paper);
+    background-attachment: fixed;
     min-height: 100vh;
     -webkit-font-smoothing: antialiased;
   }
@@ -30,8 +28,8 @@
     display: flex; align-items: center; justify-content: space-between;
     padding: 22px clamp(20px, 5vw, 56px);
     position: sticky; top: 0; z-index: 20;
-    backdrop-filter: blur(10px);
-    background: linear-gradient(to bottom, rgba(247,244,236,.9), rgba(247,244,236,.55));
+    backdrop-filter: blur(24px) saturate(160%);
+    background: linear-gradient(to bottom, rgba(255,255,255,.72), rgba(255,255,255,.58));
     border-bottom: 1px solid var(--line);
   }
   .brand { display: flex; align-items: center; gap: 11px; }
@@ -60,7 +58,7 @@
   /* ── page heading ───────────────────────────────────────────────── */
   main { padding: clamp(28px, 5vw, 60px) clamp(20px, 5vw, 56px) 80px; max-width: 1180px; margin: 0 auto; }
   .eyebrow {
-    font-size: 12.5px; font-weight: 600; letter-spacing: .16em; text-transform: uppercase;
+    font-size: 12.5px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase;
     color: var(--forest-300); margin-bottom: 12px;
   }
   h1 { font-family: var(--display); font-weight: 500; font-size: clamp(30px, 5vw, 46px); letter-spacing: -.025em; line-height: 1.05; color: var(--forest-700); max-width: 16ch; }
@@ -74,6 +72,7 @@
   }
   .card {
     background: var(--white); border: 1px solid var(--line); border-radius: var(--radius);
+    color: var(--ink); font-family: inherit; text-align: left; /* <button>은 UA 기본색을 쓰므로 명시 */
     padding: 22px; cursor: pointer; position: relative; overflow: hidden;
     transition: transform .18s ease, box-shadow .22s ease, border-color .2s ease;
     display: flex; flex-direction: column; gap: 14px; min-height: 184px;
@@ -116,7 +115,7 @@
 
   /* ── settings drawer (top-right) ────────────────────────────────── */
   .scrim {
-    position: fixed; inset: 0; background: rgba(92,124,240,.10); backdrop-filter: blur(2px);
+    position: fixed; inset: 0; background: rgba(124,130,247,.10); backdrop-filter: blur(2px);
     opacity: 0; visibility: hidden; transition: opacity .25s ease, visibility .25s; z-index: 40;
   }
   .scrim.open { opacity: 1; visibility: visible; }
@@ -136,7 +135,7 @@
   .drawer-body { padding: 12px 26px 26px; overflow-y: auto; }
   .settings-group + .settings-group { margin-top: 10px; }
   .group-label {
-    font-size: 11.5px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase;
+    font-size: 11.5px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase;
     color: var(--forest-300); margin: 22px 0 8px;
   }
   .setting-row {
@@ -156,7 +155,7 @@
   }
   .track::before {
     content: ""; position: absolute; top: 3px; left: 3px; width: 22px; height: 22px;
-    border-radius: 50%; background: var(--white); box-shadow: 0 1px 3px rgba(92,124,240,.06);
+    border-radius: 50%; background: var(--white); box-shadow: 0 1px 3px rgba(124,130,247,.06);
     transition: transform .22s cubic-bezier(.4,0,.2,1);
   }
   .toggle input:checked + .track { background: var(--forest); }
@@ -682,12 +681,7 @@
   // 모든 페르소나가 하나의 시그니처 그라데이션 정체성을 공유
   const PALETTE = [["var(--accent-grad)", "#fff"]];
   let LIVE = false;
-  let personas = [
-    { id: "d1", name: "초록", model: "기본 대화 모델", tags: ["일상", "산책", "커피"], near: 3 },
-    { id: "d2", name: "물결", model: "기본 대화 모델", tags: ["음악", "영화"], near: 1 },
-    { id: "d3", name: "햇살", model: "기본 대화 모델", tags: ["독서", "글쓰기", "역사"], near: 0 },
-    { id: "d4", name: "바람", model: "기본 대화 모델", tags: ["러닝", "등산"], near: 5 },
-  ];
+  let personas = [];   // 실데이터 전용 — 데모 시드 없음 (boot에서 GET /v1/personas)
 
   const grid = document.getElementById("grid");
 

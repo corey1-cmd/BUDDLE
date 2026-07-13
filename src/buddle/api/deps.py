@@ -73,11 +73,21 @@ async def get_current_admin(
     return user
 
 
+async def get_current_super_admin(
+    user: Annotated[User, Depends(get_current_user)],
+) -> User:
+    """Require super-admin scope — the only role that can manage admins."""
+    if not user.is_super_admin:
+        raise Forbidden("Super-admin privilege required.")
+    return user
+
+
 # Convenience type aliases for route handlers
 DB = Annotated[AsyncSession, Depends(get_db)]
 Redis = Annotated[RedisClient, Depends(get_redis)]
 CurrentUser = Annotated[User, Depends(get_current_user)]
 CurrentAdmin = Annotated[User, Depends(get_current_admin)]
+CurrentSuperAdmin = Annotated[User, Depends(get_current_super_admin)]
 
 
 async def get_current_agent(

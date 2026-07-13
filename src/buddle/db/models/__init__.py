@@ -21,6 +21,7 @@ from buddle.db.models.enums import (
     ConversationSituationEnum,
     MemoryKind,
     MessageRole,
+    NotificationKind,
     PersonaBackendKind,
     PersonaModelStatus,
     PostVisibility,
@@ -37,12 +38,15 @@ from buddle.db.models.knowledge_unit import KnowledgeUnit
 from buddle.db.models.mediator_policy import MediatorPolicy
 from buddle.db.models.message import Message
 from buddle.db.models.metric_snapshot import MetricSnapshot
+from buddle.db.models.news_item import NewsItem
+from buddle.db.models.notification import Notification
 from buddle.db.models.persona import Persona
 from buddle.db.models.persona_context_ref import PersonaContextRef
 from buddle.db.models.persona_memory import PersonaMemory
 from buddle.db.models.persona_model import PersonaModel
 from buddle.db.models.persona_topic_affinity import PersonaTopicAffinity
 from buddle.db.models.post import Post
+from buddle.db.models.post_bookmark import PostBookmark
 from buddle.db.models.post_context_note import PostContextNote
 from buddle.db.models.post_like import PostLike
 from buddle.db.models.post_translation import PostTranslation
@@ -85,6 +89,9 @@ __all__ = [
     "Message",
     "MessageRole",
     "MetricSnapshot",
+    "NewsItem",
+    "Notification",
+    "NotificationKind",
     "Persona",
     "PersonaBackendKind",
     "PersonaContextRef",
@@ -95,6 +102,7 @@ __all__ = [
     "PersonaTopicAffinity",
     "PoolUnit",
     "Post",
+    "PostBookmark",
     "PostContextNote",
     "PostLike",
     "PostTag",

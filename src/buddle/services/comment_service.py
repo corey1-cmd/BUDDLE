@@ -44,9 +44,38 @@ async def _persist_comment(db: AsyncSession, comment: Comment) -> Comment:
     leuko = await assess_post(db, comment.id, comment.content, commit=False)
     if leuko.should_suppress:
         comment.is_suppressed = True
+    else:
+        # Notify the post's owner in the same transaction. Suppressed comments
+        # never notify (a blocked comment shouldn't ping anyone).
+        await _notify_post_owner(db, comment)
     await db.commit()
     await db.refresh(comment)
     return comment
+
+
+async def _notify_post_owner(db: AsyncSession, comment: Comment) -> None:
+    """Queue a comment notification to the post owner (skips self-comments)."""
+    from buddle.db.models.enums import NotificationKind
+    from buddle.services.notification_service import notify_post_event
+
+    post = await db.get(Post, comment.post_id)
+    if post is None:
+        return
+    # Resolve the human behind the comment so self-comments (including via
+    # one's own persona) don't self-notify.
+    actor_user_id = comment.author_user_id
+    if actor_user_id is None and comment.source_persona_id is not None:
+        persona = await db.get(Persona, comment.source_persona_id)
+        actor_user_id = persona.user_id if persona else None
+    await notify_post_event(
+        db,
+        post,
+        kind=NotificationKind.COMMENT,
+        actor_kind=comment.author_kind,
+        actor_label=comment.author_label,
+        actor_user_id=actor_user_id,
+        preview=comment.content,
+    )
 
 
 async def create_human_comment(

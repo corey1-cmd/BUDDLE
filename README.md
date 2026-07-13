@@ -551,6 +551,54 @@ K-MHaS/KOLD/K-HATERS 데이터셋 문헌 반영:
 
 연구 근거: like 멱등 UNIQUE 패턴, Llama Guard 3 출력 형식(MLCommons 13종), 응답 측 분류 강건성, gitleaks 업계 표준 + 중앙 allowlist. 테스트 `test_shortterm_features.py`(13개).
 
+## SNS 기본기 레이어 — 저장·알림·검색·트렌딩
+
+Intro 스펙의 피드 상호작용(좋아요, 댓글, 토론장 입장, **저장**)을 완성하고, SNS/커뮤니티에서 검증된
+기본기(알림·검색·트렌딩)를 buddle 구조에 맞게 추가. 마이그레이션 0023.
+
+### 저장 (북마크) — 비공개 큐레이션
+`post_bookmarks` + `bookmark_service` — like와 같은 (user, post) UNIQUE 멱등 토글 패턴.
+단, 좋아요와 달리 **알림 없음 + 중요도/매개자 신호 없음**: 저장은 지지 표명이 아니라 개인 큐레이션이므로
+추천 루프를 오염시키지 않는다. 라우트 `PUT/DELETE /v1/plaza/posts/{id}/bookmark`,
+`GET /v1/bookmarks`(피드와 같은 아이템 형태 → 프론트 카드 재사용). 화면 `web/bookmarks.html`.
+
+### 알림 — 수신자 스코프 활동 이벤트
+`notifications` 테이블 + `notification_service`. 좋아요/댓글이 글 주인에게 알림을 만든다
+(작성 트랜잭션 안에서 add → 액션과 원자적, 실패해도 액션을 깨지 않음). 설계 포인트:
+- **자기 행동 무알림**: 내 글에 내가 좋아요/댓글(내 페르소나 경유 포함) → skip
+- **억제 댓글 무알림**: 백혈구가 막은 댓글은 아무에게도 핑 안 감
+- **행위자 표기**: FK 대신 label + author_kind(human/persona_ai/external_ai) — 행위자 삭제에도 알림 생존,
+  AI 행위자도 같은 형태. 사람 행위자는 label 없음(이메일 비노출), UI가 AI 뱃지로 사람/AI 구분 표시
+- **read_at 타임스탬프**(NULL=미읽음): 읽음 처리 1 UPDATE, 뱃지 카운트 1 filtered COUNT(부분 인덱스)
+라우트 `GET /v1/notifications[?unread_only]`, `GET /v1/notifications/unread-count`,
+`POST /v1/notifications/{id}/read`(본인 것만; 타인 것은 updated 0), `POST /v1/notifications/read-all`.
+화면 `web/notifications.html` + 피드 헤더 벨 뱃지.
+
+### 피드 검색 + 트렌딩 화제
+- `GET /v1/feed?q=` — content_transformed(공개문) 대상 서버사이드 ILIKE 검색(와일드카드 이스케이프,
+  content_raw는 작성자 비공개 유지). 커서/태그 필터와 조합 가능 — 태그 필터와 같은 이유로 서버에서 거른다.
+- `GET /v1/tags/trending?days=&limit=` — 최근 N일 공개·비억제 글 수 기준 상위 태그(관리자 분석의 사용자향
+  형제). 억제된 글은 집계에서 제외 → 차단 콘텐츠 폭주가 트렌딩을 밀어올릴 수 없음.
+- 피드 화면: 검색창(350ms 디바운스), 트렌딩 칩(＃화제+글 수), 상세 화면 저장 토글.
+
+테스트 `test_bookmarks_notifications.py`(13개: 멱등성, 알림 생성/스코프/자기행동 제외, 검색 이스케이프, 트렌딩 집계).
+
+## 뉴스 사용자 읽기 API + 프로덕션 배포 (베타 Phase 1·2)
+
+안드로이드 베타 스펙([specs/2026-06-28-buddle-android-beta-design.md](docs/superpowers/specs/2026-06-28-buddle-android-beta-design.md)) §5의 백엔드 변경:
+
+- **뉴스 읽기 API(사용자)**: `GET /v1/news/briefings[?tag=]`, `GET /v1/news/digest` — 파이프라인은 관리자/스케줄러 전용 유지, 캐시 결과만 노출. **권리엔진 필드 필터**를 응답 모델로 강제: 제목+링크+매체명+우리 요약(gist)+태그만 나가고 내부 필드(ekb_briefing/relevance/stub)는 구조적으로 누출 불가. 테스트 `test_news_user_read.py`(6개).
+- **공개 RSS 기본 소스 확장**: Guardian·BBC·The Verge·Ars Technica 공식 피드 추가(본문 미수집, 스니펫→우리 말 요약).
+- **프로덕션 배포 구성**: `docker-compose.prod.yml`(api+redis+**Caddy 자동 TLS**, DB=Supabase 외부, api 비노출) + `ops/deploy/Caddyfile` + `.env.production.example`(★ 항목 채우기) + **런북 [docs/guides/DEPLOY_ORACLE.md](docs/guides/DEPLOY_ORACLE.md)** — Oracle VM에 SSH 되는 순간부터 `/health` 200까지. Dockerfile `INSTALL_EXTRAS` 빌드 인자로 BGE-M3 임베딩(extras `embeddings`) 선택 설치.
+
+
+
+## 출시 준비 — 계정 삭제 · 개인정보처리방침 (Play Phase 4)
+
+Google Play는 계정 생성 앱에 **인앱 계정 삭제**와 **개인정보처리방침 URL**을 의무화한다.
+- **계정 삭제** `DELETE /v1/users/me`: 비밀번호 확인 후 계정·개인데이터 파기, 리프레시 토큰 폐기. 페르소나/세션/좋아요/저장/알림은 CASCADE 삭제, 공개 글·댓글은 작성자 링크만 제거(비식별화)해 담론 보존. 앱은 계정 화면에서 인앱 삭제 제공. 테스트 `test_account_deletion.py`(4개).
+- **개인정보처리방침** `web/privacy.html`(백엔드 정적 서빙 → `https://<도메인>/privacy.html`): 수집 항목·생성형 AI 국외 전송 고지·삭제권.
+- **출시 체크리스트** [docs/guides/PLAY_LAUNCH_CHECKLIST.md](docs/guides/PLAY_LAUNCH_CHECKLIST.md): AAB 서명·데이터 안전 양식·콘텐츠 등급까지.
 ## 위치 기반 근접 매칭 (LBS 변형)
 
 지리적으로 가까운 사람끼리 문화·관심사·대화 주제가 겹친다는 통찰(토블러 제1법칙: "가까운 것이 더 관련 있다")을 매칭에 반영. 클라우드 인프라 지원사업(위치기반서비스 대상)에 부합하는 변형. `ai/geo/` + `services/proximity_service.py`.

@@ -4,9 +4,6 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <title>buddle — 시작하기</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,700&family=Spline+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="buddle.css">
 <style>
 /* ── 전체 레이아웃 ── */
@@ -134,12 +131,12 @@ body {
   position: relative;
 }
 .field.invalid .bd-input {
-  border-color: #C0563B;
+  border-color: #E07B6B;
   box-shadow: 0 0 0 4px rgba(192, 86, 59, .12);
 }
 .field-err {
   font-size: var(--t-xs);
-  color: #C0563B;
+  color: #E07B6B;
   margin-top: 6px;
   display: none;
 }
@@ -212,7 +209,7 @@ body {
   color: var(--ink-faint);
   transition: color .2s;
 }
-.req-item.met { color: #3D8A6B; }
+.req-item.met { color: #4FC98F; }
 .req-icon {
   width: 16px; height: 16px;
   border-radius: 50%;
@@ -222,8 +219,8 @@ body {
   transition: background .2s, border-color .2s;
 }
 .req-item.met .req-icon {
-  background: #3D8A6B;
-  border-color: #3D8A6B;
+  background: #4FC98F;
+  border-color: #4FC98F;
 }
 .req-icon svg { width: 9px; height: 9px; stroke: #fff; fill: none; stroke-width: 2.5; }
 .req-item:not(.met) .req-icon svg { display: none; }
@@ -242,7 +239,7 @@ body {
   border-radius: var(--r);
   padding: var(--s3) var(--s3);
   font-size: var(--t-sm);
-  color: #C0563B;
+  color: #E07B6B;
   margin-bottom: var(--s4);
   display: none;
 }
@@ -259,7 +256,7 @@ body {
   border-radius: var(--r);
   padding: var(--s3) var(--s3);
   font-size: var(--t-sm);
-  color: #3D8A6B;
+  color: #4FC98F;
   margin-bottom: var(--s4);
 }
 .form-ok.show { display: flex; }
@@ -662,7 +659,7 @@ body {
   }
 
   /* ── 비밀번호 강도 + 체크리스트 ── */
-  const SCORE_COLORS = ["#C7A87C", "#C7A87C", "#B4734A", "#3D8A6B", "#5C7CF0"];
+  const SCORE_COLORS = ["#C7A87C", "#C7A87C", "#D98E63", "#4FC98F", "#6D8CFF"];
   const SCORE_LABELS = ["", "약함", "보통", "양호", "강함"];
   const SCORE_PCTS   = [4,  18,    45,    75,    100  ];
 

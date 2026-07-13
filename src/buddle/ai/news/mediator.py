@@ -33,6 +33,31 @@ _RETRYABLE_STATUS = frozenset({429, 500, 502, 503, 504})
 _BACKOFF_BASE_S = 1.5
 _RETRY_AFTER_CAP_S = 30.0
 
+# 마지막 AI 호출 결과(진단용) — 카드가 영어로 나올 때 admin이 원인을 짚도록,
+# 뉴스 틱이 이 값을 status에 실어 보낸다. 성공 시 빈 문자열로 초기화된다.
+# (프로세스 내 최선-노력 진단값 — 정확한 감사 로그가 아니라 힌트다.)
+_last_ai_error: str = ""
+
+
+def get_last_ai_error() -> str:
+    """마지막 _call_ai 실패의 짧은 사유(성공 후엔 빈 문자열)."""
+    return _last_ai_error
+
+
+def _hint_for_status(status: int) -> str:
+    """HTTP 상태 → 비개발자용 한국어 원인 힌트(환경변수 무엇을 고칠지)."""
+    if status in (401, 403):
+        return f"{status} 인증 실패 — PERSONA_ENDPOINT_API_KEY(키)를 확인하세요"
+    if status == 404:
+        return f"{status} 모델/경로 없음 — PERSONA_MODEL(예: gemini-2.5-flash)·URL을 확인하세요"
+    if status == 429:
+        return "429 무료 쿼터 초과 — 잠시 후 다시 '지금 수집'"
+    if status == 400:
+        return "400 요청 형식 오류 — PERSONA_ENDPOINT_URL을 확인하세요"
+    if status >= 500:
+        return f"{status} 엔드포인트 서버 오류 — 잠시 후 재시도"
+    return f"{status} 호출 실패"
+
 
 def _retry_after_seconds(resp: httpx.Response) -> float | None:
     """Parse a Retry-After header (delta-seconds form) if present and sane."""
@@ -145,6 +170,7 @@ async def _call_ai(
     if api_key:
         headers["Authorization"] = f"Bearer {api_key}"
 
+    global _last_ai_error
     url = endpoint_url.rstrip("/") + "/chat/completions"
     async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
         for attempt in range(1, _MAX_ATTEMPTS + 1):
@@ -155,6 +181,7 @@ async def _call_ai(
                 if attempt < _MAX_ATTEMPTS:
                     await asyncio.sleep(_BACKOFF_BASE_S * 2 ** (attempt - 1))
                     continue
+                _last_ai_error = "엔드포인트 연결 실패 — PERSONA_ENDPOINT_URL을 확인하세요"
                 return ""
 
             # Endpoint doesn't support response_format → drop it and retry once.
@@ -176,7 +203,9 @@ async def _call_ai(
 
             try:
                 resp.raise_for_status()
-                return str(resp.json()["choices"][0]["message"]["content"])
+                content = str(resp.json()["choices"][0]["message"]["content"])
+                _last_ai_error = ""  # 성공 — 진단값 초기화
+                return content
             except Exception as e:
                 log.warning(
                     "mediator.ai_call_error",
@@ -184,7 +213,9 @@ async def _call_ai(
                     status=resp.status_code,
                     error=str(e),
                 )
+                _last_ai_error = _hint_for_status(resp.status_code)
                 return ""
+    _last_ai_error = "429 무료 쿼터 초과 — 잠시 후 다시 '지금 수집'"  # 재시도 소진
     return ""
 
 
