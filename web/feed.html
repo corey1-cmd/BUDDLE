@@ -662,6 +662,9 @@
   .nt-card:last-child{margin-bottom:0;}
   /* 홈에서 넘어온 화제 하이라이트 (feed.html?news_topic=…) */
   .nt-card.hl{border-color:var(--willow);box-shadow:0 0 0 3px var(--willow-wash);}
+  /* 정부·공공기관 출처가 섞인 화제 — 언론사 출처와 구분되는 파란 테두리 */
+  .nt-card.gov{border-color:#191970;box-shadow:0 0 0 3px rgba(25,25,112,.12);}
+  .nt-badge.gov{background:rgba(25,25,112,.14);color:#191970;font-weight:800;}
   /* 참여 유도 줄 — 카드 탭 = 화제 글(좋아요·댓글·토론)로 */
   .nt-join{display:flex;align-items:center;gap:6px;margin-top:8px;font-size:12px;font-weight:600;color:var(--willow-text);}
   .nt-join svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2;}
@@ -687,8 +690,12 @@
   /* 상세의 "관련 기사" 출처 목록 (화제 글 전용) */
   .src-box{margin:14px 0;padding:13px 14px;background:var(--paper-sunken);border:1px solid var(--line);border-radius:14px;}
   .src-box .sb-head{font-size:13px;font-weight:700;color:var(--ink-soft);margin-bottom:9px;}
-  .src-item{display:block;padding:7px 0;border-top:1px solid var(--line);text-decoration:none;}
+  .src-item{display:block;padding:7px 0 7px 9px;border-top:1px solid var(--line);border-left:3px solid transparent;text-decoration:none;}
   .src-item:first-of-type{border-top:none;padding-top:0;}
+  /* 정부·공공기관 출처(공공누리 1유형 이상) — 언론사와 다른 파란 강조선 */
+  .src-item.gov{border-left-color:#191970;}
+  .src-item .src-gov-tag{display:inline-block;margin-left:6px;font-size:10.5px;font-weight:800;color:#191970;
+    background:rgba(25,25,112,.12);border-radius:999px;padding:1px 7px;vertical-align:middle;}
   .src-item b{display:block;font-size:13px;font-weight:600;line-height:1.45;color:var(--ink);}
   .src-item small{font-size:11.5px;color:var(--ink-faint);}
   .src-item:hover b{color:var(--willow-text);}
@@ -1078,13 +1085,14 @@
   function nsTopicCard(t, highlight) {
     // 피드 카드는 화제와 태그만 — 요약·관련 보도는 상세 페이지 전용.
     // 액션: 좋아요(카드에서 바로) · 댓글(상세) · 토론(논증 대화).
-    const card = sec.el("div", { class: "nt-card" + (highlight ? " hl" : "") });
+    const card = sec.el("div", { class: "nt-card" + (highlight ? " hl" : "") + (t.is_gov_source ? " gov" : "") });
     const top = sec.el("div", { class: "nt-top" });
     top.appendChild(sec.el("span", { class: "nt-badge" }, t.category || "사회"));
     const scopeLabel = t.region ? `${t.scope} · ${t.region}` : (t.scope || "");
     if (scopeLabel) top.appendChild(sec.el("span", { class: "nt-badge" }, scopeLabel));
     if (t.urgent) top.appendChild(sec.el("span", { class: "nt-badge urgent" }, "긴급"));
     if (t.trend === "상승") top.appendChild(sec.el("span", { class: "nt-badge" }, "↑ 상승"));
+    if (t.is_gov_source) top.appendChild(sec.el("span", { class: "nt-badge gov" }, "정부출처"));
     card.appendChild(top);
 
     card.appendChild(sec.el("b", { class: "nt-title" }, t.title || ("#" + (t.name || ""))));
@@ -1192,11 +1200,13 @@
   // 피드에 흐르는 화제 글은 텍스트 덩어리가 아니라 화제 카드 형식으로.
   function topicPostCard(item) {
     const { title, badge } = parseTopicPost(item.content_transformed);
-    const card = sec.el("div", { class: "nt-card" });
-    if (badge) {
+    const bits = badge.split("·").map(b => b.trim()).filter(Boolean);
+    const isGov = bits.includes("정부출처");
+    const card = sec.el("div", { class: "nt-card" + (isGov ? " gov" : "") });
+    if (bits.length) {
       const top = sec.el("div", { class: "nt-top" });
-      badge.split("·").map(b => b.trim()).filter(Boolean).slice(0, 3)
-        .forEach(b => top.appendChild(sec.el("span", { class: "nt-badge" }, b)));
+      bits.slice(0, 3).forEach(b => top.appendChild(
+        sec.el("span", { class: "nt-badge" + (b === "정부출처" ? " gov" : "") }, b)));
       card.appendChild(top);
     }
     card.appendChild(sec.el("b", { class: "nt-title" }, title || "지금 화제"));
@@ -1451,13 +1461,15 @@
     const box = sec.el("div", { class: "src-box" });
     box.appendChild(sec.el("div", { class: "sb-head" }, `관련 기사 ${t.count || t.headlines.length}건`));
     t.headlines.forEach(h => {
+      const isGov = !!h && (h.rights === "kogl_type1" || h.rights === "public_domain");
       const a = sec.el("a", {
-        class: "src-item",
+        class: "src-item" + (isGov ? " gov" : ""),
         href: sec.safeUrl(h && h.url), target: "_blank", rel: "noopener noreferrer",
       });
       a.appendChild(sec.el("b", null, (h && h.title) || ""));
       const meta = [(h && h.source) || "", (h && h.date) || ""].filter(Boolean).join(" · ");
       if (meta) a.appendChild(sec.el("small", null, meta));
+      if (isGov) a.appendChild(sec.el("span", { class: "src-gov-tag" }, "정부·공공기관"));
       box.appendChild(a);
     });
     wrap.appendChild(box);

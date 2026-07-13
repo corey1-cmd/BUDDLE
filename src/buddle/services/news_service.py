@@ -28,6 +28,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from buddle.ai.news.fetcher import RawArticle, fetch_configured, hamming64, simhash64
+from buddle.ai.news.rights import is_open_license
 from buddle.ai.news.topics import (
     Topic,
     TopicInput,
@@ -904,6 +905,9 @@ def compose_topic_post(t: Topic) -> str:
         lines += [t.summary, ""]
     meta_bits = [
         *(["긴급"] if t.urgent else []),  # 재난·안전 — 카드 뱃지로 분리 표시된다
+        # 정부·공공기관 출처(공공누리 1유형 이상)가 섞여 있으면 뱃지로 표시 —
+        # 클라이언트가 이 문구를 감지해 카드 테두리를 파란색(#191970)으로 그린다.
+        *(["정부출처"] if any(is_open_license(s) for s in t.sources) else []),
         t.type_label or f"{t.category} 이슈",
         t.scope + (f" · {t.region}" if t.region else ""),
     ]

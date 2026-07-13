@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Query
 
-from buddle.ai.news.rights import rights_of
+from buddle.ai.news.rights import is_open_license, rights_of
 from buddle.api.deps import DB, CurrentUser, Redis
 from buddle.schemas.news import (
     NewsBriefingOut,
@@ -149,6 +149,7 @@ async def list_topics(
                         url=str(h.get("url") or ""),
                         source=str(h.get("source") or ""),
                         date=str(h.get("date") or ""),
+                        rights=rights_of(str(h.get("source") or "")),
                     )
                     for h in heads
                     if isinstance(h, dict)
@@ -162,6 +163,7 @@ async def list_topics(
                 like_count=int(t.get("like_count") or 0),  # type: ignore[call-overload]
                 comment_count=int(t.get("comment_count") or 0),  # type: ignore[call-overload]
                 urgent=bool(t.get("urgent")),
+                is_gov_source=any(is_open_license(str(s)) for s in sources_list),
                 entity_briefs=[
                     NewsEntityBrief(
                         name=str(b.get("name") or ""),

@@ -115,6 +115,9 @@
   .nt-card{padding:12px 13px;border:1px solid var(--line);border-radius:16px;background:var(--paper-sunken);margin-bottom:10px;cursor:pointer;transition:border-color .15s,transform .12s;}
   .nt-card:hover{border-color:var(--line-strong);}
   .nt-card:active{transform:scale(.99);}
+  /* 정부·공공기관 출처가 섞인 화제 — 언론사 출처와 구분되는 파란 테두리 */
+  .nt-card.gov{border-color:#191970;box-shadow:0 0 0 3px rgba(25,25,112,.12);}
+  .nt-badge.gov{background:rgba(25,25,112,.14);color:#191970;font-weight:800;}
   .nt-top{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin-bottom:6px;}
   .nt-badge{font-size:10.5px;font-weight:700;padding:2px 8px;border-radius:999px;background:var(--willow-wash);color:var(--willow-text);}
   .nt-title{display:block;font-size:15px;font-weight:700;line-height:1.45;color:var(--ink);}
@@ -674,11 +677,13 @@
   // 피드에 흐르는 화제 글은 텍스트 덩어리가 아니라 화제 카드 형식으로.
   function topicPostCard(item){
     const { title, badge } = parseTopicPost(item.content_transformed);
-    const card = sec.el("div", { class:"nt-card" });
-    if (badge){
+    const bits = badge.split("·").map(b => b.trim()).filter(Boolean);
+    const isGov = bits.includes("정부출처");
+    const card = sec.el("div", { class:"nt-card" + (isGov ? " gov" : "") });
+    if (bits.length){
       const top = sec.el("div", { class:"nt-top" });
-      badge.split("·").map(b => b.trim()).filter(Boolean).slice(0, 3)
-        .forEach(b => top.appendChild(sec.el("span", { class:"nt-badge" }, b)));
+      bits.slice(0, 3).forEach(b => top.appendChild(
+        sec.el("span", { class: "nt-badge" + (b === "정부출처" ? " gov" : "") }, b)));
       card.appendChild(top);
     }
     card.appendChild(sec.el("b", { class:"nt-title" }, title || "지금 화제"));
@@ -857,13 +862,14 @@
     }
   }
   function ntCard(t){
-    const card = sec.el("div", { class:"nt-card" });
+    const card = sec.el("div", { class:"nt-card" + (t.is_gov_source ? " gov" : "") });
     const top = sec.el("div", { class:"nt-top" });
     top.appendChild(sec.el("span", { class:"nt-badge" }, t.category || "사회"));
     const scopeLabel = t.region ? `${t.scope} · ${t.region}` : (t.scope || "");
     if (scopeLabel) top.appendChild(sec.el("span", { class:"nt-badge" }, scopeLabel));
     if (t.urgent) top.appendChild(sec.el("span", { class:"nt-badge urgent" }, "긴급"));
     if (t.trend === "상승") top.appendChild(sec.el("span", { class:"nt-badge" }, "↑ 상승"));
+    if (t.is_gov_source) top.appendChild(sec.el("span", { class:"nt-badge gov" }, "정부출처"));
     card.appendChild(top);
     card.appendChild(sec.el("b", { class:"nt-title" }, t.title || ("#" + (t.name || ""))));
     const kws = Array.isArray(t.keywords) ? t.keywords : [];

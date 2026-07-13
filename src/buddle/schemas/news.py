@@ -55,6 +55,9 @@ class NewsTopicHeadline(BaseModel):
     url: str
     source: str
     date: str = ""  # YYYY-MM-DD (발행일 표기 — 출처는 절대 생략하지 않는다)
+    # 출처 권리 등급(rights.py) — 상세 페이지가 정부·공공기관 출처를 언론사와
+    # 다른 색으로 구분 표시하는 데 쓴다("kogl_type1"/"public_domain" → 정부).
+    rights: str = "default_deny"
 
 
 class NewsTopicOut(BaseModel):
@@ -85,3 +88,6 @@ class NewsTopicOut(BaseModel):
     urgent: bool = False
     # 위키백과 배경지식(상세 페이지 '배경지식' 박스 전용).
     entity_briefs: list[NewsEntityBrief] = []
+    # 이 화제에 정부·공공기관 출처(공공누리 1유형 이상)가 하나라도 섞여 있는가
+    # — 피드 카드 테두리를 파란색(#191970)으로 구분 표시하는 신호.
+    is_gov_source: bool = False
