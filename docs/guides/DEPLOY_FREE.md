@@ -116,6 +116,30 @@ docker compose run --rm --no-deps \
 1. https://aistudio.google.com/apikey 에서 무료 API 키 발급.
 2. Render 환경변수 `PERSONA_ENDPOINT_API_KEY` 에 붙이고 저장(자동 재배포).
 
+> 참고: 이 키는 **페르소나 대화용**이다. 해외 뉴스의 한국어 **번역**은 이 키를
+> 쓰지 않는다 — 번역은 오프라인 엔진(MarianMT)이 자사 서버에서 처리하는 것이
+> 기본 정책이다(8번).
+
+## 8. 해외 뉴스 한국어 번역 (오프라인, 외부 API 0회)
+
+번역 엔진 기본값은 `marian`(MarianMT 오프라인)이다. 외부 클라우드 번역 API를
+호출하지 않고 자사 서버에서 영→한 번역을 수행한다. 실행하려면 두 가지가 필요하다:
+
+1. **의존성**: 프로덕션 이미지에 `.[translate]` extra 설치. Docker 빌드 인자로
+   `--build-arg INSTALL_EXTRAS="translate"` (transformers/torch/sentencepiece).
+2. **메모리**: MarianMT 모델은 상주 **~1GB**. Render **무료(512MB)로는 못 올린다.**
+
+메모리가 부족해 모델 로드에 실패하면 뉴스는 **원문(영문)으로 표시되지만, 외부
+번역 API를 호출하거나 크래시하지 않는다**(fail-open). 한국어 번역을 원하면:
+
+- Render 인스턴스를 **≥1GB RAM 플랜**으로 올리거나(권장), 자체 서버/HF Spaces에서
+  `.[translate]` 설치 + 충분한 메모리로 구동한다.
+- 모델은 첫 로드 때 1회 다운로드되고 이후 오프라인으로 동작한다(에페메럴 컨테이너는
+  재배포마다 재다운로드하므로, 이미지에 모델을 미리 굽거나 캐시 볼륨을 붙이면 좋다).
+
+> 오프라인 불가 환경에서 부득이 클라우드 배치 번역을 쓰려면 환경변수
+> `NEWS_TRANSLATE_ENGINE=llm` 로 **명시적으로** 전환한다(이때만 API를 호출한다).
+
 ---
 
 ## 문제 해결
