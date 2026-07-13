@@ -848,6 +848,8 @@ async def news_tick(db: AsyncSession, *, redis: RedisClient) -> dict[str, object
     # 나올 때 원인이 (a) LLM 엔진 미설정인지 (b) 설정됐는데 호출 실패인지를
     # admin 화면에서 바로 구분할 수 있게 한다(persona_endpoint_url 없으면
     # 번역·해석이 통째로 폴백돼 원문 영어가 서빙된다).
+    from buddle.ai.news.mediator import get_last_ai_error
+
     kept_sources = list({a.source for a in new_articles})
     translated_now = sum(1 for a in new_articles if getattr(a, "translated", False))
     status = {
@@ -861,6 +863,8 @@ async def news_tick(db: AsyncSession, *, redis: RedisClient) -> dict[str, object
         "translated": translated_now,  # 이번 틱 신규 기사 중 번역 성공 건수
         "backfilled": backfilled,  # 기존 저장 영어 기사 소급 번역 건수
         "refined": refined,  # LLM 해석(문장형 한국어 제목·요약) 반영 화제 수
+        # 설정은 됐는데 0건일 때의 정확한 사유(401/404/429…). 성공 시 빈 문자열.
+        "llm_error": get_last_ai_error(),
     }
     await redis.setex(_STATUS_KEY, _BRIEFINGS_TTL, json.dumps(status, ensure_ascii=False))
 

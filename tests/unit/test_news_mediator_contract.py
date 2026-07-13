@@ -116,6 +116,30 @@ async def test_mediator_no_endpoint_is_stub(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_last_ai_error_records_auth_failure_and_clears_on_success(monkeypatch):
+    # 401 → admin 진단 배너가 짚을 한국어 사유를 기록한다(키 문제).
+    _patch(monkeypatch, [_Resp(401)])
+    out = await M._call_ai([{"role": "user", "content": "x"}], settings=_Settings())
+    assert out == ""
+    assert "인증 실패" in M.get_last_ai_error()
+
+    # 성공하면 진단값이 초기화된다(원인 표시가 유령처럼 남지 않게).
+    payload = json.dumps({"ok": 1}, ensure_ascii=False)
+    _patch(monkeypatch, [_Resp(200, payload)])
+    out = await M._call_ai([{"role": "user", "content": "x"}], settings=_Settings())
+    assert out
+    assert M.get_last_ai_error() == ""
+
+
+@pytest.mark.asyncio
+async def test_last_ai_error_maps_model_not_found(monkeypatch):
+    # 404 → 모델명/URL 문제로 안내한다.
+    _patch(monkeypatch, [_Resp(404)])
+    await M._call_ai([{"role": "user", "content": "x"}], settings=_Settings())
+    assert "모델" in M.get_last_ai_error()
+
+
+@pytest.mark.asyncio
 async def test_user_context_parses_and_degrades(monkeypatch):
     from buddle.services import user_context_service as UC
 

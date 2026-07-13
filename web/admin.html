@@ -864,13 +864,18 @@
             "재배포한 뒤 '지금 수집'을 눌러주세요.";
         } else {
           const tr = (s.translated || 0) + (s.backfilled || 0);
-          diag.style.color = (tr === 0 && (s.refined || 0) === 0) ? "#B00020" : "var(--muted)";
+          const zero = (tr === 0 && (s.refined || 0) === 0);
+          diag.style.color = (zero && s.llm_error) ? "#B00020" : "var(--muted)";
+          let tail = "";
+          if (zero && s.llm_error) {
+            tail = ` — 호출 실패: ${s.llm_error}`;
+          } else if (zero) {
+            // 오류는 없는데 0건 = 번역/해석할 신규 해외 기사가 없었던 정상 상태.
+            tail = " — (이번엔 새 해외 기사가 없어 0건, 정상)";
+          }
           diag.textContent =
             `해석 엔진: 설정됨 · 번역 ${tr}건(신규 ${s.translated||0}·소급 ${s.backfilled||0}) · ` +
-            `한국어 해석 ${s.refined||0}건` +
-            ((tr === 0 && (s.refined||0) === 0)
-              ? " — 설정은 됐지만 호출 결과 0건입니다. 키·모델명이 맞는지 확인하세요."
-              : "");
+            `한국어 해석 ${s.refined||0}건` + tail;
         }
       }
     } catch (e) { /* no-op */ }
