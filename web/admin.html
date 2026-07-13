@@ -350,7 +350,8 @@
           <span>매개자 AI 뉴스 브리핑</span>
           <button id="newsTickBtn" class="btn-sm" style="font-size:12px;padding:5px 12px;border-radius:8px;background:var(--grad-rich);color:#fff;border:0;cursor:pointer">지금 수집</button>
         </div>
-        <div id="newsStatusBar" style="font-size:12px;color:var(--muted);margin-bottom:12px">로딩 중…</div>
+        <div id="newsStatusBar" style="font-size:12px;color:var(--muted);margin-bottom:4px">로딩 중…</div>
+        <div id="newsDiagBar" style="font-size:12px;color:var(--muted);margin-bottom:12px;line-height:1.5"></div>
         <div id="newsDigestCard" style="display:none;padding:12px 16px;margin-bottom:14px;background:var(--grad-soft,#f3f6ff);border:1px solid #d6e0ff;border-radius:12px">
           <div style="font-size:11px;font-weight:700;color:var(--willow-text);text-transform:uppercase;letter-spacing:.2px;margin-bottom:6px">🧩 매개자 종합 브리핑 (조합)</div>
           <div id="newsDigestText" style="font-size:13.5px;line-height:1.55;color:var(--text,#1a1a2e)"></div>
@@ -848,8 +849,30 @@
       const s = await api("GET", "/v1/admin/news/status");
       if (!s) return;
       const bar = document.getElementById("newsStatusBar");
-      if (bar) bar.textContent =
+      if (!bar) return;
+      bar.textContent =
         `마지막 수집: ${_timeAgo(s.last_run_ts)} · 가져옴 ${s.fetched || 0}건 · 신규 ${s.new_items || 0}건 · 저장 ${s.stored || 0}건 · 출처: ${(s.sources||[]).join(", ") || "없음"}`;
+
+      // 해석(한국어화) 진단 — 카드가 영어로 나올 때 원인을 바로 짚어준다.
+      const diag = document.getElementById("newsDiagBar");
+      if (diag) {
+        if (!s.llm_configured) {
+          diag.style.color = "#B00020";
+          diag.textContent =
+            "⚠ 해석 엔진 미설정 — 뉴스가 영어 원문으로 나옵니다. Render 환경변수 " +
+            "PERSONA_ENDPOINT_URL · PERSONA_ENDPOINT_API_KEY · PERSONA_MODEL 을 설정하고 " +
+            "재배포한 뒤 '지금 수집'을 눌러주세요.";
+        } else {
+          const tr = (s.translated || 0) + (s.backfilled || 0);
+          diag.style.color = (tr === 0 && (s.refined || 0) === 0) ? "#B00020" : "var(--muted)";
+          diag.textContent =
+            `해석 엔진: 설정됨 · 번역 ${tr}건(신규 ${s.translated||0}·소급 ${s.backfilled||0}) · ` +
+            `한국어 해석 ${s.refined||0}건` +
+            ((tr === 0 && (s.refined||0) === 0)
+              ? " — 설정은 됐지만 호출 결과 0건입니다. 키·모델명이 맞는지 확인하세요."
+              : "");
+        }
+      }
     } catch (e) { /* no-op */ }
   }
 

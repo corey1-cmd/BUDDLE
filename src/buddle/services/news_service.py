@@ -776,10 +776,11 @@ async def news_tick(db: AsyncSession, *, redis: RedisClient) -> dict[str, object
         log.warning("news.topics_error", error=str(e))
 
     # 저장돼 있는 미번역 기사 소급 번역 — 배포 이전/실패분을 매 틱 치유.
+    backfilled = 0
     if getattr(settings, "news_translate_foreign", True):
         try:
-            healed = await _backfill_translations(db, settings=settings, redis=redis)
-            if healed:
+            backfilled = await _backfill_translations(db, settings=settings, redis=redis)
+            if backfilled:
                 # 번역된 텍스트로 화제를 다시 계산해야 한국어 카드가 나온다.
                 topics = await _rebuild_topics(db, redis)
         except Exception as e:
@@ -788,12 +789,13 @@ async def news_tick(db: AsyncSession, *, redis: RedisClient) -> dict[str, object
     # 카드 문안 정제(틱당 배치 1회): 키워드 이름 대신 "무슨 일이 일어났는가"
     # 문장형 제목·요약·한국어 키워드. 실패해도 결정론 폴백(대표 헤드라인)이
     # 이미 채워져 있어 서빙은 계속된다.
+    refined = 0
     if topics and getattr(settings, "news_topic_refine_enabled", True):
         try:
             from buddle.ai.news.refine import refine_topics
 
-            applied = await refine_topics(topics, settings=settings)
-            if applied:
+            refined = await refine_topics(topics, settings=settings)
+            if refined:
                 await _cache_topics(redis, topics)
         except Exception as e:
             log.warning("news.refine_error", error=str(e))
@@ -842,14 +844,23 @@ async def news_tick(db: AsyncSession, *, redis: RedisClient) -> dict[str, object
     except Exception as e:
         log.warning("news.digest_error", error=str(e))
 
-    # Save status snapshot
+    # Save status snapshot. 번역/해석 진단값을 함께 남긴다 — 카드가 영어로
+    # 나올 때 원인이 (a) LLM 엔진 미설정인지 (b) 설정됐는데 호출 실패인지를
+    # admin 화면에서 바로 구분할 수 있게 한다(persona_endpoint_url 없으면
+    # 번역·해석이 통째로 폴백돼 원문 영어가 서빙된다).
     kept_sources = list({a.source for a in new_articles})
+    translated_now = sum(1 for a in new_articles if getattr(a, "translated", False))
     status = {
         "last_run_ts": time.time(),
         "fetched": fetched,
         "new_items": len(new_articles),
         "stored": stored,
         "sources": kept_sources,
+        # 해석(한국어화) 파이프라인 진단
+        "llm_configured": bool(getattr(settings, "persona_endpoint_url", "")),
+        "translated": translated_now,  # 이번 틱 신규 기사 중 번역 성공 건수
+        "backfilled": backfilled,  # 기존 저장 영어 기사 소급 번역 건수
+        "refined": refined,  # LLM 해석(문장형 한국어 제목·요약) 반영 화제 수
     }
     await redis.setex(_STATUS_KEY, _BRIEFINGS_TTL, json.dumps(status, ensure_ascii=False))
 
@@ -935,6 +946,32 @@ def compose_topic_post(t: Topic) -> str:
     return "\n".join(lines)
 
 
+async def _heal_topic_post_body(db: AsyncSession, post_id: str, new_content: str) -> bool:
+    """재사용하는 화제 글의 본문이 옛 버전이면 새(한국어) 본문으로 갱신한다.
+
+    화제 글은 태그/제목 기준으로 멱등 재사용되지만, 본문은 최초 생성 시점의
+    상태로 고정돼 있었다 — 그때 번역·해석이 실패(LLM 엔드포인트 미설정 등)했다면
+    영어 원문 본문이 영구 저장 정책과 맞물려 영원히 남는다. 이후 틱에서 같은
+    화제가 한국어로 다시 조립되면 그 본문으로 덮어써 피드가 스스로 낫게 한다.
+    좋아요·댓글은 post_id에 묶여 있어 영향받지 않고, 내용이 같으면 쓰지 않는다.
+    """
+    import uuid as _uuid
+
+    from buddle.db.models.post import Post
+
+    try:
+        pid = _uuid.UUID(post_id)
+    except (ValueError, AttributeError):
+        return False
+    post = await db.get(Post, pid)
+    if post is None or post.content_transformed == new_content:
+        return False
+    post.content_raw = new_content
+    post.content_transformed = new_content
+    await db.commit()
+    return True
+
+
 async def _ensure_topic_posts(
     db: AsyncSession, redis: RedisClient, topics: list[Topic]
 ) -> dict[str, str]:
@@ -982,9 +1019,14 @@ async def _ensure_topic_posts(
             continue
         tag_name = t.name[:64]
         key = _TOPICPOST_KEY + tag_name
+        # 이번 틱의 화제 상태로 본문을 미리 조립한다 — 재사용 글의 본문이
+        # 옛 영어판이면 새(한국어) 본문으로 갱신하는 자가 치유에 쓴다.
+        content = compose_topic_post(t)
+
         cached = await redis.get(key)
         if cached:
             mapping[t.name] = str(cached)
+            await _heal_topic_post_body(db, str(cached), content)
             continue
 
         # DB 폴백 — Redis가 비워져도 같은 화제 글을 중복 생성하지 않는다.
@@ -1006,9 +1048,8 @@ async def _ensure_topic_posts(
         if existing is not None:
             mapping[t.name] = str(existing)
             await redis.setex(key, _TOPICPOST_TTL, str(existing))
+            await _heal_topic_post_body(db, str(existing), content)
             continue
-
-        content = compose_topic_post(t)
 
         # 제목 재사용 — 태그는 달라졌지만 같은 헤드라인의 글이 이미 있으면
         # 그 글을 이 화제의 글로 삼는다(중복 카드 생성 금지).
@@ -1017,6 +1058,7 @@ async def _ensure_topic_posts(
         if reused:
             mapping[t.name] = reused
             await redis.setex(key, _TOPICPOST_TTL, reused)
+            await _heal_topic_post_body(db, reused, content)
             continue
         post = Post(
             source_persona_id=None,
@@ -1302,13 +1344,25 @@ async def get_news_briefings(
 
 async def get_news_status(redis: RedisClient) -> dict[str, object]:
     """Return the last-run status for the admin dashboard."""
+    from buddle.config import get_settings
+
     raw = await redis.get(_STATUS_KEY)
     if raw:
         try:
             return json.loads(raw)
         except json.JSONDecodeError:
             pass
-    return {"last_run_ts": 0, "fetched": 0, "new_items": 0, "stored": 0, "sources": []}
+    return {
+        "last_run_ts": 0,
+        "fetched": 0,
+        "new_items": 0,
+        "stored": 0,
+        "sources": [],
+        "llm_configured": bool(getattr(get_settings(), "persona_endpoint_url", "")),
+        "translated": 0,
+        "backfilled": 0,
+        "refined": 0,
+    }
 
 
 async def get_news_digest(redis: RedisClient) -> dict[str, object]:

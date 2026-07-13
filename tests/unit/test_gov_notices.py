@@ -76,6 +76,46 @@ def test_urgent_topic_flag_and_boost():
     assert urgent.score > by_urgent[False].score
 
 
+def test_topic_post_marks_government_source():
+    """정부·공공기관(공공누리 1유형+) 출처가 섞이면 본문에 '정부출처' 표식 —
+    클라이언트가 이 문구로 카드 테두리를 파란색으로 그린다."""
+    from buddle.services.news_service import compose_topic_post
+
+    gov_items = [
+        TopicInput(
+            title="행안부, 재난안전 통신망 고도화 사업 착수",
+            url="https://ex.am/g1",
+            source="행정안전부",
+            published_at=int(NOW - 600),
+        ),
+        TopicInput(
+            title="재난안전 통신망 고도화에 지자체 협력",
+            url="https://ex.am/g2",
+            source="경기도 뉴스포털",
+            published_at=int(NOW - 1200),
+        ),
+    ]
+    gov_topic = build_topics(gov_items, now=NOW)[0]
+    assert "정부출처" in compose_topic_post(gov_topic)
+
+    press_items = [
+        TopicInput(
+            title="어느 스타트업 신제품 출시",
+            url="https://ex.am/p1",
+            source="테크블로그",
+            published_at=int(NOW - 600),
+        ),
+        TopicInput(
+            title="스타트업 신제품 반응 정리",
+            url="https://ex.am/p2",
+            source="IT매체",
+            published_at=int(NOW - 1200),
+        ),
+    ]
+    press_topic = build_topics(press_items, now=NOW)[0]
+    assert "정부출처" not in compose_topic_post(press_topic)
+
+
 def test_govapi_items_finds_standard_and_odcloud_shapes():
     # data.go.kr 표준(response.body.items.item[]) — 과거 개편 사례처럼 골격이
     # 달라져도(items가 dict/list 혼용) 리스트를 찾아낸다.
