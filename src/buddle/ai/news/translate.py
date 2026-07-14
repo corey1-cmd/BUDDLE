@@ -1,16 +1,16 @@
-"""해외 RSS 헤드라인 번역 — 오프라인 우선(marian) + 원문 해시 캐시.
+"""해외 RSS 헤드라인 번역 — 엔진 배타 선택(llm|marian) + 원문 해시 캐시.
 
-무-LLM 원칙: 화제 '분석'(분류·군집·점수)은 전부 알고리즘이고, 번역도 외부
-클라우드 API에 의존하지 않는 것이 기본 정책이다. 엔진은 배포 프로파일이 고른다:
+번역은 알고리즘으로 대체할 수 없는 단계라 두 경로 중 하나를 배포 사양이 고른다:
 
-  - marian — MarianMT 완전 오프라인(외부 API 0회, 자사 서버 완결). **기본값**.
-             미설치·로드 실패 시 원문(영문)을 그대로 유지한다 — 이 경로에서
-             클라우드 번역 API로 폴백하지 않는다(오프라인 계약 유지).
-  - llm    — OpenAI 호환(Gemini 등) 배치 번역. 이 값을 **명시적으로** 고른
-             배포에서만 API를 호출한다(레거시·오프라인 불가 환경용 opt-in).
+  - llm    — OpenAI 호환(Gemini 등) 배치 번역. **기본값**. 무거운 계산을 원격
+             API가 하므로 우리 서버 메모리 ~0 — 512MB 무료 티어에서 한국어
+             번역이 가능한 유일한 경로다. PERSONA_ENDPOINT_* 설정을 재사용한다.
+  - marian — MarianMT 완전 오프라인(외부 API 0회, 자사 서버 완결). 상주 ~1GB라
+             ≥1GB 인스턴스 전용. 미설치·로드 실패 시 원문(영문)을 그대로 유지
+             하며 이 경로에서 클라우드 API로 폴백하지 않는다(오프라인 계약).
 
 엔진은 배타적으로 실행된다: marian 실패분을 llm이 이어받는 자동 폴백은 없다
-(그 폴백이 곧 "번역에 API를 쓰지 말라"는 원칙 위반이었다).
+— marian을 고른 배포는 "번역에 외부 API 0회"를 보장받는다.
 
 비용·안전장치가 구조에 내장돼 있다:
 
@@ -172,7 +172,7 @@ async def translate_articles(
         # 2) 엔진 디스패치 — 엔진별 배타 실행. 기본(marian)은 완전 오프라인이며
         #    실패해도 클라우드 번역 API로 폴백하지 않는다(원문 유지 = fail-open).
         #    "llm"은 이 값을 명시적으로 고른 배포에서만 API를 호출한다(opt-in).
-        engine = str(getattr(settings, "news_translate_engine", "marian") or "marian")
+        engine = str(getattr(settings, "news_translate_engine", "llm") or "llm")
         if engine == "llm":
             await _translate_llm(pending, articles, out, settings=settings)
         else:

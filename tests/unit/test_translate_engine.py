@@ -103,8 +103,8 @@ async def test_marian_unavailable_keeps_original_without_calling_api(monkeypatch
     assert api_calls["n"] == 0  # 번역 단계에서 API 미호출
 
 
-async def test_llm_engine_is_explicit_opt_in(monkeypatch):
-    """레거시 opt-in: 엔진을 명시적으로 'llm'으로 골랐을 때만 API를 쓴다."""
+async def test_llm_engine_uses_api_not_marian(monkeypatch):
+    """기본 엔진 'llm'은 API로 번역하며 marian 오프라인 경로를 타지 않는다."""
     from buddle.ai.news import marian
 
     async def boom_batch(_texts, *, model_name=None):  # type: ignore[no-untyped-def]
