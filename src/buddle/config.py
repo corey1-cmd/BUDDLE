@@ -76,10 +76,17 @@ class Settings(BaseSettings):
     # 해외 RSS 한국어 배치 번역(틱당 1~2회 호출, 기사당 아님) — 실패 시 원문
     # 공개(fail-open). 끄면 해외 기사가 원문(영문)으로 공개된다.
     news_translate_foreign: bool = True
-    # 번역 엔진: "llm"=Gemini 배치(신문 문체 자연화 내장, 무료 클라우드 기본) |
-    # "marian"=MarianMT 완전 오프라인(외부 API 0회; 선택 의존성 `.[translate]`
-    # 필요, 상주 메모리 ~1GB — Render 무료 티어 512MB에선 켤 수 없어 기본값이
-    # llm이다). marian 미설치·로드 실패 시 llm으로 자동 폴백(무중단).
+    # 번역 엔진. 두 경로는 배타적이며(자동 폴백 없음) 배포 사양이 고른다:
+    #   "llm"    = Gemini 등 OpenAI 호환 배치 번역. **기본값**. 무거운 계산을
+    #             원격 API가 수행하므로 우리 서버 메모리 ~0 — 512MB 무료 티어에서
+    #             한국어 번역이 가능한 유일한 경로다. 페르소나와 같은
+    #             PERSONA_ENDPOINT_* 설정을 재사용한다(별도 키 불필요).
+    #   "marian" = MarianMT 완전 오프라인(외부 API 0회, 자사 서버 완결). 선택
+    #             의존성 `.[translate]` + 상주 메모리 ~1GB 필요 — ≥1GB 인스턴스
+    #             전용. 미설치·로드 실패 시 원문(영문) 유지(fail-open)하며 이
+    #             경로에서 클라우드 API로 폴백하지 않는다(오프라인 계약 유지).
+    # 메모리 삼각관계: 512MB에서 한국어를 원하면 llm(API), API를 원천 차단하려면
+    # marian(≥1GB). 무료 티어를 유지하는 현 배포는 llm이 맞다.
     news_translate_engine: str = "llm"
     # MarianMT 모델(en→ko). 언어쌍이 늘면 쌍별 설정으로 확장한다.
     news_translate_marian_model: str = "Helsinki-NLP/opus-mt-tc-big-en-ko"

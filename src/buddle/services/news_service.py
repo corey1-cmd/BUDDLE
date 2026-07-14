@@ -1019,7 +1019,11 @@ async def _ensure_topic_posts(
             by_title[title_key] = str(pid)
 
     for t in topics:
-        if t.count < 2 or not t.name:
+        # 일반 화제는 2건+ 클러스터만 글로 승격한다(단발 = 잡음). 정부·공공
+        # (개방 라이선스) 단독 공지는 예외: 공식 채널의 단독 공지도 좋아요·댓글·
+        # 토론 대상이 되도록 count=1이라도 글을 만든다(build_topics 3.5 승격과 짝).
+        is_open = any(is_open_license(str(s)) for s in t.sources)
+        if (t.count < 2 and not is_open) or not t.name:
             continue
         tag_name = t.name[:64]
         key = _TOPICPOST_KEY + tag_name

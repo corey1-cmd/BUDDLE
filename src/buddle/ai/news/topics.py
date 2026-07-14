@@ -21,6 +21,13 @@ import re
 import time
 from dataclasses import dataclass, field
 
+from buddle.ai.news.rights import is_open_license
+
+# 정부·공공(개방 라이선스) 단발 공지를 화제로 승격할 때의 상한. 공식 채널의
+# 단독 공지는 클러스터되지 않아도 그 자체로 화제지만, 언론 단발과 달리 무제한
+# 승격하면 피드가 공지로 범람하므로 틱당 최신 N건까지만 단독 화제로 올린다.
+_GOV_SINGLETON_CAP = 4
+
 # ── Tokenization ────────────────────────────────────────────────────────────
 
 # Korean particles commonly glued to nouns in headlines. Stripped iteratively
@@ -1398,6 +1405,38 @@ def build_topics(
         used_articles_by_topic.append(fresh)
         claimed |= fresh
 
+    # ── 3.5) 정부·공공(개방 라이선스) 단발 공지 승격 ────────────────────────
+    # 공식 채널(KOGL 1유형·제7조)의 단독 공지는 다른 기사와 묶이지 않아도 그
+    # 자체로 화제다 — min_count=2 '잡음' 필터의 예외. 언론 단발 기사는 계속
+    # 걸러 두고, 개방 라이선스 출처만 최신순으로 상한(_GOV_SINGLETON_CAP)까지
+    # 단독 화제(count=1)로 올린다. 아래 4)가 이 화제들의 태그·출처·문안을 채운다.
+    solo_added = 0
+    for i in sorted(
+        (j for j in range(len(items)) if j not in claimed and is_open_license(items[j].source)),
+        key=lambda j: items[j].published_at,
+        reverse=True,
+    ):
+        if len(topics) >= max_topics or solo_added >= _GOV_SINGLETON_CAP:
+            break
+        kws = article_keywords[i]
+        if not kws:
+            continue
+        topics.append(
+            Topic(
+                name=kws[0],
+                score=0.0,
+                count=1,
+                sources=[],
+                category="",
+                scope="",
+                region="",
+                keywords=kws[:5],
+            )
+        )
+        used_articles_by_topic.append({i})
+        claimed.add(i)
+        solo_added += 1
+
     # ── 4) 병합 반영 + 대표 태그(PageRank, 한국어 우선) ─────────────────────
     max_count = max((len(s) for s in used_articles_by_topic), default=1)
     for t, idxs in zip(topics, used_articles_by_topic, strict=True):
@@ -1509,6 +1548,11 @@ def build_topics(
         if t.urgent:
             # 긴급 공지는 목록 상단으로 — 상한 1.0 안에서 가산.
             t.score = min(1.0, t.score + 0.15)
+        elif any(is_open_license(s) for s in t.sources):
+            # 공식 공개 채널(정부·공공누리)은 단독 공지라도 공신력 있는 신호 —
+            # 규모(count)가 작아 점수가 낮아도 목록에서 밀려나지 않게 가산한다
+            # (긴급보다는 낮게: 재난 > 공식 공지 > 일반 클러스터).
+            t.score = min(1.0, t.score + 0.12)
 
     topics.sort(key=lambda t: t.score, reverse=True)
     # 최종 안전망: 카드 제목(대표 헤드라인)이 같은 화제는 하나만 남긴다.
