@@ -1,0 +1,9 @@
+instance=WARNING: Permissions on /home/runner/.oci/config are too open. 
+To fix this please try executing the following command: 
+oci setup repair-file-permissions --file /home/runner/.oci/config 
+Alternatively to hide this warning, you may set the environment variable, OCI_CLI_SUPPRESS_FILE_PERMISSIONS_WARNING: 
+export OCI_CLI_SUPPRESS_FILE_PERMISSIONS_WARNING=True
+
+ocid1.instance.oc1.ap-tokyo-1.anxhiljrylrzcoacd6htlrznnoep6zvnojo5sqj7m6yflmxdzxsngqyo2bqq
+public_ip=
+acquired_at=2026-08-23T07:16:56Z
