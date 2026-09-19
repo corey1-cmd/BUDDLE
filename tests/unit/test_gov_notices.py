@@ -76,6 +76,35 @@ def test_urgent_topic_flag_and_boost():
     assert urgent.score > by_urgent[False].score
 
 
+def test_government_singleton_becomes_topic():
+    """정부·공공 단독 공지(다른 기사와 안 묶임)도 화제로 승격된다 — 언론 단독
+    기사는 여전히 min_count=2로 걸러진다(개방 라이선스만 예외)."""
+    items = [
+        # 정부 단독 공지 — 다른 기사와 공유 키워드 없음(count=1이 될 후보)
+        TopicInput(
+            title="행정안전부 재난안전데이터 공유플랫폼 정식 개통 안내",
+            url="https://ex.am/gov1",
+            source="행정안전부",
+            published_at=int(NOW - 300),
+        ),
+        # 언론 단독 기사 — 역시 단독이지만 개방 라이선스가 아니라 승격 안 됨
+        TopicInput(
+            title="어느 언론사 단독 보도 무관한 이야기",
+            url="https://ex.am/press1",
+            source="모르는 언론사",
+            published_at=int(NOW - 400),
+        ),
+    ]
+    topics = build_topics(items, now=NOW)
+    names = {t.title for t in topics}
+    # 정부 단독 공지는 화제로 뜬다
+    assert any("행정안전부" in n or "재난안전" in n for n in names), names
+    gov = next(t for t in topics if "행정안전부" in t.title or "재난안전" in t.title)
+    assert gov.count == 1 and "행정안전부" in gov.sources
+    # 언론 단독 기사는 화제가 아니다(개방 라이선스 예외 대상 아님)
+    assert not any("무관한 이야기" in n for n in names), names
+
+
 def test_topic_post_marks_government_source():
     """정부·공공기관(공공누리 1유형+) 출처가 섞이면 본문에 '정부출처' 표식 —
     클라이언트가 이 문구로 카드 테두리를 파란색으로 그린다."""
