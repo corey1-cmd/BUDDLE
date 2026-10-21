@@ -1,15 +1,20 @@
-"""해외 RSS 헤드라인 번역 — 엔진 선택형(llm|marian) + 원문 해시 캐시.
+"""해외 RSS 헤드라인 번역 — 엔진 배타 선택(llm|marian) + 원문 해시 캐시.
 
-무-LLM 원칙과의 경계: 화제 '분석'(분류·군집·점수)은 전부 알고리즘이지만,
-번역은 알고리즘으로 대체할 수 없는 단계다. 엔진은 배포 프로파일이 고른다:
+번역은 알고리즘으로 대체할 수 없는 단계라 두 경로 중 하나를 배포 사양이 고른다:
 
-  - llm    — Gemini 배치(신문 문체 자연화 내장). 무료 클라우드(512MB) 기본값.
-  - marian — MarianMT 완전 오프라인(외부 API 0회). 셀프호스트/여유 사양 배포용.
-             미설치·로드 실패 시 llm 으로 자동 폴백(무중단).
+  - llm    — OpenAI 호환(Gemini 등) 배치 번역. **기본값**. 무거운 계산을 원격
+             API가 하므로 우리 서버 메모리 ~0 — 512MB 무료 티어에서 한국어
+             번역이 가능한 유일한 경로다. PERSONA_ENDPOINT_* 설정을 재사용한다.
+  - marian — MarianMT 완전 오프라인(외부 API 0회, 자사 서버 완결). 상주 ~1GB라
+             ≥1GB 인스턴스 전용. 미설치·로드 실패 시 원문(영문)을 그대로 유지
+             하며 이 경로에서 클라우드 API로 폴백하지 않는다(오프라인 계약).
 
-비용·429 안전장치가 구조에 내장돼 있다:
+엔진은 배타적으로 실행된다: marian 실패분을 llm이 이어받는 자동 폴백은 없다
+— marian을 고른 배포는 "번역에 외부 API 0회"를 보장받는다.
 
-  - 기사당 1회가 아니라 **배치당 1회** (429 사태의 원인이던 fan-out 없음)
+비용·안전장치가 구조에 내장돼 있다:
+
+  - 기사당 1회가 아니라 **배치당 1회** (fan-out 없음 — marian도 배치 추론)
   - Redis 원문 해시 캐시(엔진 공용, 7일) — 동일 원문은 어떤 경로(재수집·백필·
     엔진 전환)로 와도 재번역하지 않는다
   - 실패 시 fail-open: 원문(영문)을 그대로 공개 — 파이프라인은 절대 멈추지
@@ -164,16 +169,21 @@ async def translate_articles(
             pending.append(i)
 
     if pending:
-        # 2) 엔진 디스패치 — marian(오프라인) 우선, 불가하면 llm 폴백.
+        # 2) 엔진 디스패치 — 엔진별 배타 실행. 기본(marian)은 완전 오프라인이며
+        #    실패해도 클라우드 번역 API로 폴백하지 않는다(원문 유지 = fail-open).
+        #    "llm"은 이 값을 명시적으로 고른 배포에서만 API를 호출한다(opt-in).
         engine = str(getattr(settings, "news_translate_engine", "llm") or "llm")
-        done: set[int] = set()
-        if engine == "marian":
+        if engine == "llm":
+            await _translate_llm(pending, articles, out, settings=settings)
+        else:
+            # marian(및 그 외 값) = 오프라인 경로. 미설치·로드 실패 시 원문 유지.
             done = await _translate_marian(pending, articles, out, settings=settings)
-            if not done:
-                log.info("news.translate.marian_fallback_llm", size=len(pending))
-        remaining = [i for i in pending if i not in done]
-        if remaining:
-            await _translate_llm(remaining, articles, out, settings=settings)
+            if len(done) < len(pending):
+                log.info(
+                    "news.translate.marian_incomplete",
+                    translated=len(done),
+                    kept_original=len(pending) - len(done),
+                )
 
         # 3) 새 번역 캐시 저장(성공분만) — 다음 수집·백필·엔진 전환이 공짜가 된다.
         if redis is not None:
